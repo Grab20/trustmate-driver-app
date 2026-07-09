@@ -199,6 +199,7 @@ export type Database = {
           photo5_url: string | null
           platforms: string[] | null
           price_per_week: number
+          removal_reason: string | null
           removed_at: string | null
           removed_by: string | null
           status: string | null
@@ -235,6 +236,7 @@ export type Database = {
           photo5_url?: string | null
           platforms?: string[] | null
           price_per_week: number
+          removal_reason?: string | null
           removed_at?: string | null
           removed_by?: string | null
           status?: string | null
@@ -271,6 +273,7 @@ export type Database = {
           photo5_url?: string | null
           platforms?: string[] | null
           price_per_week?: number
+          removal_reason?: string | null
           removed_at?: string | null
           removed_by?: string | null
           status?: string | null
@@ -282,6 +285,41 @@ export type Database = {
           {
             foreignKeyName: "cars_owner_id_fkey"
             columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_push_tokens: {
+        Row: {
+          created_at: string | null
+          expo_push_token: string
+          id: string
+          platform: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          expo_push_token: string
+          id?: string
+          platform: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          expo_push_token?: string
+          id?: string
+          platform?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_push_tokens_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
