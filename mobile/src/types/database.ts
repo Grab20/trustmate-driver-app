@@ -933,6 +933,83 @@ export type Database = {
           },
         ]
       }
+      vehicle_inspections: {
+        Row: {
+          admin_note: string | null
+          application_id: string | null
+          car_id: string | null
+          created_at: string | null
+          driver_id: string
+          id: string
+          inspection_type: string
+          notes: string | null
+          odometer_km: number | null
+          photo_urls: string[] | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+        }
+        Insert: {
+          admin_note?: string | null
+          application_id?: string | null
+          car_id?: string | null
+          created_at?: string | null
+          driver_id: string
+          id?: string
+          inspection_type?: string
+          notes?: string | null
+          odometer_km?: number | null
+          photo_urls?: string[] | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+        }
+        Update: {
+          admin_note?: string | null
+          application_id?: string | null
+          car_id?: string | null
+          created_at?: string | null
+          driver_id?: string
+          id?: string
+          inspection_type?: string
+          notes?: string | null
+          odometer_km?: number | null
+          photo_urls?: string[] | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_inspections_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_inspections_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_inspections_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_inspections_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_odometers: {
         Row: {
           car_id: string
@@ -1145,6 +1222,10 @@ export type Database = {
     }
     Functions: {
       calculate_trust_score: { Args: { dp_id: string }; Returns: number }
+      complete_driver_registration: {
+        Args: { payload: Json }
+        Returns: undefined
+      }
       recalculate_trust_score: { Args: { dp_id: string }; Returns: undefined }
     }
     Enums: {

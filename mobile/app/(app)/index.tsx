@@ -1,10 +1,12 @@
 import { View, StyleSheet, ScrollView } from 'react-native'
 import { Text, Card, Button, Chip } from 'react-native-paper'
+import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../src/hooks/useActiveRental'
 import { useAuthStore } from '../../src/stores/authStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 
 export default function DashboardScreen() {
+  const router = useRouter()
   const { data: activeRental, isLoading } = useActiveRental()
   const signOut = useAuthStore((s) => s.signOut)
 
@@ -57,6 +59,23 @@ export default function DashboardScreen() {
         </Card.Content>
       </Card>
 
+      <Button
+        mode="contained"
+        icon="map-marker-path"
+        onPress={() => router.push('/trip')}
+        style={styles.actionButton}
+      >
+        Track Trip
+      </Button>
+      <Button
+        mode="contained-tonal"
+        icon="clipboard-check-outline"
+        onPress={() => router.push('/inspections')}
+        style={styles.actionButton}
+      >
+        Weekly Check-In
+      </Button>
+
       <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
         Sign Out
       </Button>
@@ -83,6 +102,9 @@ const styles = StyleSheet.create({
   },
   carDetail: {
     opacity: 0.7,
+  },
+  actionButton: {
+    marginBottom: 12,
   },
   signOutButton: {
     marginTop: 8,

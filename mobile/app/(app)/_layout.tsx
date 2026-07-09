@@ -1,4 +1,4 @@
-import { Redirect, Slot } from 'expo-router'
+import { Redirect, Stack } from 'expo-router'
 import { useAuthStore } from '../../src/stores/authStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 
@@ -9,5 +9,12 @@ export default function AppLayout() {
   if (isInitializing) return <LoadingScreen />
   if (!session) return <Redirect href="/login" />
 
-  return <Slot />
+  return (
+    <Stack>
+      <Stack.Screen name="index" options={{ title: 'Dashboard' }} />
+      <Stack.Screen name="trip" options={{ title: 'Trip Tracking' }} />
+      <Stack.Screen name="inspections/index" options={{ title: 'Check-Ins' }} />
+      <Stack.Screen name="inspections/new" options={{ title: 'New Check-In' }} />
+    </Stack>
+  )
 }
