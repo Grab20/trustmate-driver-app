@@ -7,6 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "owner": "trustmate",
     "plugins": [
       "expo-router",
       [
@@ -21,18 +22,25 @@
           "photosPermission": "TrustMate Driver needs access to your photos to attach vehicle inspection photos.",
           "cameraPermission": "TrustMate Driver needs access to your camera to take vehicle inspection photos."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0F5C4F"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
     },
     "ios": {
-  "supportsTablet": true,
-  "bundleIdentifier": "co.za.trustmate.driver"
-},
-   "android": {
-  "package": "co.za.trustmate.driver",
-  "adaptiveIcon": {
+      "supportsTablet": true,
+      "bundleIdentifier": "co.za.trustmate.driver"
+    },
+    "android": {
+      "package": "co.za.trustmate.driver",
+      "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
@@ -41,15 +49,13 @@
       "predictiveBackGestureEnabled": false,
       "config": {
         "googleMaps": {
-         "apiKey": "AIzaSyDk•••••••••••••••••••••••••••••••"
+          "apiKey": "AIzaSyDk•••••••••••••••••••••••••••••••"
         }
       },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.RECORD_AUDIO"
-      ],
-      "package": "co.za.trustmate.driver"
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
