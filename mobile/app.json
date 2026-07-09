@@ -30,7 +30,6 @@
   "supportsTablet": true,
   "bundleIdentifier": "co.za.trustmate.driver"
 },
-    },
    "android": {
   "package": "co.za.trustmate.driver",
   "adaptiveIcon": {
