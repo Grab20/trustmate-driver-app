@@ -27,10 +27,13 @@
       "typedRoutes": true
     },
     "ios": {
-      "supportsTablet": true
+  "supportsTablet": true,
+  "bundleIdentifier": "co.za.trustmate.driver"
+},
     },
-    "android": {
-      "adaptiveIcon": {
+   "android": {
+  "package": "co.za.trustmate.driver",
+  "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
@@ -39,7 +42,7 @@
       "predictiveBackGestureEnabled": false,
       "config": {
         "googleMaps": {
-          "apiKey": "REPLACE_WITH_GOOGLE_MAPS_ANDROID_API_KEY"
+         "apiKey": "AIzaSyDk•••••••••••••••••••••••••••••••"
         }
       }
     },
