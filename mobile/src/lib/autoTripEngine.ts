@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications'
 import { supabase } from './supabase'
 import { haversineDistanceKm } from '../utils/geo'
+import { reverseGeocodeLabel } from './reverseGeocode'
 import {
   getAutoTripContext,
   getAutoTripState,
@@ -47,6 +48,8 @@ async function startTrip(sample: LocationSample) {
   const context = await getAutoTripContext()
   if (!context) return
 
+  const startLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
+
   const { data: trip, error } = await supabase
     .from('vehicle_trips')
     .insert({
@@ -54,7 +57,7 @@ async function startTrip(sample: LocationSample) {
       car_id: context.carId,
       application_id: context.applicationId,
       status: 'active',
-      start_location: `${sample.latitude.toFixed(5)}, ${sample.longitude.toFixed(5)}`,
+      start_location: startLabel,
     })
     .select()
     .single()
@@ -80,6 +83,7 @@ async function startTrip(sample: LocationSample) {
 async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
   const durationSeconds = state.startedAt ? (Date.now() - state.startedAt) / 1000 : 0
   const avgSpeedKmh = durationSeconds > 0 ? state.distanceKm / (durationSeconds / 3600) : null
+  const endLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
 
   const { error } = await supabase
     .from('vehicle_trips')
@@ -89,7 +93,7 @@ async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoT
       distance_km: state.distanceKm,
       avg_speed_kmh: avgSpeedKmh,
       max_speed_kmh: state.maxSpeedKmh || null,
-      end_location: `${sample.latitude.toFixed(5)}, ${sample.longitude.toFixed(5)}`,
+      end_location: endLabel,
       status: 'completed',
     })
     .eq('id', tripId)

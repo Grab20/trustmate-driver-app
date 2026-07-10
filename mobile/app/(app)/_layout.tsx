@@ -16,9 +16,9 @@ export default function AppLayout() {
   return (
     <Stack>
       <Stack.Screen name="index" options={{ title: 'Dashboard' }} />
-      <Stack.Screen name="trip" options={{ title: 'Trip Tracking' }} />
-      <Stack.Screen name="inspections/index" options={{ title: 'Check-Ins' }} />
-      <Stack.Screen name="inspections/new" options={{ title: 'New Check-In' }} />
+      <Stack.Screen name="inspections/index" options={{ title: 'Inspection History' }} />
+      <Stack.Screen name="inspections/new" options={{ title: 'Vehicle Inspection' }} />
+      <Stack.Screen name="inspections/payment" options={{ title: 'Proof of Payment' }} />
     </Stack>
   )
 }

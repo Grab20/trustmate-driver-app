@@ -6,14 +6,25 @@ import { InspectionPhotoThumbnail } from '../../../src/components/InspectionPhot
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
 import type { Tables } from '../../../src/types/database'
 
+const TYPE_LABELS: Record<string, string> = {
+  weekly_checkin: 'Vehicle Inspection',
+  proof_of_payment: 'Proof of Payment',
+  incident_report: 'Incident Report',
+}
+
 function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspections'> }) {
   return (
     <Card style={styles.card}>
       <Card.Content>
         <View style={styles.cardHeader}>
-          <Text variant="titleMedium">
-            {new Date(inspection.created_at ?? '').toLocaleDateString()}
-          </Text>
+          <View>
+            <Text variant="titleMedium">
+              {TYPE_LABELS[inspection.inspection_type] ?? inspection.inspection_type}
+            </Text>
+            <Text variant="bodySmall" style={styles.date}>
+              {new Date(inspection.created_at ?? '').toLocaleDateString()}
+            </Text>
+          </View>
           <Chip compact>{inspection.status}</Chip>
         </View>
         {inspection.odometer_km != null && (
@@ -53,17 +64,22 @@ export default function InspectionHistoryScreen() {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <Text variant="bodyMedium" style={styles.empty}>
-            No check-ins submitted yet.
+            Nothing submitted yet.
           </Text>
         }
       />
-      <Button
-        mode="contained"
-        onPress={() => router.push('/inspections/new')}
-        style={styles.newButton}
-      >
-        New Check-In
-      </Button>
+      <View style={styles.newButtons}>
+        <Button mode="contained" onPress={() => router.push('/inspections/new')} style={styles.newButton}>
+          New Inspection
+        </Button>
+        <Button
+          mode="contained-tonal"
+          onPress={() => router.push('/inspections/payment')}
+          style={styles.newButton}
+        >
+          Proof of Payment
+        </Button>
+      </View>
     </View>
   )
 }
@@ -81,8 +97,11 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 8,
+  },
+  date: {
+    opacity: 0.6,
   },
   detail: {
     opacity: 0.8,
@@ -97,7 +116,10 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginTop: 32,
   },
+  newButtons: {
+    padding: 16,
+  },
   newButton: {
-    margin: 16,
+    marginBottom: 8,
   },
 })

@@ -33,7 +33,8 @@
           "icon": "./assets/icon.png",
           "color": "#0F5C4F"
         }
-      ]
+      ],
+      "expo-document-picker"
     ],
     "experiments": {
       "typedRoutes": true

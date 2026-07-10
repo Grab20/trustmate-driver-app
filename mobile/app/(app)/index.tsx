@@ -2,12 +2,35 @@ import { View, StyleSheet, ScrollView } from 'react-native'
 import { Text, Card, Button, Chip } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../src/hooks/useActiveRental'
+import { useActiveTrip } from '../../src/hooks/useActiveTrip'
+import { useTripWaypoints } from '../../src/hooks/useTripWaypoints'
+import { useTodayDistance } from '../../src/hooks/useTodayDistance'
+import { useDriverProfile } from '../../src/hooks/useDriverProfile'
+import { useMyProfile } from '../../src/hooks/useMyProfile'
+import { useRecentActivity } from '../../src/hooks/useRecentActivity'
 import { useAuthStore } from '../../src/stores/authStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
+import { StatTile } from '../../src/components/StatTile'
+import { ActivityRow } from '../../src/components/ActivityRow'
+import { haversineDistanceKm } from '../../src/utils/geo'
+import { getNextOccurrence, formatShortDate, getRentalWeekNumber } from '../../src/utils/schedule'
+
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good Morning'
+  if (hour < 18) return 'Good Afternoon'
+  return 'Good Evening'
+}
 
 export default function DashboardScreen() {
   const router = useRouter()
   const { data: activeRental, isLoading } = useActiveRental()
+  const { data: activeTrip } = useActiveTrip()
+  const { data: waypoints } = useTripWaypoints(activeTrip?.id)
+  const { data: todayCompletedKm } = useTodayDistance()
+  const { data: driverProfile } = useDriverProfile()
+  const { data: myProfile } = useMyProfile()
+  const { data: recentActivity } = useRecentActivity()
   const signOut = useAuthStore((s) => s.signOut)
 
   if (isLoading) return <LoadingScreen />
@@ -31,50 +54,81 @@ export default function DashboardScreen() {
   }
 
   const car = activeRental.cars
+  const firstName = myProfile?.full_name?.split(' ')[0] ?? 'Driver'
+
+  const liveWaypoints = (waypoints ?? []).map((w) => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))
+  const liveDistanceKm = liveWaypoints.reduce((total, point, index) => {
+    if (index === 0) return total
+    const prev = liveWaypoints[index - 1]
+    return total + haversineDistanceKm(prev.latitude, prev.longitude, point.latitude, point.longitude)
+  }, 0)
+  const todaysDistanceKm = (todayCompletedKm ?? 0) + (activeTrip ? liveDistanceKm : 0)
+  const currentSpeedKmh = waypoints && waypoints.length > 0 ? Number(waypoints[waypoints.length - 1].speed_kmh ?? 0) : 0
+
+  const nextInspection = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
+  const nextPayment = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
+  const rentalWeek = getRentalWeekNumber(activeRental.matched_at)
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall" style={styles.heading}>
-        Your Active Rental
+      <Text variant="headlineMedium" style={styles.greeting}>
+        {getGreeting()}, {firstName}
       </Text>
 
       <Card style={styles.card}>
         <Card.Content>
           <Chip icon="check-circle" style={styles.statusChip}>
-            Matched
+            Active
           </Chip>
           <Text variant="titleLarge" style={styles.carTitle}>
-            {car ? `${car.make} ${car.model} (${car.year})` : 'Vehicle details unavailable'}
+            {car ? `${car.make} ${car.model}` : 'Vehicle details unavailable'}
           </Text>
-          {car?.location && (
-            <Text variant="bodyMedium" style={styles.carDetail}>
-              {car.location}
-            </Text>
-          )}
-          {car?.color && (
-            <Text variant="bodyMedium" style={styles.carDetail}>
-              {car.color} · {car.transmission}
+          {activeRental.owner?.full_name && (
+            <Text variant="bodyMedium" style={styles.ownerText}>
+              Owner: {activeRental.owner.full_name}
             </Text>
           )}
         </Card.Content>
       </Card>
 
-      <Button
-        mode="contained"
-        icon="map-marker-path"
-        onPress={() => router.push('/trip')}
-        style={styles.actionButton}
-      >
-        Trip Status
-      </Button>
+      <View style={styles.statsGrid}>
+        <StatTile label="Current Status" value={activeTrip ? 'Driving' : 'Parked'} />
+        <StatTile label="Current Speed" value={activeTrip ? `${currentSpeedKmh.toFixed(0)} km/h` : '—'} />
+        <StatTile label="Today's Distance" value={`${todaysDistanceKm.toFixed(1)} km`} />
+        <StatTile label="Rental Week" value={rentalWeek != null ? `Week ${rentalWeek}` : '—'} />
+        <StatTile
+          label="Next Payment"
+          value={nextPayment ? formatShortDate(nextPayment) : 'Not scheduled'}
+        />
+        <StatTile
+          label="Next Inspection"
+          value={nextInspection ? formatShortDate(nextInspection) : 'Not scheduled'}
+        />
+        <StatTile
+          label="TrustScore"
+          value={driverProfile?.trust_score != null ? String(driverProfile.trust_score) : '—'}
+        />
+      </View>
+
       <Button
         mode="contained-tonal"
         icon="clipboard-check-outline"
         onPress={() => router.push('/inspections')}
         style={styles.actionButton}
       >
-        Weekly Check-In
+        Inspections & Payments
       </Button>
+
+      <Text variant="titleMedium" style={styles.activityHeading}>
+        Recent Activity
+      </Text>
+      {recentActivity && recentActivity.length > 0 ? (
+        recentActivity.map((item) => <ActivityRow key={`${item.type}-${item.id}`} item={item} />)
+      ) : (
+        <Text variant="bodyMedium" style={styles.noActivity}>
+          Nothing yet — trips and submissions will show up here.
+        </Text>
+      )}
 
       <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
         Sign Out
@@ -87,7 +141,7 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
   },
-  heading: {
+  greeting: {
     marginBottom: 16,
   },
   card: {
@@ -100,14 +154,26 @@ const styles = StyleSheet.create({
   carTitle: {
     marginBottom: 4,
   },
-  carDetail: {
+  ownerText: {
     opacity: 0.7,
   },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   actionButton: {
-    marginBottom: 12,
+    marginBottom: 24,
+  },
+  activityHeading: {
+    marginBottom: 8,
+  },
+  noActivity: {
+    opacity: 0.6,
+    marginBottom: 24,
   },
   signOutButton: {
-    marginTop: 8,
+    marginTop: 16,
   },
   emptyContainer: {
     flex: 1,

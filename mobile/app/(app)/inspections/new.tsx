@@ -1,11 +1,25 @@
 import { useState } from 'react'
-import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native'
-import { Text, TextInput, Button, IconButton } from 'react-native-paper'
+import { View, StyleSheet, ScrollView, Alert } from 'react-native'
+import { Text, TextInput, Button } from 'react-native-paper'
 import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../../src/hooks/useActiveRental'
 import { useVehicleOdometer } from '../../../src/hooks/useVehicleOdometer'
 import { useSubmitInspection } from '../../../src/hooks/useInspections'
+import { PhotoSlot } from '../../../src/components/PhotoSlot'
+
+// Order matters: photo_urls is a plain array, and this order is the convention
+// used to interpret which shot is which when displaying an inspection later.
+const REQUIRED_SHOTS = [
+  { key: 'front', label: 'Front' },
+  { key: 'back', label: 'Back' },
+  { key: 'left', label: 'Left Side' },
+  { key: 'right', label: 'Right Side' },
+  { key: 'interior', label: 'Interior' },
+  { key: 'dashboard', label: 'Dashboard' },
+] as const
+
+type ShotKey = (typeof REQUIRED_SHOTS)[number]['key']
 
 export default function NewInspectionScreen() {
   const router = useRouter()
@@ -17,49 +31,38 @@ export default function NewInspectionScreen() {
     odometer?.current_km != null ? String(odometer.current_km) : '',
   )
   const [notes, setNotes] = useState('')
-  const [photoUris, setPhotoUris] = useState<string[]>([])
+  const [shots, setShots] = useState<Record<ShotKey, string | null>>({
+    front: null,
+    back: null,
+    left: null,
+    right: null,
+    interior: null,
+    dashboard: null,
+  })
 
-  async function handlePickPhotos() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Photo library access is required to attach photos.')
-      return
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      quality: 0.7,
-    })
-    if (!result.canceled) {
-      setPhotoUris((prev) => [...prev, ...result.assets.map((a) => a.uri)])
-    }
-  }
+  const allShotsCaptured = REQUIRED_SHOTS.every((shot) => shots[shot.key] !== null)
 
-  async function handleTakePhoto() {
+  async function handleCapture(key: ShotKey) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync()
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Camera access is required to take a photo.')
+      Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
       return
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
     if (!result.canceled) {
-      setPhotoUris((prev) => [...prev, ...result.assets.map((a) => a.uri)])
+      setShots((prev) => ({ ...prev, [key]: result.assets[0].uri }))
     }
   }
 
-  function removePhoto(uri: string) {
-    setPhotoUris((prev) => prev.filter((p) => p !== uri))
-  }
-
   async function handleSubmit() {
-    if (!activeRental?.car_id) return
+    if (!activeRental?.car_id || !allShotsCaptured) return
     try {
       await submitInspection.mutateAsync({
         carId: activeRental.car_id,
         applicationId: activeRental.id,
         odometerKm: odometerKm.trim() ? Number(odometerKm) : null,
         notes,
-        photoUris,
+        photoUris: REQUIRED_SHOTS.map((shot) => shots[shot.key] as string),
       })
       router.back()
     } catch (err) {
@@ -70,10 +73,10 @@ export default function NewInspectionScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text variant="headlineSmall" style={styles.heading}>
-        Weekly Check-In
+        Vehicle Inspection
       </Text>
       <Text variant="bodyMedium" style={styles.subheading}>
-        Submit a photo and odometer reading for your vehicle owner to review.
+        Take all 6 photos using your camera so your vehicle owner can review the car's condition.
       </Text>
 
       <TextInput
@@ -88,41 +91,29 @@ export default function NewInspectionScreen() {
         value={notes}
         onChangeText={setNotes}
         multiline
-        numberOfLines={4}
+        numberOfLines={3}
         style={styles.input}
       />
 
-      <View style={styles.photoRow}>
-        {photoUris.map((uri) => (
-          <View key={uri} style={styles.photoWrapper}>
-            <Image source={{ uri }} style={styles.photo} />
-            <IconButton
-              icon="close-circle"
-              size={20}
-              style={styles.removeButton}
-              onPress={() => removePhoto(uri)}
-            />
-          </View>
+      <View style={styles.shotsGrid}>
+        {REQUIRED_SHOTS.map((shot) => (
+          <PhotoSlot
+            key={shot.key}
+            label={shot.label}
+            uri={shots[shot.key]}
+            onCapture={() => handleCapture(shot.key)}
+          />
         ))}
-      </View>
-
-      <View style={styles.photoActions}>
-        <Button mode="outlined" onPress={handleTakePhoto} style={styles.photoActionButton}>
-          Take Photo
-        </Button>
-        <Button mode="outlined" onPress={handlePickPhotos} style={styles.photoActionButton}>
-          Choose Photos
-        </Button>
       </View>
 
       <Button
         mode="contained"
         onPress={handleSubmit}
         loading={submitInspection.isPending}
-        disabled={submitInspection.isPending || !activeRental?.car_id}
+        disabled={submitInspection.isPending || !activeRental?.car_id || !allShotsCaptured}
         style={styles.submitButton}
       >
-        Submit Check-In
+        {allShotsCaptured ? 'Submit Inspection' : 'Take All 6 Photos to Continue'}
       </Button>
     </ScrollView>
   )
@@ -142,34 +133,11 @@ const styles = StyleSheet.create({
   input: {
     marginBottom: 16,
   },
-  photoRow: {
+  shotsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 12,
-  },
-  photoWrapper: {
-    position: 'relative',
-    marginRight: 8,
+    justifyContent: 'space-between',
     marginBottom: 8,
-  },
-  photo: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-  },
-  removeButton: {
-    position: 'absolute',
-    top: -12,
-    right: -12,
-    margin: 0,
-  },
-  photoActions: {
-    flexDirection: 'row',
-    marginBottom: 24,
-  },
-  photoActionButton: {
-    flex: 1,
-    marginRight: 8,
   },
   submitButton: {
     marginTop: 8,
