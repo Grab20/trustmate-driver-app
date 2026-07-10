@@ -1,0 +1,1029 @@
+diff --git a/mobile/app.json b/mobile/app.json
+index 58e02a5..69fd5ac 100644
+--- a/mobile/app.json
++++ b/mobile/app.json
+@@ -13,7 +13,11 @@
+       [
+         "expo-location",
+         {
+-          "locationWhenInUsePermission": "TrustMate Driver uses your location to track distance and route while a trip is active. Location is only recorded while the app is open."
++          "locationWhenInUsePermission": "TrustMate Driver uses your location to automatically detect when you start and stop driving your rented vehicle.",
++          "locationAlwaysAndWhenInUsePermission": "TrustMate Driver needs 'Always Allow' location access to automatically detect trips, including while the app is in the background.",
++          "isIosBackgroundLocationEnabled": true,
++          "isAndroidBackgroundLocationEnabled": true,
++          "isAndroidForegroundServiceEnabled": true
+         }
+       ],
+       [
+diff --git a/mobile/app/(app)/_layout.tsx b/mobile/app/(app)/_layout.tsx
+index 9d6da45..e77cbfa 100644
+--- a/mobile/app/(app)/_layout.tsx
++++ b/mobile/app/(app)/_layout.tsx
+@@ -2,11 +2,13 @@ import { Redirect, Stack } from 'expo-router'
+ import { useAuthStore } from '../../src/stores/authStore'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+ import { usePushNotifications } from '../../src/hooks/usePushNotifications'
++import { useAutoTripTracking } from '../../src/hooks/useAutoTripTracking'
+ 
+ export default function AppLayout() {
+   const session = useAuthStore((s) => s.session)
+   const isInitializing = useAuthStore((s) => s.isInitializing)
+   usePushNotifications()
++  useAutoTripTracking()
+ 
+   if (isInitializing) return <LoadingScreen />
+   if (!session) return <Redirect href="/login" />
+diff --git a/mobile/app/(app)/index.tsx b/mobile/app/(app)/index.tsx
+index 29b4e38..5ac6d8a 100644
+--- a/mobile/app/(app)/index.tsx
++++ b/mobile/app/(app)/index.tsx
+@@ -65,7 +65,7 @@ export default function DashboardScreen() {
+         onPress={() => router.push('/trip')}
+         style={styles.actionButton}
+       >
+-        Track Trip
++        Trip Status
+       </Button>
+       <Button
+         mode="contained-tonal"
+diff --git a/mobile/app/(app)/trip.tsx b/mobile/app/(app)/trip.tsx
+index 93b6734..cac035c 100644
+--- a/mobile/app/(app)/trip.tsx
++++ b/mobile/app/(app)/trip.tsx
+@@ -1,38 +1,20 @@
+ import { useEffect, useState } from 'react'
+-import { View, StyleSheet, Alert } from 'react-native'
+-import { Text, Button, Card, ActivityIndicator } from 'react-native-paper'
++import { View, StyleSheet, Linking } from 'react-native'
++import { Text, Card, Button, ActivityIndicator, Chip } from 'react-native-paper'
+ import MapView, { Marker, Polyline } from 'react-native-maps'
+-import * as Location from 'expo-location'
+ import { useActiveRental } from '../../src/hooks/useActiveRental'
+ import { useActiveTrip } from '../../src/hooks/useActiveTrip'
+-import { useVehicleOdometer } from '../../src/hooks/useVehicleOdometer'
+-import { useStartTrip, useEndTrip } from '../../src/hooks/useTripMutations'
+-import { useTripLocationTracking } from '../../src/hooks/useTripLocationTracking'
+-import { OdometerDialog } from '../../src/components/OdometerDialog'
+-import { formatDuration } from '../../src/utils/geo'
++import { useTripWaypoints } from '../../src/hooks/useTripWaypoints'
++import { useAutoTripTracking } from '../../src/hooks/useAutoTripTracking'
++import { formatDuration, haversineDistanceKm } from '../../src/utils/geo'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+ 
+-async function getCurrentLocationLabel(): Promise<string | null> {
+-  try {
+-    const { status } = await Location.getForegroundPermissionsAsync()
+-    if (status !== 'granted') return null
+-    const position = await Location.getCurrentPositionAsync({})
+-    return `${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`
+-  } catch {
+-    return null
+-  }
+-}
+-
+ export default function TripScreen() {
+   const { data: activeRental, isLoading: isRentalLoading } = useActiveRental()
+   const { data: activeTrip, isLoading: isTripLoading } = useActiveTrip()
+-  const { data: odometer } = useVehicleOdometer(activeRental?.car_id ?? undefined)
+-  const startTrip = useStartTrip()
+-  const endTrip = useEndTrip()
+-  const tracking = useTripLocationTracking(activeTrip?.id ?? null)
++  const { data: waypoints } = useTripWaypoints(activeTrip?.id)
++  const permissionStatus = useAutoTripTracking()
+ 
+-  const [showStartDialog, setShowStartDialog] = useState(false)
+-  const [showEndDialog, setShowEndDialog] = useState(false)
+   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+ 
+   useEffect(() => {
+@@ -59,164 +41,114 @@ export default function TripScreen() {
+     )
+   }
+ 
+-  async function handleStartTrip(odometerKm: number) {
+-    setShowStartDialog(false)
+-    const locationLabel = await getCurrentLocationLabel()
+-    try {
+-      await startTrip.mutateAsync({
+-        carId: activeRental!.car_id as string,
+-        applicationId: activeRental!.id,
+-        odometerStartKm: odometerKm,
+-        startLocation: locationLabel,
+-      })
+-    } catch (err) {
+-      Alert.alert('Could not start trip', err instanceof Error ? err.message : 'Unknown error')
+-    }
++  if (permissionStatus === 'denied') {
++    return (
++      <View style={styles.centered}>
++        <Text variant="headlineSmall" style={{ marginBottom: 12, textAlign: 'center' }}>
++          Location Permission Needed
++        </Text>
++        <Text variant="bodyMedium" style={{ textAlign: 'center', opacity: 0.7, marginBottom: 24 }}>
++          TrustMate Driver detects your trips automatically, but needs "Allow all the time" location
++          access to do it in the background. Please enable this in your device settings.
++        </Text>
++        <Button mode="contained" onPress={() => Linking.openSettings()}>
++          Open Settings
++        </Button>
++      </View>
++    )
+   }
+ 
+-  async function handleEndTrip(odometerKm: number) {
+-    setShowEndDialog(false)
+-    if (!activeTrip) return
+-    const locationLabel = await getCurrentLocationLabel()
+-    const durationSeconds = (Date.now() - new Date(activeTrip.started_at).getTime()) / 1000
+-    const distanceKm =
+-      activeTrip.odometer_start_km != null
+-        ? Math.max(0, odometerKm - activeTrip.odometer_start_km)
+-        : tracking.distanceKm
++  const waypointPoints = (waypoints ?? []).map((w) => ({
++    latitude: Number(w.lat),
++    longitude: Number(w.lng),
++  }))
++  const lastWaypoint = waypointPoints[waypointPoints.length - 1]
++  const currentSpeedKmh = waypoints && waypoints.length > 0 ? Number(waypoints[waypoints.length - 1].speed_kmh ?? 0) : 0
++  const liveDistanceKm = waypointPoints.reduce((total, point, index) => {
++    if (index === 0) return total
++    const prev = waypointPoints[index - 1]
++    return total + haversineDistanceKm(prev.latitude, prev.longitude, point.latitude, point.longitude)
++  }, 0)
+ 
+-    try {
+-      await endTrip.mutateAsync({
+-        tripId: activeTrip.id,
+-        carId: activeRental!.car_id as string,
+-        durationSeconds,
+-        distanceKm,
+-        avgSpeedKmh: durationSeconds > 0 ? distanceKm / (durationSeconds / 3600) : null,
+-        maxSpeedKmh: tracking.maxSpeedKmh || null,
+-        odometerEndKm: odometerKm,
+-        endLocation: locationLabel,
+-      })
+-      tracking.reset()
+-    } catch (err) {
+-      Alert.alert('Could not end trip', err instanceof Error ? err.message : 'Unknown error')
+-    }
++  if (!activeTrip) {
++    return (
++      <View style={styles.centered}>
++        <Chip icon="radar" style={styles.watchingChip}>
++          Watching for driving activity
++        </Chip>
++        <Text variant="headlineSmall" style={{ marginTop: 16, marginBottom: 12, textAlign: 'center' }}>
++          No Active Trip
++        </Text>
++        <Text variant="bodyMedium" style={{ textAlign: 'center', opacity: 0.7 }}>
++          Trips start automatically once you begin driving, and end automatically once you've been
++          stopped for a few minutes. Nothing to press — just drive.
++        </Text>
++      </View>
++    )
+   }
+ 
+-  const lastWaypoint = tracking.waypoints[tracking.waypoints.length - 1]
+-
+   return (
+-    <View style={styles.container}>
+-      {!activeTrip ? (
+-        <View style={styles.centered}>
+-          <Text variant="headlineSmall" style={{ marginBottom: 12 }}>
+-            No Active Trip
+-          </Text>
+-          <Text variant="bodyMedium" style={{ textAlign: 'center', opacity: 0.7, marginBottom: 24 }}>
+-            Start a trip to track your route, distance, and odometer while you're driving.
+-          </Text>
+-          <Button
+-            mode="contained"
+-            onPress={() => setShowStartDialog(true)}
+-            loading={startTrip.isPending}
+-            disabled={startTrip.isPending}
+-          >
+-            Start Trip
+-          </Button>
+-        </View>
++    <View style={styles.flex}>
++      {lastWaypoint ? (
++        <MapView
++          style={styles.map}
++          initialRegion={{
++            latitude: lastWaypoint.latitude,
++            longitude: lastWaypoint.longitude,
++            latitudeDelta: 0.01,
++            longitudeDelta: 0.01,
++          }}
++          region={{
++            latitude: lastWaypoint.latitude,
++            longitude: lastWaypoint.longitude,
++            latitudeDelta: 0.01,
++            longitudeDelta: 0.01,
++          }}
++        >
++          <Polyline coordinates={waypointPoints} strokeWidth={4} />
++          <Marker coordinate={lastWaypoint} title="Current position" />
++        </MapView>
+       ) : (
+-        <View style={styles.flex}>
+-          {lastWaypoint ? (
+-            <MapView
+-              style={styles.map}
+-              initialRegion={{
+-                latitude: lastWaypoint.latitude,
+-                longitude: lastWaypoint.longitude,
+-                latitudeDelta: 0.01,
+-                longitudeDelta: 0.01,
+-              }}
+-              region={{
+-                latitude: lastWaypoint.latitude,
+-                longitude: lastWaypoint.longitude,
+-                latitudeDelta: 0.01,
+-                longitudeDelta: 0.01,
+-              }}
+-            >
+-              <Polyline coordinates={tracking.waypoints} strokeWidth={4} />
+-              <Marker coordinate={lastWaypoint} title="Current position" />
+-            </MapView>
+-          ) : (
+-            <View style={[styles.map, styles.mapPlaceholder]}>
+-              <ActivityIndicator />
+-              <Text variant="bodySmall" style={{ marginTop: 8, opacity: 0.7 }}>
+-                Waiting for GPS signal…
+-              </Text>
+-            </View>
+-          )}
+-
+-          <Card style={styles.statsCard}>
+-            <Card.Content>
+-              <View style={styles.statsRow}>
+-                <View style={styles.stat}>
+-                  <Text variant="labelMedium" style={styles.statLabel}>
+-                    Duration
+-                  </Text>
+-                  <Text variant="titleMedium">{formatDuration(elapsedSeconds)}</Text>
+-                </View>
+-                <View style={styles.stat}>
+-                  <Text variant="labelMedium" style={styles.statLabel}>
+-                    Distance
+-                  </Text>
+-                  <Text variant="titleMedium">{tracking.distanceKm.toFixed(1)} km</Text>
+-                </View>
+-                <View style={styles.stat}>
+-                  <Text variant="labelMedium" style={styles.statLabel}>
+-                    Speed
+-                  </Text>
+-                  <Text variant="titleMedium">{tracking.currentSpeedKmh.toFixed(0)} km/h</Text>
+-                </View>
+-              </View>
+-              {tracking.permissionDenied && (
+-                <Text variant="bodySmall" style={styles.permissionWarning}>
+-                  Location permission denied — enable it in Settings to track your route.
+-                </Text>
+-              )}
+-              <Button
+-                mode="contained"
+-                onPress={() => setShowEndDialog(true)}
+-                loading={endTrip.isPending}
+-                disabled={endTrip.isPending}
+-                style={styles.endButton}
+-              >
+-                End Trip
+-              </Button>
+-            </Card.Content>
+-          </Card>
++        <View style={[styles.map, styles.mapPlaceholder]}>
++          <ActivityIndicator />
++          <Text variant="bodySmall" style={{ marginTop: 8, opacity: 0.7 }}>
++            Waiting for GPS signal…
++          </Text>
+         </View>
+       )}
+ 
+-      <OdometerDialog
+-        visible={showStartDialog}
+-        title="Start Trip"
+-        initialValue={odometer?.current_km ?? null}
+-        onDismiss={() => setShowStartDialog(false)}
+-        onConfirm={handleStartTrip}
+-        confirmLabel="Start"
+-      />
+-      <OdometerDialog
+-        visible={showEndDialog}
+-        title="End Trip"
+-        initialValue={activeTrip?.odometer_start_km ?? odometer?.current_km ?? null}
+-        onDismiss={() => setShowEndDialog(false)}
+-        onConfirm={handleEndTrip}
+-        confirmLabel="End"
+-      />
++      <Card style={styles.statsCard}>
++        <Card.Content>
++          <Chip icon="car" style={styles.drivingChip}>
++            Trip in progress
++          </Chip>
++          <View style={styles.statsRow}>
++            <View style={styles.stat}>
++              <Text variant="labelMedium" style={styles.statLabel}>
++                Duration
++              </Text>
++              <Text variant="titleMedium">{formatDuration(elapsedSeconds)}</Text>
++            </View>
++            <View style={styles.stat}>
++              <Text variant="labelMedium" style={styles.statLabel}>
++                Distance
++              </Text>
++              <Text variant="titleMedium">{liveDistanceKm.toFixed(1)} km</Text>
++            </View>
++            <View style={styles.stat}>
++              <Text variant="labelMedium" style={styles.statLabel}>
++                Speed
++              </Text>
++              <Text variant="titleMedium">{currentSpeedKmh.toFixed(0)} km/h</Text>
++            </View>
++          </View>
++        </Card.Content>
++      </Card>
+     </View>
+   )
+ }
+ 
+ const styles = StyleSheet.create({
+-  container: {
+-    flex: 1,
+-  },
+   flex: {
+     flex: 1,
+   },
+@@ -226,6 +158,13 @@ const styles = StyleSheet.create({
+     alignItems: 'center',
+     paddingHorizontal: 32,
+   },
++  watchingChip: {
++    alignSelf: 'center',
++  },
++  drivingChip: {
++    alignSelf: 'flex-start',
++    marginBottom: 12,
++  },
+   map: {
+     flex: 1,
+   },
+@@ -239,7 +178,6 @@ const styles = StyleSheet.create({
+   statsRow: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+-    marginBottom: 12,
+   },
+   stat: {
+     alignItems: 'center',
+@@ -248,11 +186,4 @@ const styles = StyleSheet.create({
+     opacity: 0.6,
+     marginBottom: 4,
+   },
+-  permissionWarning: {
+-    color: '#B3261E',
+-    marginBottom: 12,
+-  },
+-  endButton: {
+-    marginTop: 4,
+-  },
+ })
+diff --git a/mobile/app/_layout.tsx b/mobile/app/_layout.tsx
+index c9d13eb..240025b 100644
+--- a/mobile/app/_layout.tsx
++++ b/mobile/app/_layout.tsx
+@@ -6,6 +6,9 @@ import { Slot } from 'expo-router'
+ import { StatusBar } from 'expo-status-bar'
+ import { queryClient } from '../src/lib/queryClient'
+ import { theme } from '../src/theme/theme'
++// Side-effect import: registers the background location task handler so it's
++// defined before the OS can relaunch the app in the background to deliver updates.
++import '../src/tasks/backgroundLocationTask'
+ 
+ export default function RootLayout() {
+   return (
+diff --git a/mobile/src/components/OdometerDialog.tsx b/mobile/src/components/OdometerDialog.tsx
+deleted file mode 100644
+index 02267d9..0000000
+--- a/mobile/src/components/OdometerDialog.tsx
++++ /dev/null
+@@ -1,50 +0,0 @@
+-import { useState } from 'react'
+-import { Portal, Dialog, TextInput, Button, Text } from 'react-native-paper'
+-
+-type OdometerDialogProps = {
+-  visible: boolean
+-  title: string
+-  initialValue?: number | null
+-  onDismiss: () => void
+-  onConfirm: (odometerKm: number) => void
+-  confirmLabel?: string
+-}
+-
+-export function OdometerDialog({
+-  visible,
+-  title,
+-  initialValue,
+-  onDismiss,
+-  onConfirm,
+-  confirmLabel = 'Confirm',
+-}: OdometerDialogProps) {
+-  const [value, setValue] = useState(initialValue != null ? String(initialValue) : '')
+-
+-  const parsed = Number(value)
+-  const isValid = value.trim() !== '' && Number.isFinite(parsed) && parsed >= 0
+-
+-  return (
+-    <Portal>
+-      <Dialog visible={visible} onDismiss={onDismiss}>
+-        <Dialog.Title>{title}</Dialog.Title>
+-        <Dialog.Content>
+-          <Text variant="bodyMedium" style={{ marginBottom: 12, opacity: 0.7 }}>
+-            Enter the vehicle's current odometer reading in kilometers.
+-          </Text>
+-          <TextInput
+-            label="Odometer (km)"
+-            value={value}
+-            onChangeText={setValue}
+-            keyboardType="numeric"
+-          />
+-        </Dialog.Content>
+-        <Dialog.Actions>
+-          <Button onPress={onDismiss}>Cancel</Button>
+-          <Button disabled={!isValid} onPress={() => onConfirm(parsed)}>
+-            {confirmLabel}
+-          </Button>
+-        </Dialog.Actions>
+-      </Dialog>
+-    </Portal>
+-  )
+-}
+diff --git a/mobile/src/hooks/useActiveTrip.ts b/mobile/src/hooks/useActiveTrip.ts
+index 6567690..070acf3 100644
+--- a/mobile/src/hooks/useActiveTrip.ts
++++ b/mobile/src/hooks/useActiveTrip.ts
+@@ -22,5 +22,6 @@ export function useActiveTrip() {
+       return data
+     },
+     enabled: !!userId,
++    refetchInterval: 15000,
+   })
+ }
+diff --git a/mobile/src/hooks/useAutoTripTracking.ts b/mobile/src/hooks/useAutoTripTracking.ts
+new file mode 100644
+index 0000000..8c5ead6
+--- /dev/null
++++ b/mobile/src/hooks/useAutoTripTracking.ts
+@@ -0,0 +1,72 @@
++import { useEffect, useState } from 'react'
++import * as Location from 'expo-location'
++import { useActiveRental } from './useActiveRental'
++import { useAuthStore } from '../stores/authStore'
++import { setAutoTripContext } from '../lib/autoTripStorage'
++import { BACKGROUND_LOCATION_TASK } from '../tasks/backgroundLocationTask'
++
++export type AutoTripPermissionStatus = 'unknown' | 'granted' | 'denied'
++
++export function useAutoTripTracking(): AutoTripPermissionStatus {
++  const userId = useAuthStore((s) => s.session?.user.id)
++  const { data: activeRental } = useActiveRental()
++  const [status, setStatus] = useState<AutoTripPermissionStatus>('unknown')
++
++  const carId = activeRental?.car_id
++  const applicationId = activeRental?.id
++
++  useEffect(() => {
++    let cancelled = false
++
++    async function sync() {
++      if (!userId || !carId || !applicationId) {
++        const isRegistered = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK).catch(
++          () => false,
++        )
++        if (isRegistered) await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
++        await setAutoTripContext(null)
++        return
++      }
++
++      await setAutoTripContext({ driverId: userId, carId, applicationId })
++
++      const foreground = await Location.requestForegroundPermissionsAsync()
++      if (foreground.status !== 'granted') {
++        if (!cancelled) setStatus('denied')
++        return
++      }
++
++      const background = await Location.requestBackgroundPermissionsAsync()
++      if (background.status !== 'granted') {
++        if (!cancelled) setStatus('denied')
++        return
++      }
++
++      if (!cancelled) setStatus('granted')
++
++      const isRegistered = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK).catch(
++        () => false,
++      )
++      if (!isRegistered) {
++        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
++          accuracy: Location.Accuracy.Balanced,
++          timeInterval: 30000,
++          distanceInterval: 30,
++          pausesUpdatesAutomatically: false,
++          foregroundService: {
++            notificationTitle: 'TrustMate Driver',
++            notificationBody: 'Monitoring your rental for automatic trip tracking.',
++          },
++        })
++      }
++    }
++
++    sync()
++
++    return () => {
++      cancelled = true
++    }
++  }, [userId, carId, applicationId])
++
++  return status
++}
+diff --git a/mobile/src/hooks/useTripLocationTracking.ts b/mobile/src/hooks/useTripLocationTracking.ts
+deleted file mode 100644
+index 8e88ee5..0000000
+--- a/mobile/src/hooks/useTripLocationTracking.ts
++++ /dev/null
+@@ -1,97 +0,0 @@
+-import { useCallback, useEffect, useRef, useState } from 'react'
+-import * as Location from 'expo-location'
+-import { supabase } from '../lib/supabase'
+-import { haversineDistanceKm } from '../utils/geo'
+-
+-export type TripPoint = { latitude: number; longitude: number }
+-
+-const SAMPLE_INTERVAL_MS = 15000
+-const SAMPLE_DISTANCE_M = 50
+-
+-export function useTripLocationTracking(tripId: string | null) {
+-  const [waypoints, setWaypoints] = useState<TripPoint[]>([])
+-  const [distanceKm, setDistanceKm] = useState(0)
+-  const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0)
+-  const [maxSpeedKmh, setMaxSpeedKmh] = useState(0)
+-  const [permissionDenied, setPermissionDenied] = useState(false)
+-  const lastPointRef = useRef<TripPoint | null>(null)
+-  const subscriptionRef = useRef<Location.LocationSubscription | null>(null)
+-
+-  useEffect(() => {
+-    if (!tripId) return
+-    const currentTripId = tripId
+-
+-    let cancelled = false
+-
+-    async function start() {
+-      const { status } = await Location.requestForegroundPermissionsAsync()
+-      if (status !== 'granted') {
+-        if (!cancelled) setPermissionDenied(true)
+-        return
+-      }
+-
+-      subscriptionRef.current = await Location.watchPositionAsync(
+-        {
+-          accuracy: Location.Accuracy.Balanced,
+-          timeInterval: SAMPLE_INTERVAL_MS,
+-          distanceInterval: SAMPLE_DISTANCE_M,
+-        },
+-        (location) => {
+-          const point = {
+-            latitude: location.coords.latitude,
+-            longitude: location.coords.longitude,
+-          }
+-          const speedMs = location.coords.speed ?? 0
+-          const speedKmh = speedMs > 0 ? speedMs * 3.6 : 0
+-
+-          setWaypoints((prev) => [...prev, point])
+-          setCurrentSpeedKmh(speedKmh)
+-          setMaxSpeedKmh((prev) => Math.max(prev, speedKmh))
+-
+-          if (lastPointRef.current) {
+-            const segmentKm = haversineDistanceKm(
+-              lastPointRef.current.latitude,
+-              lastPointRef.current.longitude,
+-              point.latitude,
+-              point.longitude,
+-            )
+-            setDistanceKm((prev) => prev + segmentKm)
+-          }
+-          lastPointRef.current = point
+-
+-          supabase
+-            .from('trip_waypoints')
+-            .insert({
+-              trip_id: currentTripId,
+-              lat: point.latitude,
+-              lng: point.longitude,
+-              speed_kmh: speedKmh,
+-              accuracy_m: location.coords.accuracy ?? null,
+-            })
+-            .then(({ error }) => {
+-              if (error) console.warn('Failed to save waypoint:', error.message)
+-            })
+-        },
+-      )
+-    }
+-
+-    start()
+-
+-    return () => {
+-      cancelled = true
+-      subscriptionRef.current?.remove()
+-      subscriptionRef.current = null
+-    }
+-  }, [tripId])
+-
+-  const reset = useCallback(() => {
+-    setWaypoints([])
+-    setDistanceKm(0)
+-    setCurrentSpeedKmh(0)
+-    setMaxSpeedKmh(0)
+-    setPermissionDenied(false)
+-    lastPointRef.current = null
+-  }, [])
+-
+-  return { waypoints, distanceKm, currentSpeedKmh, maxSpeedKmh, permissionDenied, reset }
+-}
+diff --git a/mobile/src/hooks/useTripMutations.ts b/mobile/src/hooks/useTripMutations.ts
+deleted file mode 100644
+index 1f7b87e..0000000
+--- a/mobile/src/hooks/useTripMutations.ts
++++ /dev/null
+@@ -1,86 +0,0 @@
+-import { useMutation, useQueryClient } from '@tanstack/react-query'
+-import { supabase } from '../lib/supabase'
+-import { useAuthStore } from '../stores/authStore'
+-
+-type StartTripInput = {
+-  carId: string
+-  applicationId: string
+-  odometerStartKm: number
+-  startLocation: string | null
+-}
+-
+-export function useStartTrip() {
+-  const queryClient = useQueryClient()
+-  const userId = useAuthStore((s) => s.session?.user.id)
+-
+-  return useMutation({
+-    mutationFn: async (input: StartTripInput) => {
+-      const { data, error } = await supabase
+-        .from('vehicle_trips')
+-        .insert({
+-          driver_id: userId as string,
+-          car_id: input.carId,
+-          application_id: input.applicationId,
+-          odometer_start_km: input.odometerStartKm,
+-          start_location: input.startLocation,
+-          status: 'active',
+-        })
+-        .select()
+-        .single()
+-
+-      if (error) throw error
+-      return data
+-    },
+-    onSuccess: () => {
+-      queryClient.invalidateQueries({ queryKey: ['active-trip', userId] })
+-    },
+-  })
+-}
+-
+-type EndTripInput = {
+-  tripId: string
+-  carId: string
+-  durationSeconds: number
+-  distanceKm: number
+-  avgSpeedKmh: number | null
+-  maxSpeedKmh: number | null
+-  odometerEndKm: number
+-  endLocation: string | null
+-}
+-
+-export function useEndTrip() {
+-  const queryClient = useQueryClient()
+-  const userId = useAuthStore((s) => s.session?.user.id)
+-
+-  return useMutation({
+-    mutationFn: async (input: EndTripInput) => {
+-      const { error: tripError } = await supabase
+-        .from('vehicle_trips')
+-        .update({
+-          ended_at: new Date().toISOString(),
+-          duration_seconds: Math.round(input.durationSeconds),
+-          distance_km: input.distanceKm,
+-          avg_speed_kmh: input.avgSpeedKmh,
+-          max_speed_kmh: input.maxSpeedKmh,
+-          odometer_end_km: input.odometerEndKm,
+-          end_location: input.endLocation,
+-          status: 'completed',
+-        })
+-        .eq('id', input.tripId)
+-
+-      if (tripError) throw tripError
+-
+-      const { error: odoError } = await supabase.from('vehicle_odometers').upsert({
+-        car_id: input.carId,
+-        current_km: input.odometerEndKm,
+-        last_updated: new Date().toISOString(),
+-      })
+-
+-      if (odoError) throw odoError
+-    },
+-    onSuccess: (_data, variables) => {
+-      queryClient.invalidateQueries({ queryKey: ['active-trip', userId] })
+-      queryClient.invalidateQueries({ queryKey: ['vehicle-odometer', variables.carId] })
+-    },
+-  })
+-}
+diff --git a/mobile/src/hooks/useTripWaypoints.ts b/mobile/src/hooks/useTripWaypoints.ts
+new file mode 100644
+index 0000000..a2425aa
+--- /dev/null
++++ b/mobile/src/hooks/useTripWaypoints.ts
+@@ -0,0 +1,21 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import type { Tables } from '../types/database'
++
++export function useTripWaypoints(tripId: string | undefined) {
++  return useQuery({
++    queryKey: ['trip-waypoints', tripId],
++    queryFn: async (): Promise<Tables<'trip_waypoints'>[]> => {
++      const { data, error } = await supabase
++        .from('trip_waypoints')
++        .select('*')
++        .eq('trip_id', tripId as string)
++        .order('recorded_at', { ascending: true })
++
++      if (error) throw error
++      return data
++    },
++    enabled: !!tripId,
++    refetchInterval: tripId ? 10000 : false,
++  })
++}
+diff --git a/mobile/src/lib/autoTripEngine.ts b/mobile/src/lib/autoTripEngine.ts
+new file mode 100644
+index 0000000..e95b553
+--- /dev/null
++++ b/mobile/src/lib/autoTripEngine.ts
+@@ -0,0 +1,159 @@
++import * as Notifications from 'expo-notifications'
++import { supabase } from './supabase'
++import { haversineDistanceKm } from '../utils/geo'
++import {
++  getAutoTripContext,
++  getAutoTripState,
++  setAutoTripState,
++  clearAutoTripState,
++  type AutoTripPoint,
++} from './autoTripStorage'
++
++// A trip starts once the vehicle sustains this speed for MOVING_SAMPLES_TO_START
++// consecutive location samples (avoids false starts from GPS jitter while parked).
++const MOVEMENT_THRESHOLD_KMH = 8
++const MOVING_SAMPLES_TO_START = 2
++// A trip ends once the vehicle has been below the movement threshold for this long.
++const IDLE_THRESHOLD_MS = 7 * 60 * 1000
++
++export type LocationSample = {
++  latitude: number
++  longitude: number
++  speedMs: number | null
++  accuracyM: number | null
++  timestamp: number
++}
++
++function speedKmhFromSample(sample: LocationSample, lastPoint: AutoTripPoint | null, lastTimestamp: number | null) {
++  if (sample.speedMs != null && sample.speedMs >= 0) {
++    return sample.speedMs * 3.6
++  }
++  if (lastPoint && lastTimestamp) {
++    const km = haversineDistanceKm(lastPoint.latitude, lastPoint.longitude, sample.latitude, sample.longitude)
++    const hours = (sample.timestamp - lastTimestamp) / 3_600_000
++    return hours > 0 ? km / hours : 0
++  }
++  return 0
++}
++
++async function notify(title: string, body: string) {
++  await Notifications.scheduleNotificationAsync({
++    content: { title, body },
++    trigger: null,
++  })
++}
++
++async function startTrip(sample: LocationSample) {
++  const context = await getAutoTripContext()
++  if (!context) return
++
++  const { data: trip, error } = await supabase
++    .from('vehicle_trips')
++    .insert({
++      driver_id: context.driverId,
++      car_id: context.carId,
++      application_id: context.applicationId,
++      status: 'active',
++      start_location: `${sample.latitude.toFixed(5)}, ${sample.longitude.toFixed(5)}`,
++    })
++    .select()
++    .single()
++
++  if (error || !trip) {
++    console.warn('Auto-trip: failed to start trip', error?.message)
++    return
++  }
++
++  await setAutoTripState({
++    activeTripId: trip.id,
++    startedAt: Date.now(),
++    lastMovingAt: Date.now(),
++    distanceKm: 0,
++    maxSpeedKmh: 0,
++    lastPoint: { latitude: sample.latitude, longitude: sample.longitude },
++    consecutiveMovingSamples: 0,
++  })
++
++  await notify('Trip started', 'TrustMate Driver is tracking your route.')
++}
++
++async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
++  const durationSeconds = state.startedAt ? (Date.now() - state.startedAt) / 1000 : 0
++  const avgSpeedKmh = durationSeconds > 0 ? state.distanceKm / (durationSeconds / 3600) : null
++
++  const { error } = await supabase
++    .from('vehicle_trips')
++    .update({
++      ended_at: new Date().toISOString(),
++      duration_seconds: Math.round(durationSeconds),
++      distance_km: state.distanceKm,
++      avg_speed_kmh: avgSpeedKmh,
++      max_speed_kmh: state.maxSpeedKmh || null,
++      end_location: `${sample.latitude.toFixed(5)}, ${sample.longitude.toFixed(5)}`,
++      status: 'completed',
++    })
++    .eq('id', tripId)
++
++  if (error) {
++    console.warn('Auto-trip: failed to end trip', error.message)
++    return
++  }
++
++  // Deliberately not touching vehicle_odometers here — automatic trips only have a
++  // GPS-derived distance, not a real odometer reading. The odometer stays tied to
++  // the manual weekly check-in flow, which is the only place with a trustworthy value.
++  await clearAutoTripState()
++  await notify('Trip completed', `Distance: ${state.distanceKm.toFixed(1)} km`)
++}
++
++export async function processLocationSample(sample: LocationSample): Promise<void> {
++  const context = await getAutoTripContext()
++  if (!context) return
++
++  const state = await getAutoTripState()
++  const lastTimestamp = state.lastMovingAt ?? state.startedAt
++  const speedKmh = speedKmhFromSample(sample, state.lastPoint, lastTimestamp)
++  const isMoving = speedKmh >= MOVEMENT_THRESHOLD_KMH
++
++  if (!state.activeTripId) {
++    if (isMoving) {
++      const consecutive = state.consecutiveMovingSamples + 1
++      if (consecutive >= MOVING_SAMPLES_TO_START) {
++        await startTrip(sample)
++      } else {
++        await setAutoTripState({ ...state, consecutiveMovingSamples: consecutive })
++      }
++    } else if (state.consecutiveMovingSamples !== 0) {
++      await setAutoTripState({ ...state, consecutiveMovingSamples: 0 })
++    }
++    return
++  }
++
++  const { error: waypointError } = await supabase.from('trip_waypoints').insert({
++    trip_id: state.activeTripId,
++    lat: sample.latitude,
++    lng: sample.longitude,
++    speed_kmh: speedKmh,
++    accuracy_m: sample.accuracyM,
++  })
++  if (waypointError) console.warn('Auto-trip: failed to save waypoint', waypointError.message)
++
++  const segmentKm = state.lastPoint
++    ? haversineDistanceKm(state.lastPoint.latitude, state.lastPoint.longitude, sample.latitude, sample.longitude)
++    : 0
++
++  const updatedState = {
++    ...state,
++    distanceKm: state.distanceKm + segmentKm,
++    maxSpeedKmh: Math.max(state.maxSpeedKmh, speedKmh),
++    lastPoint: { latitude: sample.latitude, longitude: sample.longitude } satisfies AutoTripPoint,
++    lastMovingAt: isMoving ? Date.now() : state.lastMovingAt,
++  }
++
++  const idleSince = Date.now() - (updatedState.lastMovingAt ?? Date.now())
++  if (idleSince > IDLE_THRESHOLD_MS) {
++    await endTrip(state.activeTripId, updatedState, sample)
++  } else {
++    await setAutoTripState(updatedState)
++  }
++}
+diff --git a/mobile/src/lib/autoTripStorage.ts b/mobile/src/lib/autoTripStorage.ts
+new file mode 100644
+index 0000000..37bdb88
+--- /dev/null
++++ b/mobile/src/lib/autoTripStorage.ts
+@@ -0,0 +1,58 @@
++import AsyncStorage from '@react-native-async-storage/async-storage'
++
++const CONTEXT_KEY = 'auto-trip-context'
++const STATE_KEY = 'auto-trip-state'
++
++export type AutoTripContext = {
++  driverId: string
++  carId: string
++  applicationId: string
++}
++
++export type AutoTripPoint = { latitude: number; longitude: number }
++
++export type AutoTripState = {
++  activeTripId: string | null
++  startedAt: number | null
++  lastMovingAt: number | null
++  distanceKm: number
++  maxSpeedKmh: number
++  lastPoint: AutoTripPoint | null
++  consecutiveMovingSamples: number
++}
++
++const EMPTY_STATE: AutoTripState = {
++  activeTripId: null,
++  startedAt: null,
++  lastMovingAt: null,
++  distanceKm: 0,
++  maxSpeedKmh: 0,
++  lastPoint: null,
++  consecutiveMovingSamples: 0,
++}
++
++export async function getAutoTripContext(): Promise<AutoTripContext | null> {
++  const raw = await AsyncStorage.getItem(CONTEXT_KEY)
++  return raw ? JSON.parse(raw) : null
++}
++
++export async function setAutoTripContext(context: AutoTripContext | null): Promise<void> {
++  if (context) {
++    await AsyncStorage.setItem(CONTEXT_KEY, JSON.stringify(context))
++  } else {
++    await AsyncStorage.removeItem(CONTEXT_KEY)
++  }
++}
++
++export async function getAutoTripState(): Promise<AutoTripState> {
++  const raw = await AsyncStorage.getItem(STATE_KEY)
++  return raw ? JSON.parse(raw) : EMPTY_STATE
++}
++
++export async function setAutoTripState(state: AutoTripState): Promise<void> {
++  await AsyncStorage.setItem(STATE_KEY, JSON.stringify(state))
++}
++
++export async function clearAutoTripState(): Promise<void> {
++  await AsyncStorage.setItem(STATE_KEY, JSON.stringify(EMPTY_STATE))
++}
+diff --git a/mobile/src/tasks/backgroundLocationTask.ts b/mobile/src/tasks/backgroundLocationTask.ts
+new file mode 100644
+index 0000000..1bca0fe
+--- /dev/null
++++ b/mobile/src/tasks/backgroundLocationTask.ts
+@@ -0,0 +1,23 @@
++import * as TaskManager from 'expo-task-manager'
++import type * as Location from 'expo-location'
++import { processLocationSample } from '../lib/autoTripEngine'
++
++export const BACKGROUND_LOCATION_TASK = 'trustmate-background-location'
++
++TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
++  if (error) {
++    console.warn('Background location task error:', error.message)
++    return
++  }
++
++  const { locations } = data as { locations: Location.LocationObject[] }
++  for (const location of locations) {
++    await processLocationSample({
++      latitude: location.coords.latitude,
++      longitude: location.coords.longitude,
++      speedMs: location.coords.speed,
++      accuracyM: location.coords.accuracy,
++      timestamp: location.timestamp,
++    })
++  }
++})
