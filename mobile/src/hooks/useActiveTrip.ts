@@ -22,5 +22,6 @@ export function useActiveTrip() {
       return data
     },
     enabled: !!userId,
+    refetchInterval: 15000,
   })
 }

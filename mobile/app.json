@@ -13,7 +13,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "TrustMate Driver uses your location to track distance and route while a trip is active. Location is only recorded while the app is open."
+          "locationWhenInUsePermission": "TrustMate Driver uses your location to automatically detect when you start and stop driving your rented vehicle.",
+          "locationAlwaysAndWhenInUsePermission": "TrustMate Driver needs 'Always Allow' location access to automatically detect trips, including while the app is in the background.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

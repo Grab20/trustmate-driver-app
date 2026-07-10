@@ -6,6 +6,9 @@ import { Slot } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { queryClient } from '../src/lib/queryClient'
 import { theme } from '../src/theme/theme'
+// Side-effect import: registers the background location task handler so it's
+// defined before the OS can relaunch the app in the background to deliver updates.
+import '../src/tasks/backgroundLocationTask'
 
 export default function RootLayout() {
   return (

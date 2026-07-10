@@ -65,7 +65,7 @@ export default function DashboardScreen() {
         onPress={() => router.push('/trip')}
         style={styles.actionButton}
       >
-        Track Trip
+        Trip Status
       </Button>
       <Button
         mode="contained-tonal"
