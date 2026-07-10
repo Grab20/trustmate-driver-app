@@ -1,0 +1,1457 @@
+diff --git a/mobile/app.json b/mobile/app.json
+index 69fd5ac..e033efc 100644
+--- a/mobile/app.json
++++ b/mobile/app.json
+@@ -33,7 +33,8 @@
+           "icon": "./assets/icon.png",
+           "color": "#0F5C4F"
+         }
+-      ]
++      ],
++      "expo-document-picker"
+     ],
+     "experiments": {
+       "typedRoutes": true
+diff --git a/mobile/app/(app)/_layout.tsx b/mobile/app/(app)/_layout.tsx
+index e77cbfa..63b8ec0 100644
+--- a/mobile/app/(app)/_layout.tsx
++++ b/mobile/app/(app)/_layout.tsx
+@@ -16,9 +16,9 @@ export default function AppLayout() {
+   return (
+     <Stack>
+       <Stack.Screen name="index" options={{ title: 'Dashboard' }} />
+-      <Stack.Screen name="trip" options={{ title: 'Trip Tracking' }} />
+-      <Stack.Screen name="inspections/index" options={{ title: 'Check-Ins' }} />
+-      <Stack.Screen name="inspections/new" options={{ title: 'New Check-In' }} />
++      <Stack.Screen name="inspections/index" options={{ title: 'Inspection History' }} />
++      <Stack.Screen name="inspections/new" options={{ title: 'Vehicle Inspection' }} />
++      <Stack.Screen name="inspections/payment" options={{ title: 'Proof of Payment' }} />
+     </Stack>
+   )
+ }
+diff --git a/mobile/app/(app)/index.tsx b/mobile/app/(app)/index.tsx
+index 5ac6d8a..07dc193 100644
+--- a/mobile/app/(app)/index.tsx
++++ b/mobile/app/(app)/index.tsx
+@@ -2,12 +2,35 @@ import { View, StyleSheet, ScrollView } from 'react-native'
+ import { Text, Card, Button, Chip } from 'react-native-paper'
+ import { useRouter } from 'expo-router'
+ import { useActiveRental } from '../../src/hooks/useActiveRental'
++import { useActiveTrip } from '../../src/hooks/useActiveTrip'
++import { useTripWaypoints } from '../../src/hooks/useTripWaypoints'
++import { useTodayDistance } from '../../src/hooks/useTodayDistance'
++import { useDriverProfile } from '../../src/hooks/useDriverProfile'
++import { useMyProfile } from '../../src/hooks/useMyProfile'
++import { useRecentActivity } from '../../src/hooks/useRecentActivity'
+ import { useAuthStore } from '../../src/stores/authStore'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
++import { StatTile } from '../../src/components/StatTile'
++import { ActivityRow } from '../../src/components/ActivityRow'
++import { haversineDistanceKm } from '../../src/utils/geo'
++import { getNextOccurrence, formatShortDate, getRentalWeekNumber } from '../../src/utils/schedule'
++
++function getGreeting(): string {
++  const hour = new Date().getHours()
++  if (hour < 12) return 'Good Morning'
++  if (hour < 18) return 'Good Afternoon'
++  return 'Good Evening'
++}
+ 
+ export default function DashboardScreen() {
+   const router = useRouter()
+   const { data: activeRental, isLoading } = useActiveRental()
++  const { data: activeTrip } = useActiveTrip()
++  const { data: waypoints } = useTripWaypoints(activeTrip?.id)
++  const { data: todayCompletedKm } = useTodayDistance()
++  const { data: driverProfile } = useDriverProfile()
++  const { data: myProfile } = useMyProfile()
++  const { data: recentActivity } = useRecentActivity()
+   const signOut = useAuthStore((s) => s.signOut)
+ 
+   if (isLoading) return <LoadingScreen />
+@@ -31,51 +54,82 @@ export default function DashboardScreen() {
+   }
+ 
+   const car = activeRental.cars
++  const firstName = myProfile?.full_name?.split(' ')[0] ?? 'Driver'
++
++  const liveWaypoints = (waypoints ?? []).map((w) => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))
++  const liveDistanceKm = liveWaypoints.reduce((total, point, index) => {
++    if (index === 0) return total
++    const prev = liveWaypoints[index - 1]
++    return total + haversineDistanceKm(prev.latitude, prev.longitude, point.latitude, point.longitude)
++  }, 0)
++  const todaysDistanceKm = (todayCompletedKm ?? 0) + (activeTrip ? liveDistanceKm : 0)
++  const currentSpeedKmh = waypoints && waypoints.length > 0 ? Number(waypoints[waypoints.length - 1].speed_kmh ?? 0) : 0
++
++  const nextInspection = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
++  const nextPayment = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
++  const rentalWeek = getRentalWeekNumber(activeRental.matched_at)
+ 
+   return (
+     <ScrollView contentContainerStyle={styles.container}>
+-      <Text variant="headlineSmall" style={styles.heading}>
+-        Your Active Rental
++      <Text variant="headlineMedium" style={styles.greeting}>
++        {getGreeting()}, {firstName}
+       </Text>
+ 
+       <Card style={styles.card}>
+         <Card.Content>
+           <Chip icon="check-circle" style={styles.statusChip}>
+-            Matched
++            Active
+           </Chip>
+           <Text variant="titleLarge" style={styles.carTitle}>
+-            {car ? `${car.make} ${car.model} (${car.year})` : 'Vehicle details unavailable'}
++            {car ? `${car.make} ${car.model}` : 'Vehicle details unavailable'}
+           </Text>
+-          {car?.location && (
+-            <Text variant="bodyMedium" style={styles.carDetail}>
+-              {car.location}
+-            </Text>
+-          )}
+-          {car?.color && (
+-            <Text variant="bodyMedium" style={styles.carDetail}>
+-              {car.color} · {car.transmission}
++          {activeRental.owner?.full_name && (
++            <Text variant="bodyMedium" style={styles.ownerText}>
++              Owner: {activeRental.owner.full_name}
+             </Text>
+           )}
+         </Card.Content>
+       </Card>
+ 
+-      <Button
+-        mode="contained"
+-        icon="map-marker-path"
+-        onPress={() => router.push('/trip')}
+-        style={styles.actionButton}
+-      >
+-        Trip Status
+-      </Button>
++      <View style={styles.statsGrid}>
++        <StatTile label="Current Status" value={activeTrip ? 'Driving' : 'Parked'} />
++        <StatTile label="Current Speed" value={activeTrip ? `${currentSpeedKmh.toFixed(0)} km/h` : '—'} />
++        <StatTile label="Today's Distance" value={`${todaysDistanceKm.toFixed(1)} km`} />
++        <StatTile label="Rental Week" value={rentalWeek != null ? `Week ${rentalWeek}` : '—'} />
++        <StatTile
++          label="Next Payment"
++          value={nextPayment ? formatShortDate(nextPayment) : 'Not scheduled'}
++        />
++        <StatTile
++          label="Next Inspection"
++          value={nextInspection ? formatShortDate(nextInspection) : 'Not scheduled'}
++        />
++        <StatTile
++          label="TrustScore"
++          value={driverProfile?.trust_score != null ? String(driverProfile.trust_score) : '—'}
++        />
++      </View>
++
+       <Button
+         mode="contained-tonal"
+         icon="clipboard-check-outline"
+         onPress={() => router.push('/inspections')}
+         style={styles.actionButton}
+       >
+-        Weekly Check-In
++        Inspections & Payments
+       </Button>
+ 
++      <Text variant="titleMedium" style={styles.activityHeading}>
++        Recent Activity
++      </Text>
++      {recentActivity && recentActivity.length > 0 ? (
++        recentActivity.map((item) => <ActivityRow key={`${item.type}-${item.id}`} item={item} />)
++      ) : (
++        <Text variant="bodyMedium" style={styles.noActivity}>
++          Nothing yet — trips and submissions will show up here.
++        </Text>
++      )}
++
+       <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
+         Sign Out
+       </Button>
+@@ -87,7 +141,7 @@ const styles = StyleSheet.create({
+   container: {
+     padding: 24,
+   },
+-  heading: {
++  greeting: {
+     marginBottom: 16,
+   },
+   card: {
+@@ -100,14 +154,26 @@ const styles = StyleSheet.create({
+   carTitle: {
+     marginBottom: 4,
+   },
+-  carDetail: {
++  ownerText: {
+     opacity: 0.7,
+   },
++  statsGrid: {
++    flexDirection: 'row',
++    flexWrap: 'wrap',
++    justifyContent: 'space-between',
++  },
+   actionButton: {
+-    marginBottom: 12,
++    marginBottom: 24,
++  },
++  activityHeading: {
++    marginBottom: 8,
++  },
++  noActivity: {
++    opacity: 0.6,
++    marginBottom: 24,
+   },
+   signOutButton: {
+-    marginTop: 8,
++    marginTop: 16,
+   },
+   emptyContainer: {
+     flex: 1,
+diff --git a/mobile/app/(app)/inspections/index.tsx b/mobile/app/(app)/inspections/index.tsx
+index 28f0012..92295a2 100644
+--- a/mobile/app/(app)/inspections/index.tsx
++++ b/mobile/app/(app)/inspections/index.tsx
+@@ -6,14 +6,25 @@ import { InspectionPhotoThumbnail } from '../../../src/components/InspectionPhot
+ import { LoadingScreen } from '../../../src/components/LoadingScreen'
+ import type { Tables } from '../../../src/types/database'
+ 
++const TYPE_LABELS: Record<string, string> = {
++  weekly_checkin: 'Vehicle Inspection',
++  proof_of_payment: 'Proof of Payment',
++  incident_report: 'Incident Report',
++}
++
+ function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspections'> }) {
+   return (
+     <Card style={styles.card}>
+       <Card.Content>
+         <View style={styles.cardHeader}>
+-          <Text variant="titleMedium">
+-            {new Date(inspection.created_at ?? '').toLocaleDateString()}
+-          </Text>
++          <View>
++            <Text variant="titleMedium">
++              {TYPE_LABELS[inspection.inspection_type] ?? inspection.inspection_type}
++            </Text>
++            <Text variant="bodySmall" style={styles.date}>
++              {new Date(inspection.created_at ?? '').toLocaleDateString()}
++            </Text>
++          </View>
+           <Chip compact>{inspection.status}</Chip>
+         </View>
+         {inspection.odometer_km != null && (
+@@ -53,17 +64,22 @@ export default function InspectionHistoryScreen() {
+         contentContainerStyle={styles.list}
+         ListEmptyComponent={
+           <Text variant="bodyMedium" style={styles.empty}>
+-            No check-ins submitted yet.
++            Nothing submitted yet.
+           </Text>
+         }
+       />
+-      <Button
+-        mode="contained"
+-        onPress={() => router.push('/inspections/new')}
+-        style={styles.newButton}
+-      >
+-        New Check-In
+-      </Button>
++      <View style={styles.newButtons}>
++        <Button mode="contained" onPress={() => router.push('/inspections/new')} style={styles.newButton}>
++          New Inspection
++        </Button>
++        <Button
++          mode="contained-tonal"
++          onPress={() => router.push('/inspections/payment')}
++          style={styles.newButton}
++        >
++          Proof of Payment
++        </Button>
++      </View>
+     </View>
+   )
+ }
+@@ -81,9 +97,12 @@ const styles = StyleSheet.create({
+   cardHeader: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+-    alignItems: 'center',
++    alignItems: 'flex-start',
+     marginBottom: 8,
+   },
++  date: {
++    opacity: 0.6,
++  },
+   detail: {
+     opacity: 0.8,
+     marginBottom: 4,
+@@ -97,7 +116,10 @@ const styles = StyleSheet.create({
+     opacity: 0.6,
+     marginTop: 32,
+   },
++  newButtons: {
++    padding: 16,
++  },
+   newButton: {
+-    margin: 16,
++    marginBottom: 8,
+   },
+ })
+diff --git a/mobile/app/(app)/inspections/new.tsx b/mobile/app/(app)/inspections/new.tsx
+index b7f063a..5791357 100644
+--- a/mobile/app/(app)/inspections/new.tsx
++++ b/mobile/app/(app)/inspections/new.tsx
+@@ -1,11 +1,25 @@
+ import { useState } from 'react'
+-import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native'
+-import { Text, TextInput, Button, IconButton } from 'react-native-paper'
++import { View, StyleSheet, ScrollView, Alert } from 'react-native'
++import { Text, TextInput, Button } from 'react-native-paper'
+ import * as ImagePicker from 'expo-image-picker'
+ import { useRouter } from 'expo-router'
+ import { useActiveRental } from '../../../src/hooks/useActiveRental'
+ import { useVehicleOdometer } from '../../../src/hooks/useVehicleOdometer'
+ import { useSubmitInspection } from '../../../src/hooks/useInspections'
++import { PhotoSlot } from '../../../src/components/PhotoSlot'
++
++// Order matters: photo_urls is a plain array, and this order is the convention
++// used to interpret which shot is which when displaying an inspection later.
++const REQUIRED_SHOTS = [
++  { key: 'front', label: 'Front' },
++  { key: 'back', label: 'Back' },
++  { key: 'left', label: 'Left Side' },
++  { key: 'right', label: 'Right Side' },
++  { key: 'interior', label: 'Interior' },
++  { key: 'dashboard', label: 'Dashboard' },
++] as const
++
++type ShotKey = (typeof REQUIRED_SHOTS)[number]['key']
+ 
+ export default function NewInspectionScreen() {
+   const router = useRouter()
+@@ -17,49 +31,38 @@ export default function NewInspectionScreen() {
+     odometer?.current_km != null ? String(odometer.current_km) : '',
+   )
+   const [notes, setNotes] = useState('')
+-  const [photoUris, setPhotoUris] = useState<string[]>([])
++  const [shots, setShots] = useState<Record<ShotKey, string | null>>({
++    front: null,
++    back: null,
++    left: null,
++    right: null,
++    interior: null,
++    dashboard: null,
++  })
+ 
+-  async function handlePickPhotos() {
+-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+-    if (status !== 'granted') {
+-      Alert.alert('Permission needed', 'Photo library access is required to attach photos.')
+-      return
+-    }
+-    const result = await ImagePicker.launchImageLibraryAsync({
+-      mediaTypes: ['images'],
+-      allowsMultipleSelection: true,
+-      quality: 0.7,
+-    })
+-    if (!result.canceled) {
+-      setPhotoUris((prev) => [...prev, ...result.assets.map((a) => a.uri)])
+-    }
+-  }
++  const allShotsCaptured = REQUIRED_SHOTS.every((shot) => shots[shot.key] !== null)
+ 
+-  async function handleTakePhoto() {
++  async function handleCapture(key: ShotKey) {
+     const { status } = await ImagePicker.requestCameraPermissionsAsync()
+     if (status !== 'granted') {
+-      Alert.alert('Permission needed', 'Camera access is required to take a photo.')
++      Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
+       return
+     }
+     const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
+     if (!result.canceled) {
+-      setPhotoUris((prev) => [...prev, ...result.assets.map((a) => a.uri)])
++      setShots((prev) => ({ ...prev, [key]: result.assets[0].uri }))
+     }
+   }
+ 
+-  function removePhoto(uri: string) {
+-    setPhotoUris((prev) => prev.filter((p) => p !== uri))
+-  }
+-
+   async function handleSubmit() {
+-    if (!activeRental?.car_id) return
++    if (!activeRental?.car_id || !allShotsCaptured) return
+     try {
+       await submitInspection.mutateAsync({
+         carId: activeRental.car_id,
+         applicationId: activeRental.id,
+         odometerKm: odometerKm.trim() ? Number(odometerKm) : null,
+         notes,
+-        photoUris,
++        photoUris: REQUIRED_SHOTS.map((shot) => shots[shot.key] as string),
+       })
+       router.back()
+     } catch (err) {
+@@ -70,10 +73,10 @@ export default function NewInspectionScreen() {
+   return (
+     <ScrollView contentContainerStyle={styles.container}>
+       <Text variant="headlineSmall" style={styles.heading}>
+-        Weekly Check-In
++        Vehicle Inspection
+       </Text>
+       <Text variant="bodyMedium" style={styles.subheading}>
+-        Submit a photo and odometer reading for your vehicle owner to review.
++        Take all 6 photos using your camera so your vehicle owner can review the car's condition.
+       </Text>
+ 
+       <TextInput
+@@ -88,41 +91,29 @@ export default function NewInspectionScreen() {
+         value={notes}
+         onChangeText={setNotes}
+         multiline
+-        numberOfLines={4}
++        numberOfLines={3}
+         style={styles.input}
+       />
+ 
+-      <View style={styles.photoRow}>
+-        {photoUris.map((uri) => (
+-          <View key={uri} style={styles.photoWrapper}>
+-            <Image source={{ uri }} style={styles.photo} />
+-            <IconButton
+-              icon="close-circle"
+-              size={20}
+-              style={styles.removeButton}
+-              onPress={() => removePhoto(uri)}
+-            />
+-          </View>
++      <View style={styles.shotsGrid}>
++        {REQUIRED_SHOTS.map((shot) => (
++          <PhotoSlot
++            key={shot.key}
++            label={shot.label}
++            uri={shots[shot.key]}
++            onCapture={() => handleCapture(shot.key)}
++          />
+         ))}
+       </View>
+ 
+-      <View style={styles.photoActions}>
+-        <Button mode="outlined" onPress={handleTakePhoto} style={styles.photoActionButton}>
+-          Take Photo
+-        </Button>
+-        <Button mode="outlined" onPress={handlePickPhotos} style={styles.photoActionButton}>
+-          Choose Photos
+-        </Button>
+-      </View>
+-
+       <Button
+         mode="contained"
+         onPress={handleSubmit}
+         loading={submitInspection.isPending}
+-        disabled={submitInspection.isPending || !activeRental?.car_id}
++        disabled={submitInspection.isPending || !activeRental?.car_id || !allShotsCaptured}
+         style={styles.submitButton}
+       >
+-        Submit Check-In
++        {allShotsCaptured ? 'Submit Inspection' : 'Take All 6 Photos to Continue'}
+       </Button>
+     </ScrollView>
+   )
+@@ -142,35 +133,12 @@ const styles = StyleSheet.create({
+   input: {
+     marginBottom: 16,
+   },
+-  photoRow: {
++  shotsGrid: {
+     flexDirection: 'row',
+     flexWrap: 'wrap',
+-    marginBottom: 12,
+-  },
+-  photoWrapper: {
+-    position: 'relative',
+-    marginRight: 8,
++    justifyContent: 'space-between',
+     marginBottom: 8,
+   },
+-  photo: {
+-    width: 80,
+-    height: 80,
+-    borderRadius: 8,
+-  },
+-  removeButton: {
+-    position: 'absolute',
+-    top: -12,
+-    right: -12,
+-    margin: 0,
+-  },
+-  photoActions: {
+-    flexDirection: 'row',
+-    marginBottom: 24,
+-  },
+-  photoActionButton: {
+-    flex: 1,
+-    marginRight: 8,
+-  },
+   submitButton: {
+     marginTop: 8,
+   },
+diff --git a/mobile/app/(app)/inspections/payment.tsx b/mobile/app/(app)/inspections/payment.tsx
+new file mode 100644
+index 0000000..6dc8be8
+--- /dev/null
++++ b/mobile/app/(app)/inspections/payment.tsx
+@@ -0,0 +1,181 @@
++import { useState } from 'react'
++import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native'
++import { Text, TextInput, Button, IconButton } from 'react-native-paper'
++import * as ImagePicker from 'expo-image-picker'
++import * as DocumentPicker from 'expo-document-picker'
++import { useRouter } from 'expo-router'
++import { useActiveRental } from '../../../src/hooks/useActiveRental'
++import { useSubmitInspection } from '../../../src/hooks/useInspections'
++
++type Attachment = { uri: string; isPdf: boolean; name: string }
++
++export default function ProofOfPaymentScreen() {
++  const router = useRouter()
++  const { data: activeRental } = useActiveRental()
++  const submitInspection = useSubmitInspection()
++
++  const [notes, setNotes] = useState('')
++  const [attachment, setAttachment] = useState<Attachment | null>(null)
++
++  async function handleTakePhoto() {
++    const { status } = await ImagePicker.requestCameraPermissionsAsync()
++    if (status !== 'granted') {
++      Alert.alert('Permission needed', 'Camera access is required to take a photo.')
++      return
++    }
++    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
++    if (!result.canceled) {
++      setAttachment({ uri: result.assets[0].uri, isPdf: false, name: 'Photo' })
++    }
++  }
++
++  async function handlePickImage() {
++    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
++    if (status !== 'granted') {
++      Alert.alert('Permission needed', 'Photo library access is required to attach a screenshot.')
++      return
++    }
++    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 })
++    if (!result.canceled) {
++      setAttachment({ uri: result.assets[0].uri, isPdf: false, name: 'Image' })
++    }
++  }
++
++  async function handlePickPdf() {
++    const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf' })
++    if (!result.canceled) {
++      setAttachment({ uri: result.assets[0].uri, isPdf: true, name: result.assets[0].name })
++    }
++  }
++
++  async function handleSubmit() {
++    if (!activeRental?.car_id || !attachment) return
++    try {
++      await submitInspection.mutateAsync({
++        carId: activeRental.car_id,
++        applicationId: activeRental.id,
++        odometerKm: null,
++        notes,
++        photoUris: [attachment.uri],
++        inspectionType: 'proof_of_payment',
++      })
++      router.back()
++    } catch (err) {
++      Alert.alert('Submission failed', err instanceof Error ? err.message : 'Unknown error')
++    }
++  }
++
++  return (
++    <ScrollView contentContainerStyle={styles.container}>
++      <Text variant="headlineSmall" style={styles.heading}>
++        Proof of Payment
++      </Text>
++      <Text variant="bodyMedium" style={styles.subheading}>
++        Attach a photo, screenshot, or PDF of your payment receipt for your vehicle owner to
++        review.
++      </Text>
++
++      {attachment && (
++        <View style={styles.attachmentPreview}>
++          {attachment.isPdf ? (
++            <View style={styles.pdfPreview}>
++              <IconButton icon="file-pdf-box" size={40} />
++              <Text variant="bodyMedium" numberOfLines={1}>
++                {attachment.name}
++              </Text>
++            </View>
++          ) : (
++            <Image source={{ uri: attachment.uri }} style={styles.imagePreview} />
++          )}
++          <IconButton
++            icon="close-circle"
++            size={20}
++            style={styles.removeButton}
++            onPress={() => setAttachment(null)}
++          />
++        </View>
++      )}
++
++      <View style={styles.actions}>
++        <Button mode="outlined" onPress={handleTakePhoto} style={styles.actionButton}>
++          Take Photo
++        </Button>
++        <Button mode="outlined" onPress={handlePickImage} style={styles.actionButton}>
++          Upload Image
++        </Button>
++        <Button mode="outlined" onPress={handlePickPdf} style={styles.actionButton}>
++          Attach PDF
++        </Button>
++      </View>
++
++      <TextInput
++        label="Notes (optional)"
++        value={notes}
++        onChangeText={setNotes}
++        multiline
++        numberOfLines={3}
++        style={styles.input}
++      />
++
++      <Button
++        mode="contained"
++        onPress={handleSubmit}
++        loading={submitInspection.isPending}
++        disabled={submitInspection.isPending || !activeRental?.car_id || !attachment}
++        style={styles.submitButton}
++      >
++        Submit Proof of Payment
++      </Button>
++    </ScrollView>
++  )
++}
++
++const styles = StyleSheet.create({
++  container: {
++    padding: 24,
++  },
++  heading: {
++    marginBottom: 4,
++  },
++  subheading: {
++    opacity: 0.7,
++    marginBottom: 24,
++  },
++  attachmentPreview: {
++    alignSelf: 'center',
++    position: 'relative',
++    marginBottom: 16,
++  },
++  imagePreview: {
++    width: 160,
++    height: 160,
++    borderRadius: 8,
++  },
++  pdfPreview: {
++    width: 160,
++    height: 160,
++    borderRadius: 8,
++    backgroundColor: '#eee',
++    alignItems: 'center',
++    justifyContent: 'center',
++    paddingHorizontal: 8,
++  },
++  removeButton: {
++    position: 'absolute',
++    top: -12,
++    right: -12,
++    margin: 0,
++  },
++  actions: {
++    marginBottom: 16,
++  },
++  actionButton: {
++    marginBottom: 8,
++  },
++  input: {
++    marginBottom: 16,
++  },
++  submitButton: {
++    marginTop: 8,
++  },
++})
+diff --git a/mobile/app/(app)/trip.tsx b/mobile/app/(app)/trip.tsx
+deleted file mode 100644
+index cac035c..0000000
+--- a/mobile/app/(app)/trip.tsx
++++ /dev/null
+@@ -1,189 +0,0 @@
+-import { useEffect, useState } from 'react'
+-import { View, StyleSheet, Linking } from 'react-native'
+-import { Text, Card, Button, ActivityIndicator, Chip } from 'react-native-paper'
+-import MapView, { Marker, Polyline } from 'react-native-maps'
+-import { useActiveRental } from '../../src/hooks/useActiveRental'
+-import { useActiveTrip } from '../../src/hooks/useActiveTrip'
+-import { useTripWaypoints } from '../../src/hooks/useTripWaypoints'
+-import { useAutoTripTracking } from '../../src/hooks/useAutoTripTracking'
+-import { formatDuration, haversineDistanceKm } from '../../src/utils/geo'
+-import { LoadingScreen } from '../../src/components/LoadingScreen'
+-
+-export default function TripScreen() {
+-  const { data: activeRental, isLoading: isRentalLoading } = useActiveRental()
+-  const { data: activeTrip, isLoading: isTripLoading } = useActiveTrip()
+-  const { data: waypoints } = useTripWaypoints(activeTrip?.id)
+-  const permissionStatus = useAutoTripTracking()
+-
+-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+-
+-  useEffect(() => {
+-    if (!activeTrip) {
+-      setElapsedSeconds(0)
+-      return
+-    }
+-    const startedAt = new Date(activeTrip.started_at).getTime()
+-    const tick = () => setElapsedSeconds((Date.now() - startedAt) / 1000)
+-    tick()
+-    const interval = setInterval(tick, 1000)
+-    return () => clearInterval(interval)
+-  }, [activeTrip])
+-
+-  if (isRentalLoading || isTripLoading) return <LoadingScreen />
+-
+-  if (!activeRental || !activeRental.car_id) {
+-    return (
+-      <View style={styles.centered}>
+-        <Text variant="bodyMedium" style={{ textAlign: 'center', opacity: 0.7 }}>
+-          Trip tracking is available once you have an active rental.
+-        </Text>
+-      </View>
+-    )
+-  }
+-
+-  if (permissionStatus === 'denied') {
+-    return (
+-      <View style={styles.centered}>
+-        <Text variant="headlineSmall" style={{ marginBottom: 12, textAlign: 'center' }}>
+-          Location Permission Needed
+-        </Text>
+-        <Text variant="bodyMedium" style={{ textAlign: 'center', opacity: 0.7, marginBottom: 24 }}>
+-          TrustMate Driver detects your trips automatically, but needs "Allow all the time" location
+-          access to do it in the background. Please enable this in your device settings.
+-        </Text>
+-        <Button mode="contained" onPress={() => Linking.openSettings()}>
+-          Open Settings
+-        </Button>
+-      </View>
+-    )
+-  }
+-
+-  const waypointPoints = (waypoints ?? []).map((w) => ({
+-    latitude: Number(w.lat),
+-    longitude: Number(w.lng),
+-  }))
+-  const lastWaypoint = waypointPoints[waypointPoints.length - 1]
+-  const currentSpeedKmh = waypoints && waypoints.length > 0 ? Number(waypoints[waypoints.length - 1].speed_kmh ?? 0) : 0
+-  const liveDistanceKm = waypointPoints.reduce((total, point, index) => {
+-    if (index === 0) return total
+-    const prev = waypointPoints[index - 1]
+-    return total + haversineDistanceKm(prev.latitude, prev.longitude, point.latitude, point.longitude)
+-  }, 0)
+-
+-  if (!activeTrip) {
+-    return (
+-      <View style={styles.centered}>
+-        <Chip icon="radar" style={styles.watchingChip}>
+-          Watching for driving activity
+-        </Chip>
+-        <Text variant="headlineSmall" style={{ marginTop: 16, marginBottom: 12, textAlign: 'center' }}>
+-          No Active Trip
+-        </Text>
+-        <Text variant="bodyMedium" style={{ textAlign: 'center', opacity: 0.7 }}>
+-          Trips start automatically once you begin driving, and end automatically once you've been
+-          stopped for a few minutes. Nothing to press — just drive.
+-        </Text>
+-      </View>
+-    )
+-  }
+-
+-  return (
+-    <View style={styles.flex}>
+-      {lastWaypoint ? (
+-        <MapView
+-          style={styles.map}
+-          initialRegion={{
+-            latitude: lastWaypoint.latitude,
+-            longitude: lastWaypoint.longitude,
+-            latitudeDelta: 0.01,
+-            longitudeDelta: 0.01,
+-          }}
+-          region={{
+-            latitude: lastWaypoint.latitude,
+-            longitude: lastWaypoint.longitude,
+-            latitudeDelta: 0.01,
+-            longitudeDelta: 0.01,
+-          }}
+-        >
+-          <Polyline coordinates={waypointPoints} strokeWidth={4} />
+-          <Marker coordinate={lastWaypoint} title="Current position" />
+-        </MapView>
+-      ) : (
+-        <View style={[styles.map, styles.mapPlaceholder]}>
+-          <ActivityIndicator />
+-          <Text variant="bodySmall" style={{ marginTop: 8, opacity: 0.7 }}>
+-            Waiting for GPS signal…
+-          </Text>
+-        </View>
+-      )}
+-
+-      <Card style={styles.statsCard}>
+-        <Card.Content>
+-          <Chip icon="car" style={styles.drivingChip}>
+-            Trip in progress
+-          </Chip>
+-          <View style={styles.statsRow}>
+-            <View style={styles.stat}>
+-              <Text variant="labelMedium" style={styles.statLabel}>
+-                Duration
+-              </Text>
+-              <Text variant="titleMedium">{formatDuration(elapsedSeconds)}</Text>
+-            </View>
+-            <View style={styles.stat}>
+-              <Text variant="labelMedium" style={styles.statLabel}>
+-                Distance
+-              </Text>
+-              <Text variant="titleMedium">{liveDistanceKm.toFixed(1)} km</Text>
+-            </View>
+-            <View style={styles.stat}>
+-              <Text variant="labelMedium" style={styles.statLabel}>
+-                Speed
+-              </Text>
+-              <Text variant="titleMedium">{currentSpeedKmh.toFixed(0)} km/h</Text>
+-            </View>
+-          </View>
+-        </Card.Content>
+-      </Card>
+-    </View>
+-  )
+-}
+-
+-const styles = StyleSheet.create({
+-  flex: {
+-    flex: 1,
+-  },
+-  centered: {
+-    flex: 1,
+-    justifyContent: 'center',
+-    alignItems: 'center',
+-    paddingHorizontal: 32,
+-  },
+-  watchingChip: {
+-    alignSelf: 'center',
+-  },
+-  drivingChip: {
+-    alignSelf: 'flex-start',
+-    marginBottom: 12,
+-  },
+-  map: {
+-    flex: 1,
+-  },
+-  mapPlaceholder: {
+-    justifyContent: 'center',
+-    alignItems: 'center',
+-  },
+-  statsCard: {
+-    margin: 12,
+-  },
+-  statsRow: {
+-    flexDirection: 'row',
+-    justifyContent: 'space-between',
+-  },
+-  stat: {
+-    alignItems: 'center',
+-  },
+-  statLabel: {
+-    opacity: 0.6,
+-    marginBottom: 4,
+-  },
+-})
+diff --git a/mobile/src/components/ActivityRow.tsx b/mobile/src/components/ActivityRow.tsx
+new file mode 100644
+index 0000000..9e0450b
+--- /dev/null
++++ b/mobile/src/components/ActivityRow.tsx
+@@ -0,0 +1,63 @@
++import { View, StyleSheet } from 'react-native'
++import { Text, Icon } from 'react-native-paper'
++import type { ActivityItem } from '../hooks/useRecentActivity'
++
++const INSPECTION_TYPE_LABELS: Record<string, string> = {
++  weekly_checkin: 'Vehicle Inspection',
++  proof_of_payment: 'Proof of Payment',
++  incident_report: 'Incident Report',
++}
++
++function formatDate(iso: string): string {
++  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
++}
++
++export function ActivityRow({ item }: { item: ActivityItem }) {
++  if (item.type === 'trip') {
++    const { trip } = item
++    return (
++      <View style={styles.row}>
++        <Icon source="car" size={20} />
++        <View style={styles.rowText}>
++          <Text variant="bodyMedium">
++            {trip.start_location ?? 'Unknown'} → {trip.end_location ?? 'Unknown'}
++          </Text>
++          <Text variant="bodySmall" style={styles.meta}>
++            {(trip.distance_km ?? 0).toFixed(1)} km · {formatDate(trip.started_at)}
++          </Text>
++        </View>
++      </View>
++    )
++  }
++
++  const { inspection } = item
++  return (
++    <View style={styles.row}>
++      <Icon source="clipboard-check-outline" size={20} />
++      <View style={styles.rowText}>
++        <Text variant="bodyMedium">
++          {INSPECTION_TYPE_LABELS[inspection.inspection_type] ?? inspection.inspection_type}
++        </Text>
++        <Text variant="bodySmall" style={styles.meta}>
++          {inspection.status} · {formatDate(inspection.created_at ?? new Date().toISOString())}
++        </Text>
++      </View>
++    </View>
++  )
++}
++
++const styles = StyleSheet.create({
++  row: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    paddingVertical: 10,
++  },
++  rowText: {
++    marginLeft: 12,
++    flex: 1,
++  },
++  meta: {
++    opacity: 0.6,
++    marginTop: 2,
++  },
++})
+diff --git a/mobile/src/components/InspectionPhotoThumbnail.tsx b/mobile/src/components/InspectionPhotoThumbnail.tsx
+index 30a23c0..7536a83 100644
+--- a/mobile/src/components/InspectionPhotoThumbnail.tsx
++++ b/mobile/src/components/InspectionPhotoThumbnail.tsx
+@@ -1,9 +1,10 @@
+-import { Image, StyleSheet, View } from 'react-native'
+-import { ActivityIndicator } from 'react-native-paper'
++import { Image, StyleSheet, View, Pressable, Linking } from 'react-native'
++import { ActivityIndicator, IconButton, Text } from 'react-native-paper'
+ import { useSignedPhotoUrl } from '../hooks/useSignedPhotoUrl'
+ 
+ export function InspectionPhotoThumbnail({ path }: { path: string }) {
+   const { data: url, isLoading } = useSignedPhotoUrl(path)
++  const isPdf = path.toLowerCase().endsWith('.pdf')
+ 
+   if (isLoading || !url) {
+     return (
+@@ -13,6 +14,15 @@ export function InspectionPhotoThumbnail({ path }: { path: string }) {
+     )
+   }
+ 
++  if (isPdf) {
++    return (
++      <Pressable onPress={() => Linking.openURL(url)} style={[styles.thumbnail, styles.placeholder]}>
++        <IconButton icon="file-pdf-box" size={28} style={styles.pdfIcon} />
++        <Text variant="labelSmall">View PDF</Text>
++      </Pressable>
++    )
++  }
++
+   return <Image source={{ uri: url }} style={styles.thumbnail} />
+ }
+ 
+@@ -28,4 +38,7 @@ const styles = StyleSheet.create({
+     justifyContent: 'center',
+     backgroundColor: '#eee',
+   },
++  pdfIcon: {
++    margin: 0,
++  },
+ })
+diff --git a/mobile/src/components/PhotoSlot.tsx b/mobile/src/components/PhotoSlot.tsx
+new file mode 100644
+index 0000000..1bc6e91
+--- /dev/null
++++ b/mobile/src/components/PhotoSlot.tsx
+@@ -0,0 +1,65 @@
++import { View, Image, StyleSheet, Pressable } from 'react-native'
++import { Text, IconButton } from 'react-native-paper'
++
++type PhotoSlotProps = {
++  label: string
++  uri: string | null
++  onCapture: () => void
++}
++
++export function PhotoSlot({ label, uri, onCapture }: PhotoSlotProps) {
++  return (
++    <Pressable onPress={onCapture} style={styles.container}>
++      {uri ? (
++        <>
++          <Image source={{ uri }} style={styles.photo} />
++          <View style={styles.retakeBadge}>
++            <IconButton icon="camera-retake" size={16} iconColor="#fff" style={styles.retakeIcon} />
++          </View>
++        </>
++      ) : (
++        <View style={styles.placeholder}>
++          <IconButton icon="camera-plus" size={28} />
++        </View>
++      )}
++      <Text variant="labelMedium" style={styles.label}>
++        {label}
++      </Text>
++    </Pressable>
++  )
++}
++
++const styles = StyleSheet.create({
++  container: {
++    width: '30%',
++    marginBottom: 16,
++    alignItems: 'center',
++  },
++  photo: {
++    width: '100%',
++    aspectRatio: 1,
++    borderRadius: 8,
++  },
++  placeholder: {
++    width: '100%',
++    aspectRatio: 1,
++    borderRadius: 8,
++    backgroundColor: '#eee',
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  retakeBadge: {
++    position: 'absolute',
++    top: 4,
++    right: 4,
++    backgroundColor: 'rgba(0,0,0,0.5)',
++    borderRadius: 12,
++  },
++  retakeIcon: {
++    margin: 0,
++  },
++  label: {
++    marginTop: 4,
++    textAlign: 'center',
++  },
++})
+diff --git a/mobile/src/components/StatTile.tsx b/mobile/src/components/StatTile.tsx
+new file mode 100644
+index 0000000..2998fee
+--- /dev/null
++++ b/mobile/src/components/StatTile.tsx
+@@ -0,0 +1,29 @@
++import { View, StyleSheet } from 'react-native'
++import { Text } from 'react-native-paper'
++
++type StatTileProps = {
++  label: string
++  value: string
++}
++
++export function StatTile({ label, value }: StatTileProps) {
++  return (
++    <View style={styles.tile}>
++      <Text variant="labelMedium" style={styles.label}>
++        {label}
++      </Text>
++      <Text variant="titleMedium">{value}</Text>
++    </View>
++  )
++}
++
++const styles = StyleSheet.create({
++  tile: {
++    width: '48%',
++    marginBottom: 16,
++  },
++  label: {
++    opacity: 0.6,
++    marginBottom: 2,
++  },
++})
+diff --git a/mobile/src/hooks/useActiveRental.ts b/mobile/src/hooks/useActiveRental.ts
+index e8e300f..732e7b7 100644
+--- a/mobile/src/hooks/useActiveRental.ts
++++ b/mobile/src/hooks/useActiveRental.ts
+@@ -5,12 +5,13 @@ import type { Tables } from '../types/database'
+ 
+ export type ActiveRental = Tables<'applications'> & {
+   cars: Tables<'cars'> | null
++  owner: Pick<Tables<'profiles'>, 'id' | 'full_name'> | null
+ }
+ 
+ async function fetchActiveRental(driverId: string): Promise<ActiveRental | null> {
+   const { data, error } = await supabase
+     .from('applications')
+-    .select('*, cars(*)')
++    .select('*, cars(*), owner:profiles!applications_owner_id_fkey(id, full_name)')
+     .eq('driver_id', driverId)
+     .eq('status', 'approved')
+     .is('unmatched_at', null)
+diff --git a/mobile/src/hooks/useDriverProfile.ts b/mobile/src/hooks/useDriverProfile.ts
+new file mode 100644
+index 0000000..38d3c62
+--- /dev/null
++++ b/mobile/src/hooks/useDriverProfile.ts
+@@ -0,0 +1,23 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import { useAuthStore } from '../stores/authStore'
++import type { Tables } from '../types/database'
++
++export function useDriverProfile() {
++  const userId = useAuthStore((s) => s.session?.user.id)
++
++  return useQuery({
++    queryKey: ['driver-profile', userId],
++    queryFn: async (): Promise<Tables<'driver_profiles'> | null> => {
++      const { data, error } = await supabase
++        .from('driver_profiles')
++        .select('*')
++        .eq('user_id', userId as string)
++        .maybeSingle()
++
++      if (error) throw error
++      return data
++    },
++    enabled: !!userId,
++  })
++}
+diff --git a/mobile/src/hooks/useInspections.ts b/mobile/src/hooks/useInspections.ts
+index a3774e2..9e1a0c0 100644
+--- a/mobile/src/hooks/useInspections.ts
++++ b/mobile/src/hooks/useInspections.ts
+@@ -29,6 +29,7 @@ type SubmitInspectionInput = {
+   odometerKm: number | null
+   notes: string
+   photoUris: string[]
++  inspectionType?: 'weekly_checkin' | 'proof_of_payment'
+ }
+ 
+ export function useSubmitInspection() {
+@@ -45,7 +46,7 @@ export function useSubmitInspection() {
+           driver_id: driverId,
+           car_id: input.carId,
+           application_id: input.applicationId,
+-          inspection_type: 'weekly_checkin',
++          inspection_type: input.inspectionType ?? 'weekly_checkin',
+           odometer_km: input.odometerKm,
+           notes: input.notes || null,
+         })
+diff --git a/mobile/src/hooks/useMyProfile.ts b/mobile/src/hooks/useMyProfile.ts
+new file mode 100644
+index 0000000..0a41805
+--- /dev/null
++++ b/mobile/src/hooks/useMyProfile.ts
+@@ -0,0 +1,23 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import { useAuthStore } from '../stores/authStore'
++import type { Tables } from '../types/database'
++
++export function useMyProfile() {
++  const userId = useAuthStore((s) => s.session?.user.id)
++
++  return useQuery({
++    queryKey: ['my-profile', userId],
++    queryFn: async (): Promise<Tables<'profiles'> | null> => {
++      const { data, error } = await supabase
++        .from('profiles')
++        .select('*')
++        .eq('id', userId as string)
++        .maybeSingle()
++
++      if (error) throw error
++      return data
++    },
++    enabled: !!userId,
++  })
++}
+diff --git a/mobile/src/hooks/useRecentActivity.ts b/mobile/src/hooks/useRecentActivity.ts
+new file mode 100644
+index 0000000..899bccc
+--- /dev/null
++++ b/mobile/src/hooks/useRecentActivity.ts
+@@ -0,0 +1,58 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import { useAuthStore } from '../stores/authStore'
++import type { Tables } from '../types/database'
++
++export type ActivityItem =
++  | { type: 'trip'; id: string; date: string; trip: Tables<'vehicle_trips'> }
++  | { type: 'inspection'; id: string; date: string; inspection: Tables<'vehicle_inspections'> }
++
++const ACTIVITY_LIMIT = 15
++
++export function useRecentActivity() {
++  const userId = useAuthStore((s) => s.session?.user.id)
++
++  return useQuery({
++    queryKey: ['recent-activity', userId],
++    queryFn: async (): Promise<ActivityItem[]> => {
++      const driverId = userId as string
++
++      const [tripsResult, inspectionsResult] = await Promise.all([
++        supabase
++          .from('vehicle_trips')
++          .select('*')
++          .eq('driver_id', driverId)
++          .eq('status', 'completed')
++          .order('started_at', { ascending: false })
++          .limit(ACTIVITY_LIMIT),
++        supabase
++          .from('vehicle_inspections')
++          .select('*')
++          .eq('driver_id', driverId)
++          .order('created_at', { ascending: false })
++          .limit(ACTIVITY_LIMIT),
++      ])
++
++      if (tripsResult.error) throw tripsResult.error
++      if (inspectionsResult.error) throw inspectionsResult.error
++
++      const items: ActivityItem[] = [
++        ...tripsResult.data.map(
++          (trip): ActivityItem => ({ type: 'trip', id: trip.id, date: trip.started_at, trip }),
++        ),
++        ...inspectionsResult.data.map(
++          (inspection): ActivityItem => ({
++            type: 'inspection',
++            id: inspection.id,
++            date: inspection.created_at ?? new Date(0).toISOString(),
++            inspection,
++          }),
++        ),
++      ]
++
++      return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, ACTIVITY_LIMIT)
++    },
++    enabled: !!userId,
++    refetchInterval: 30000,
++  })
++}
+diff --git a/mobile/src/hooks/useTodayDistance.ts b/mobile/src/hooks/useTodayDistance.ts
+new file mode 100644
+index 0000000..45bc93c
+--- /dev/null
++++ b/mobile/src/hooks/useTodayDistance.ts
+@@ -0,0 +1,30 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import { useAuthStore } from '../stores/authStore'
++
++function startOfTodayIso(): string {
++  const start = new Date()
++  start.setHours(0, 0, 0, 0)
++  return start.toISOString()
++}
++
++export function useTodayDistance() {
++  const userId = useAuthStore((s) => s.session?.user.id)
++
++  return useQuery({
++    queryKey: ['today-distance', userId],
++    queryFn: async (): Promise<number> => {
++      const { data, error } = await supabase
++        .from('vehicle_trips')
++        .select('distance_km')
++        .eq('driver_id', userId as string)
++        .eq('status', 'completed')
++        .gte('started_at', startOfTodayIso())
++
++      if (error) throw error
++      return data.reduce((total, trip) => total + (trip.distance_km ?? 0), 0)
++    },
++    enabled: !!userId,
++    refetchInterval: 30000,
++  })
++}
+diff --git a/mobile/src/lib/autoTripEngine.ts b/mobile/src/lib/autoTripEngine.ts
+index e95b553..ed4a0c4 100644
+--- a/mobile/src/lib/autoTripEngine.ts
++++ b/mobile/src/lib/autoTripEngine.ts
+@@ -1,6 +1,7 @@
+ import * as Notifications from 'expo-notifications'
+ import { supabase } from './supabase'
+ import { haversineDistanceKm } from '../utils/geo'
++import { reverseGeocodeLabel } from './reverseGeocode'
+ import {
+   getAutoTripContext,
+   getAutoTripState,
+@@ -47,6 +48,8 @@ async function startTrip(sample: LocationSample) {
+   const context = await getAutoTripContext()
+   if (!context) return
+ 
++  const startLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
++
+   const { data: trip, error } = await supabase
+     .from('vehicle_trips')
+     .insert({
+@@ -54,7 +57,7 @@ async function startTrip(sample: LocationSample) {
+       car_id: context.carId,
+       application_id: context.applicationId,
+       status: 'active',
+-      start_location: `${sample.latitude.toFixed(5)}, ${sample.longitude.toFixed(5)}`,
++      start_location: startLabel,
+     })
+     .select()
+     .single()
+@@ -80,6 +83,7 @@ async function startTrip(sample: LocationSample) {
+ async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
+   const durationSeconds = state.startedAt ? (Date.now() - state.startedAt) / 1000 : 0
+   const avgSpeedKmh = durationSeconds > 0 ? state.distanceKm / (durationSeconds / 3600) : null
++  const endLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
+ 
+   const { error } = await supabase
+     .from('vehicle_trips')
+@@ -89,7 +93,7 @@ async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoT
+       distance_km: state.distanceKm,
+       avg_speed_kmh: avgSpeedKmh,
+       max_speed_kmh: state.maxSpeedKmh || null,
+-      end_location: `${sample.latitude.toFixed(5)}, ${sample.longitude.toFixed(5)}`,
++      end_location: endLabel,
+       status: 'completed',
+     })
+     .eq('id', tripId)
+diff --git a/mobile/src/lib/reverseGeocode.ts b/mobile/src/lib/reverseGeocode.ts
+new file mode 100644
+index 0000000..4ce9f89
+--- /dev/null
++++ b/mobile/src/lib/reverseGeocode.ts
+@@ -0,0 +1,20 @@
++import * as Location from 'expo-location'
++
++export async function reverseGeocodeLabel(latitude: number, longitude: number): Promise<string> {
++  const fallback = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
++  try {
++    const results = await Location.reverseGeocodeAsync({ latitude, longitude })
++    const address = results[0]
++    if (!address) return fallback
++
++    const streetPart = [address.streetNumber, address.street].filter(Boolean).join(' ')
++    const areaPart = address.city ?? address.subregion ?? address.region
++
++    if (streetPart && areaPart) return `${streetPart}, ${areaPart}`
++    if (areaPart) return areaPart
++    if (streetPart) return streetPart
++    return fallback
++  } catch {
++    return fallback
++  }
++}
+diff --git a/mobile/src/lib/uploadInspectionPhoto.ts b/mobile/src/lib/uploadInspectionPhoto.ts
+index 52af4ef..74a216e 100644
+--- a/mobile/src/lib/uploadInspectionPhoto.ts
++++ b/mobile/src/lib/uploadInspectionPhoto.ts
+@@ -1,5 +1,13 @@
+ import { supabase } from './supabase'
+ 
++const MIME_TYPES: Record<string, string> = {
++  jpg: 'image/jpeg',
++  jpeg: 'image/jpeg',
++  png: 'image/png',
++  heic: 'image/heic',
++  pdf: 'application/pdf',
++}
++
+ export async function uploadInspectionPhoto(
+   driverId: string,
+   inspectionId: string,
+@@ -7,18 +15,21 @@ export async function uploadInspectionPhoto(
+   index: number,
+ ): Promise<string> {
+   const extensionMatch = localUri.match(/\.(\w+)$/)
+-  const extension = extensionMatch ? extensionMatch[1] : 'jpg'
++  const extension = (extensionMatch ? extensionMatch[1] : 'jpg').toLowerCase()
+   const path = `${driverId}/${inspectionId}/${index}.${extension}`
+ 
+   const response = await fetch(localUri)
+   const arrayBuffer = await response.arrayBuffer()
++  const headerContentType = response.headers.get('content-type')
++  const contentType =
++    headerContentType && headerContentType !== 'application/octet-stream'
++      ? headerContentType
++      : (MIME_TYPES[extension] ?? 'application/octet-stream')
+ 
+-  const { error } = await supabase.storage
+-    .from('inspection-photos')
+-    .upload(path, arrayBuffer, {
+-      contentType: response.headers.get('content-type') ?? `image/${extension}`,
+-      upsert: true,
+-    })
++  const { error } = await supabase.storage.from('inspection-photos').upload(path, arrayBuffer, {
++    contentType,
++    upsert: true,
++  })
+ 
+   if (error) throw error
+   return path
+diff --git a/mobile/src/utils/schedule.ts b/mobile/src/utils/schedule.ts
+new file mode 100644
+index 0000000..422bda8
+--- /dev/null
++++ b/mobile/src/utils/schedule.ts
+@@ -0,0 +1,31 @@
++const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
++
++// Given a weekday name ("Monday") and a time ("08:00"), returns the next upcoming
++// occurrence of that weekday/time from now (today counts if the time hasn't passed yet).
++export function getNextOccurrence(dayName: string | null, timeStr: string | null): Date | null {
++  if (!dayName) return null
++  const targetDay = WEEKDAYS.findIndex((d) => d.toLowerCase() === dayName.toLowerCase())
++  if (targetDay === -1) return null
++
++  const [hours, minutes] = (timeStr ?? '08:00').split(':').map(Number)
++  const now = new Date()
++  const result = new Date(now)
++  result.setHours(hours || 0, minutes || 0, 0, 0)
++
++  let daysUntil = (targetDay - now.getDay() + 7) % 7
++  if (daysUntil === 0 && result.getTime() <= now.getTime()) daysUntil = 7
++  result.setDate(now.getDate() + daysUntil)
++  return result
++}
++
++export function formatShortDate(date: Date): string {
++  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
++}
++
++export function getRentalWeekNumber(matchedAt: string | null): number | null {
++  if (!matchedAt) return null
++  const start = new Date(matchedAt).getTime()
++  const now = Date.now()
++  if (now < start) return 1
++  return Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000)) + 1
++}
