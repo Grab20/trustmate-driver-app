@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../src/hooks/useActiveRental'
 import { useActiveTrip } from '../../src/hooks/useActiveTrip'
 import { useTripWaypoints } from '../../src/hooks/useTripWaypoints'
-import { useTodayDistance } from '../../src/hooks/useTodayDistance'
+import { useDistanceTotals } from '../../src/hooks/useDistanceTotals'
 import { useDriverProfile } from '../../src/hooks/useDriverProfile'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { useRecentActivity } from '../../src/hooks/useRecentActivity'
@@ -27,7 +27,7 @@ export default function DashboardScreen() {
   const { data: activeRental, isLoading } = useActiveRental()
   const { data: activeTrip } = useActiveTrip()
   const { data: waypoints } = useTripWaypoints(activeTrip?.id)
-  const { data: todayCompletedKm } = useTodayDistance()
+  const { data: distanceTotals } = useDistanceTotals()
   const { data: driverProfile } = useDriverProfile()
   const { data: myProfile } = useMyProfile()
   const { data: recentActivity } = useRecentActivity()
@@ -62,7 +62,9 @@ export default function DashboardScreen() {
     const prev = liveWaypoints[index - 1]
     return total + haversineDistanceKm(prev.latitude, prev.longitude, point.latitude, point.longitude)
   }, 0)
-  const todaysDistanceKm = (todayCompletedKm ?? 0) + (activeTrip ? liveDistanceKm : 0)
+  const todaysDistanceKm = (distanceTotals?.today ?? 0) + (activeTrip ? liveDistanceKm : 0)
+  const weekDistanceKm = (distanceTotals?.week ?? 0) + (activeTrip ? liveDistanceKm : 0)
+  const monthDistanceKm = (distanceTotals?.month ?? 0) + (activeTrip ? liveDistanceKm : 0)
   const currentSpeedKmh = waypoints && waypoints.length > 0 ? Number(waypoints[waypoints.length - 1].speed_kmh ?? 0) : 0
 
   const nextInspection = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
@@ -95,6 +97,8 @@ export default function DashboardScreen() {
         <StatTile label="Current Status" value={activeTrip ? 'Driving' : 'Parked'} />
         <StatTile label="Current Speed" value={activeTrip ? `${currentSpeedKmh.toFixed(0)} km/h` : '—'} />
         <StatTile label="Today's Distance" value={`${todaysDistanceKm.toFixed(1)} km`} />
+        <StatTile label="This Week" value={`${weekDistanceKm.toFixed(1)} km`} />
+        <StatTile label="This Month" value={`${monthDistanceKm.toFixed(1)} km`} />
         <StatTile label="Rental Week" value={rentalWeek != null ? `Week ${rentalWeek}` : '—'} />
         <StatTile
           label="Next Payment"

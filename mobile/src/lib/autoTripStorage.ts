@@ -19,6 +19,8 @@ export type AutoTripState = {
   maxSpeedKmh: number
   lastPoint: AutoTripPoint | null
   consecutiveMovingSamples: number
+  lastSpeedKmh: number | null
+  crashPendingAt: number | null
 }
 
 const EMPTY_STATE: AutoTripState = {
@@ -29,6 +31,8 @@ const EMPTY_STATE: AutoTripState = {
   maxSpeedKmh: 0,
   lastPoint: null,
   consecutiveMovingSamples: 0,
+  lastSpeedKmh: null,
+  crashPendingAt: null,
 }
 
 export async function getAutoTripContext(): Promise<AutoTripContext | null> {

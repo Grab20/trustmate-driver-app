@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications'
 import { supabase } from './supabase'
 import { haversineDistanceKm } from '../utils/geo'
 import { reverseGeocodeLabel } from './reverseGeocode'
+import { reportPossibleCrash } from './crashAlert'
 import {
   getAutoTripContext,
   getAutoTripState,
@@ -16,6 +17,14 @@ const MOVEMENT_THRESHOLD_KMH = 8
 const MOVING_SAMPLES_TO_START = 2
 // A trip ends once the vehicle has been below the movement threshold for this long.
 const IDLE_THRESHOLD_MS = 7 * 60 * 1000
+
+// Crash heuristic: highway-ish speed on one sample followed by near-stationary on the
+// very next sample. This is a coarse GPS-only signal (~30s between samples), so it will
+// occasionally flag a hard stop that wasn't a crash — the confirm window below keeps
+// that low-friction (one tap to dismiss) rather than silently alerting anyone.
+const CRASH_SPEED_BEFORE_KMH = 60
+const CRASH_SPEED_AFTER_KMH = 8
+export const CRASH_CONFIRM_WINDOW_MS = 30_000
 
 export type LocationSample = {
   latitude: number
@@ -75,6 +84,8 @@ async function startTrip(sample: LocationSample) {
     maxSpeedKmh: 0,
     lastPoint: { latitude: sample.latitude, longitude: sample.longitude },
     consecutiveMovingSamples: 0,
+    lastSpeedKmh: null,
+    crashPendingAt: null,
   })
 
   await notify('Trip started', 'TrustMate Driver is tracking your route.')
@@ -133,6 +144,23 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     return
   }
 
+  let crashPendingAt = state.crashPendingAt
+  if (crashPendingAt) {
+    if (isMoving) {
+      // Driver resumed normal driving — treat the earlier stop as a false alarm.
+      crashPendingAt = null
+    } else if (Date.now() - crashPendingAt >= CRASH_CONFIRM_WINDOW_MS) {
+      await reportPossibleCrash(context, state.lastSpeedKmh ?? 0, sample)
+      crashPendingAt = null
+    }
+  } else if ((state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH && speedKmh <= CRASH_SPEED_AFTER_KMH) {
+    crashPendingAt = Date.now()
+    await notify(
+      'Possible crash detected',
+      "Tap to confirm you're OK. TrustMate admin will be alerted if you don't respond.",
+    )
+  }
+
   const { error: waypointError } = await supabase.from('trip_waypoints').insert({
     trip_id: state.activeTripId,
     lat: sample.latitude,
@@ -152,6 +180,8 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     maxSpeedKmh: Math.max(state.maxSpeedKmh, speedKmh),
     lastPoint: { latitude: sample.latitude, longitude: sample.longitude } satisfies AutoTripPoint,
     lastMovingAt: isMoving ? Date.now() : state.lastMovingAt,
+    lastSpeedKmh: speedKmh,
+    crashPendingAt,
   }
 
   const idleSince = Date.now() - (updatedState.lastMovingAt ?? Date.now())
