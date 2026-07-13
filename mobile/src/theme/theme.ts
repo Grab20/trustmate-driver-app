@@ -1,15 +1,23 @@
 import { MD3LightTheme } from 'react-native-paper'
 
-// Placeholder brand palette — swap for TrustMate's real brand colors once
-// extracted from the website's CSS (we don't have the site's source in this repo).
+// Matches trustmate.co.za's dark forest-green brand: deep green header/hero
+// surfaces, a brighter green for CTAs, and a light mint-green accent for
+// highlighted text.
+export const brandColors = {
+  darkGreen: '#12331F',
+  green: '#2E7D4F',
+  mintGreen: '#8FCB7C',
+  errorRed: '#C7433A',
+}
+
 export const theme = {
   ...MD3LightTheme,
   colors: {
     ...MD3LightTheme.colors,
-    primary: '#0F5C4F',
-    secondary: '#1B7A6B',
-    background: '#F7F8F7',
+    primary: brandColors.green,
+    secondary: brandColors.mintGreen,
+    background: '#F7F8F5',
     surface: '#FFFFFF',
-    error: '#B3261E',
+    error: brandColors.errorRed,
   },
 }

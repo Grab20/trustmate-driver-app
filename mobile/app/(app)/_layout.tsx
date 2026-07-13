@@ -5,6 +5,7 @@ import { LoadingScreen } from '../../src/components/LoadingScreen'
 import { usePushNotifications } from '../../src/hooks/usePushNotifications'
 import { useAutoTripTracking } from '../../src/hooks/useAutoTripTracking'
 import { CrashAlertModal } from '../../src/components/CrashAlertModal'
+import { brandColors } from '../../src/theme/theme'
 
 export default function AppLayout() {
   const session = useAuthStore((s) => s.session)
@@ -19,7 +20,13 @@ export default function AppLayout() {
 
   return (
     <>
-      <Stack>
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: brandColors.darkGreen },
+          headerTintColor: '#fff',
+          headerTitleStyle: { color: '#fff' },
+        }}
+      >
         <Stack.Screen name="index" options={{ title: 'Dashboard' }} />
         <Stack.Screen name="inspections/index" options={{ title: 'Inspection History' }} />
         <Stack.Screen name="inspections/new" options={{ title: 'Vehicle Inspection' }} />

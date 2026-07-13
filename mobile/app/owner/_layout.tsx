@@ -3,6 +3,7 @@ import { useAuthStore } from '../../src/stores/authStore'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 import { usePushNotifications } from '../../src/hooks/usePushNotifications'
+import { brandColors } from '../../src/theme/theme'
 
 export default function OwnerLayout() {
   const session = useAuthStore((s) => s.session)
@@ -15,7 +16,13 @@ export default function OwnerLayout() {
   if (profile?.role === 'driver') return <Redirect href="/" />
 
   return (
-    <Stack>
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: brandColors.darkGreen },
+        headerTintColor: '#fff',
+        headerTitleStyle: { color: '#fff' },
+      }}
+    >
       <Stack.Screen name="index" options={{ title: 'Your Fleet' }} />
       <Stack.Screen name="driver/[id]" options={{ title: 'Driver' }} />
     </Stack>
