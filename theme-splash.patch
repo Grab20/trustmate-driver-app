@@ -1,0 +1,150 @@
+diff --git a/mobile/app.json b/mobile/app.json
+index e033efc..015b033 100644
+--- a/mobile/app.json
++++ b/mobile/app.json
+@@ -34,7 +34,16 @@
+           "color": "#0F5C4F"
+         }
+       ],
+-      "expo-document-picker"
++      "expo-document-picker",
++      [
++        "expo-splash-screen",
++        {
++          "image": "./assets/splash-icon.png",
++          "imageWidth": 200,
++          "resizeMode": "contain",
++          "backgroundColor": "#12331F"
++        }
++      ]
+     ],
+     "experiments": {
+       "typedRoutes": true
+@@ -45,6 +54,7 @@
+     },
+     "android": {
+       "package": "co.za.trustmate.driver",
++      "googleServicesFile": "./google-services.json",
+       "adaptiveIcon": {
+         "backgroundColor": "#E6F4FE",
+         "foregroundImage": "./assets/android-icon-foreground.png",
+diff --git a/mobile/app/(app)/_layout.tsx b/mobile/app/(app)/_layout.tsx
+index a7ff868..615f47b 100644
+--- a/mobile/app/(app)/_layout.tsx
++++ b/mobile/app/(app)/_layout.tsx
+@@ -5,6 +5,7 @@ import { LoadingScreen } from '../../src/components/LoadingScreen'
+ import { usePushNotifications } from '../../src/hooks/usePushNotifications'
+ import { useAutoTripTracking } from '../../src/hooks/useAutoTripTracking'
+ import { CrashAlertModal } from '../../src/components/CrashAlertModal'
++import { brandColors } from '../../src/theme/theme'
+ 
+ export default function AppLayout() {
+   const session = useAuthStore((s) => s.session)
+@@ -19,7 +20,13 @@ export default function AppLayout() {
+ 
+   return (
+     <>
+-      <Stack>
++      <Stack
++        screenOptions={{
++          headerStyle: { backgroundColor: brandColors.darkGreen },
++          headerTintColor: '#fff',
++          headerTitleStyle: { color: '#fff' },
++        }}
++      >
+         <Stack.Screen name="index" options={{ title: 'Dashboard' }} />
+         <Stack.Screen name="inspections/index" options={{ title: 'Inspection History' }} />
+         <Stack.Screen name="inspections/new" options={{ title: 'Vehicle Inspection' }} />
+diff --git a/mobile/app/_layout.tsx b/mobile/app/_layout.tsx
+index 240025b..02bf59e 100644
+--- a/mobile/app/_layout.tsx
++++ b/mobile/app/_layout.tsx
+@@ -1,16 +1,27 @@
++import { useEffect } from 'react'
+ import { GestureHandlerRootView } from 'react-native-gesture-handler'
+ import { SafeAreaProvider } from 'react-native-safe-area-context'
+ import { PaperProvider } from 'react-native-paper'
+ import { QueryClientProvider } from '@tanstack/react-query'
+ import { Slot } from 'expo-router'
+ import { StatusBar } from 'expo-status-bar'
++import * as SplashScreen from 'expo-splash-screen'
+ import { queryClient } from '../src/lib/queryClient'
+ import { theme } from '../src/theme/theme'
++import { useAuthStore } from '../src/stores/authStore'
+ // Side-effect import: registers the background location task handler so it's
+ // defined before the OS can relaunch the app in the background to deliver updates.
+ import '../src/tasks/backgroundLocationTask'
+ 
++SplashScreen.preventAutoHideAsync()
++
+ export default function RootLayout() {
++  const isInitializing = useAuthStore((s) => s.isInitializing)
++
++  useEffect(() => {
++    if (!isInitializing) SplashScreen.hideAsync()
++  }, [isInitializing])
++
+   return (
+     <GestureHandlerRootView style={{ flex: 1 }}>
+       <QueryClientProvider client={queryClient}>
+diff --git a/mobile/app/owner/_layout.tsx b/mobile/app/owner/_layout.tsx
+index d9e860a..087785b 100644
+--- a/mobile/app/owner/_layout.tsx
++++ b/mobile/app/owner/_layout.tsx
+@@ -3,6 +3,7 @@ import { useAuthStore } from '../../src/stores/authStore'
+ import { useMyProfile } from '../../src/hooks/useMyProfile'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+ import { usePushNotifications } from '../../src/hooks/usePushNotifications'
++import { brandColors } from '../../src/theme/theme'
+ 
+ export default function OwnerLayout() {
+   const session = useAuthStore((s) => s.session)
+@@ -15,7 +16,13 @@ export default function OwnerLayout() {
+   if (profile?.role === 'driver') return <Redirect href="/" />
+ 
+   return (
+-    <Stack>
++    <Stack
++      screenOptions={{
++        headerStyle: { backgroundColor: brandColors.darkGreen },
++        headerTintColor: '#fff',
++        headerTitleStyle: { color: '#fff' },
++      }}
++    >
+       <Stack.Screen name="index" options={{ title: 'Your Fleet' }} />
+       <Stack.Screen name="driver/[id]" options={{ title: 'Driver' }} />
+     </Stack>
+diff --git a/mobile/src/theme/theme.ts b/mobile/src/theme/theme.ts
+index dc45c92..a2ab890 100644
+--- a/mobile/src/theme/theme.ts
++++ b/mobile/src/theme/theme.ts
+@@ -1,15 +1,23 @@
+ import { MD3LightTheme } from 'react-native-paper'
+ 
+-// Placeholder brand palette — swap for TrustMate's real brand colors once
+-// extracted from the website's CSS (we don't have the site's source in this repo).
++// Matches trustmate.co.za's dark forest-green brand: deep green header/hero
++// surfaces, a brighter green for CTAs, and a light mint-green accent for
++// highlighted text.
++export const brandColors = {
++  darkGreen: '#12331F',
++  green: '#2E7D4F',
++  mintGreen: '#8FCB7C',
++  errorRed: '#C7433A',
++}
++
+ export const theme = {
+   ...MD3LightTheme,
+   colors: {
+     ...MD3LightTheme.colors,
+-    primary: '#0F5C4F',
+-    secondary: '#1B7A6B',
+-    background: '#F7F8F7',
++    primary: brandColors.green,
++    secondary: brandColors.mintGreen,
++    background: '#F7F8F5',
+     surface: '#FFFFFF',
+-    error: '#B3261E',
++    error: brandColors.errorRed,
+   },
+ }
