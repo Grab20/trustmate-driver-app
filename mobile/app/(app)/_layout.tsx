@@ -24,6 +24,7 @@ export default function AppLayout() {
         <Stack.Screen name="inspections/index" options={{ title: 'Inspection History' }} />
         <Stack.Screen name="inspections/new" options={{ title: 'Vehicle Inspection' }} />
         <Stack.Screen name="inspections/payment" options={{ title: 'Proof of Payment' }} />
+        <Stack.Screen name="traffic-offences" options={{ title: 'Traffic Offences' }} />
       </Stack>
       <CrashAlertModal />
     </>

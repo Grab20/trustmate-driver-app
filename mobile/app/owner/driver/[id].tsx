@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useLocalSearchParams } from 'expo-router'
-import { ScrollView, View, StyleSheet } from 'react-native'
-import { Text, Card } from 'react-native-paper'
+import { ScrollView, View, StyleSheet, Alert } from 'react-native'
+import { Text, Card, TextInput, Button } from 'react-native-paper'
 import MapView, { Marker } from 'react-native-maps'
 import { useDriverLiveStatus } from '../../../src/hooks/useDriverLiveStatus'
 import { useDriverTripHistory } from '../../../src/hooks/useDriverTripHistory'
 import { useDriverInspectionsForOwner } from '../../../src/hooks/useInspections'
+import { useDriverLifetimeStats } from '../../../src/hooks/useDriverLifetimeStats'
+import { useDriverTrafficOffencesForOwner } from '../../../src/hooks/useTrafficOffences'
+import { useCar, useUpdateNextServiceDate } from '../../../src/hooks/useCar'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
 import { InspectionPhotoThumbnail } from '../../../src/components/InspectionPhotoThumbnail'
 import { StatTile } from '../../../src/components/StatTile'
-import { formatElapsedSince } from '../../../src/utils/schedule'
+import { TrafficOffenceRow } from '../../../src/components/TrafficOffenceRow'
+import { formatElapsedSince, formatShortDate } from '../../../src/utils/schedule'
 import { reverseGeocodeLabel } from '../../../src/lib/reverseGeocode'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -19,11 +23,20 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 export default function OwnerDriverDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, carId } = useLocalSearchParams<{ id: string; carId: string }>()
   const { data: liveStatus, isLoading: isLiveStatusLoading } = useDriverLiveStatus(id)
   const { data: trips } = useDriverTripHistory(id)
   const { data: inspections } = useDriverInspectionsForOwner(id)
+  const { data: lifetimeStats } = useDriverLifetimeStats(id)
+  const { data: offences } = useDriverTrafficOffencesForOwner(id)
+  const { data: car } = useCar(carId || undefined)
+  const updateNextServiceDate = useUpdateNextServiceDate(carId || undefined)
+  const [nextServiceInput, setNextServiceInput] = useState('')
   const [addressLabel, setAddressLabel] = useState<string | null>(null)
+
+  useEffect(() => {
+    setNextServiceInput(car?.next_service_date ?? '')
+  }, [car?.next_service_date])
 
   useEffect(() => {
     if (!liveStatus) {
@@ -87,6 +100,47 @@ export default function OwnerDriverDetailScreen() {
       )}
 
       <Text variant="titleMedium" style={styles.sectionHeading}>
+        Lifetime Stats
+      </Text>
+      <View style={styles.tripStatsRow}>
+        <StatTile label="Total Trips" value={String(lifetimeStats?.totalTrips ?? 0)} />
+        <StatTile label="Total Distance" value={`${(lifetimeStats?.totalDistanceKm ?? 0).toFixed(0)} km`} />
+        <StatTile label="Top Speed" value={`${(lifetimeStats?.topSpeedKmh ?? 0).toFixed(0)} km/h`} />
+      </View>
+
+      <Text variant="titleMedium" style={styles.sectionHeading}>
+        Next Service
+      </Text>
+      <Card style={styles.tripCard}>
+        <Card.Content>
+          <Text variant="bodySmall" style={styles.since}>
+            {car?.next_service_date ? formatShortDate(new Date(car.next_service_date)) : 'Not scheduled'}
+          </Text>
+          <TextInput
+            label="Next service date (YYYY-MM-DD)"
+            value={nextServiceInput}
+            onChangeText={setNextServiceInput}
+            placeholder="2026-08-15"
+            style={styles.dateInput}
+          />
+          <Button
+            mode="contained-tonal"
+            loading={updateNextServiceDate.isPending}
+            onPress={() => {
+              const trimmed = nextServiceInput.trim()
+              if (trimmed && !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+                Alert.alert('Invalid date', 'Please use the format YYYY-MM-DD, e.g. 2026-08-15.')
+                return
+              }
+              updateNextServiceDate.mutate(trimmed || null)
+            }}
+          >
+            Save
+          </Button>
+        </Card.Content>
+      </Card>
+
+      <Text variant="titleMedium" style={styles.sectionHeading}>
         Recent Trips
       </Text>
       {trips && trips.length > 0 ? (
@@ -143,6 +197,21 @@ export default function OwnerDriverDetailScreen() {
           No inspections submitted yet.
         </Text>
       )}
+
+      <Text variant="titleMedium" style={styles.sectionHeading}>
+        Traffic Offences
+      </Text>
+      {offences && offences.length > 0 ? (
+        <View style={styles.tripCard}>
+          {offences.map((offence) => (
+            <TrafficOffenceRow key={offence.id} offence={offence} />
+          ))}
+        </View>
+      ) : (
+        <Text variant="bodyMedium" style={styles.empty}>
+          No traffic offences on record.
+        </Text>
+      )}
     </ScrollView>
   )
 }
@@ -164,6 +233,10 @@ const styles = StyleSheet.create({
   since: {
     opacity: 0.6,
     marginTop: 4,
+  },
+  dateInput: {
+    marginTop: 8,
+    marginBottom: 12,
   },
   noLocation: {
     margin: 24,

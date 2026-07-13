@@ -41,7 +41,12 @@ export default function OwnerDashboardScreen() {
           <FleetDriverCard
             key={entry.id}
             entry={entry}
-            onPress={() => router.push(`/owner/driver/${entry.driver_id}`)}
+            onPress={() =>
+              router.push({
+                pathname: '/owner/driver/[id]',
+                params: { id: entry.driver_id ?? '', carId: entry.car_id ?? '' },
+              })
+            }
           />
         ))
       ) : (

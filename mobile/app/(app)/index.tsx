@@ -6,6 +6,7 @@ import { useActiveTrip } from '../../src/hooks/useActiveTrip'
 import { useTripWaypoints } from '../../src/hooks/useTripWaypoints'
 import { useDistanceTotals } from '../../src/hooks/useDistanceTotals'
 import { useDriverProfile } from '../../src/hooks/useDriverProfile'
+import { useDriverLifetimeStats } from '../../src/hooks/useDriverLifetimeStats'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { useRecentActivity } from '../../src/hooks/useRecentActivity'
 import { useAuthStore } from '../../src/stores/authStore'
@@ -30,6 +31,8 @@ export default function DashboardScreen() {
   const { data: distanceTotals } = useDistanceTotals()
   const { data: driverProfile } = useDriverProfile()
   const { data: myProfile } = useMyProfile()
+  const userId = useAuthStore((s) => s.session?.user.id)
+  const { data: lifetimeStats } = useDriverLifetimeStats(userId)
   const { data: recentActivity } = useRecentActivity()
   const signOut = useAuthStore((s) => s.signOut)
 
@@ -123,6 +126,19 @@ export default function DashboardScreen() {
           label="TrustScore"
           value={driverProfile?.trust_score != null ? String(driverProfile.trust_score) : '—'}
         />
+        <StatTile
+          label="Next Service"
+          value={car?.next_service_date ? formatShortDate(new Date(car.next_service_date)) : 'Not scheduled'}
+        />
+      </View>
+
+      <Text variant="titleMedium" style={styles.activityHeading}>
+        Lifetime Stats
+      </Text>
+      <View style={styles.statsGrid}>
+        <StatTile label="Total Trips" value={String(lifetimeStats?.totalTrips ?? 0)} />
+        <StatTile label="Total Distance" value={`${(lifetimeStats?.totalDistanceKm ?? 0).toFixed(0)} km`} />
+        <StatTile label="Top Speed" value={`${(lifetimeStats?.topSpeedKmh ?? 0).toFixed(0)} km/h`} />
       </View>
 
       <Button
@@ -132,6 +148,15 @@ export default function DashboardScreen() {
         style={styles.actionButton}
       >
         Inspections & Payments
+      </Button>
+
+      <Button
+        mode="contained-tonal"
+        icon="alert-circle-outline"
+        onPress={() => router.push('/traffic-offences')}
+        style={styles.actionButton}
+      >
+        Traffic Offences
       </Button>
 
       <Text variant="titleMedium" style={styles.activityHeading}>

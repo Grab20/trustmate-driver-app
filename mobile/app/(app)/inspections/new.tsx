@@ -100,6 +100,7 @@ export default function NewInspectionScreen() {
           <PhotoSlot
             key={shot.key}
             label={shot.label}
+            shotKey={shot.key}
             uri={shots[shot.key]}
             onCapture={() => handleCapture(shot.key)}
           />

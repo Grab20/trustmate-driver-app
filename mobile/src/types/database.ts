@@ -187,6 +187,7 @@ export type Database = {
           location: string
           make: string
           model: string
+          next_service_date: string | null
           owner_id: string | null
           photo_back_url: string | null
           photo_extra_url: string | null
@@ -224,6 +225,7 @@ export type Database = {
           location: string
           make: string
           model: string
+          next_service_date?: string | null
           owner_id?: string | null
           photo_back_url?: string | null
           photo_extra_url?: string | null
@@ -261,6 +263,7 @@ export type Database = {
           location?: string
           make?: string
           model?: string
+          next_service_date?: string | null
           owner_id?: string | null
           photo_back_url?: string | null
           photo_extra_url?: string | null
@@ -911,6 +914,87 @@ export type Database = {
           {
             foreignKeyName: "reviews_reviewer_id_fkey"
             columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      traffic_offences: {
+        Row: {
+          application_id: string | null
+          car_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          driver_id: string
+          evidence_url: string | null
+          fine_amount: number | null
+          id: string
+          offence_date: string
+          offence_type: string | null
+          status: string
+        }
+        Insert: {
+          application_id?: string | null
+          car_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          driver_id: string
+          evidence_url?: string | null
+          fine_amount?: number | null
+          id?: string
+          offence_date?: string
+          offence_type?: string | null
+          status?: string
+        }
+        Update: {
+          application_id?: string | null
+          car_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          driver_id?: string
+          evidence_url?: string | null
+          fine_amount?: number | null
+          id?: string
+          offence_date?: string
+          offence_type?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_offences_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "active_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "traffic_offences_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "traffic_offences_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "traffic_offences_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "traffic_offences_driver_id_fkey"
+            columns: ["driver_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
