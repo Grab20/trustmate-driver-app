@@ -77,3 +77,20 @@ export function useSubmitInspection() {
     },
   })
 }
+
+export function useDriverInspectionsForOwner(driverId: string | undefined) {
+  return useQuery({
+    queryKey: ['driver-inspections-for-owner', driverId],
+    queryFn: async (): Promise<Tables<'vehicle_inspections'>[]> => {
+      const { data, error } = await supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('driver_id', driverId as string)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data
+    },
+    enabled: !!driverId,
+  })
+}

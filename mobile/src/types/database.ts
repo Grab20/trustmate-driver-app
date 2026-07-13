@@ -9,6 +9,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -326,6 +328,54 @@ export type Database = {
           },
         ]
       }
+      driver_live_status: {
+        Row: {
+          car_id: string | null
+          driver_id: string
+          is_moving: boolean
+          lat: number
+          lng: number
+          speed_kmh: number | null
+          state_since: string
+          updated_at: string
+        }
+        Insert: {
+          car_id?: string | null
+          driver_id: string
+          is_moving?: boolean
+          lat: number
+          lng: number
+          speed_kmh?: number | null
+          state_since?: string
+          updated_at?: string
+        }
+        Update: {
+          car_id?: string | null
+          driver_id?: string
+          is_moving?: boolean
+          lat?: number
+          lng?: number
+          speed_kmh?: number | null
+          state_since?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_live_status_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_live_status_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       driver_profiles: {
         Row: {
           accidents: number | null
@@ -339,6 +389,7 @@ export type Database = {
           criminal_check_submitted: boolean | null
           criminal_check_url: string | null
           damage_incidents: number | null
+          deposit_amount: number | null
           doc_car_url: string | null
           doc_expires_at: string | null
           doc_holding_id_url: string | null
@@ -354,8 +405,10 @@ export type Database = {
           indrive_rating: string | null
           indrive_trips: string | null
           late_payments: number | null
+          license_date: string | null
           license_number: string | null
           license_verified: boolean | null
+          license_year: number | null
           major_accidents: number | null
           missed_checkins: number | null
           missed_payments: number | null
@@ -365,6 +418,7 @@ export type Database = {
           photo_headshot_url: string | null
           photo_holding_id_url: string | null
           platforms: string[] | null
+          proof_of_residence_url: string | null
           reckless_driving: number | null
           rejected_at: string | null
           rejection_reason: string | null
@@ -383,6 +437,7 @@ export type Database = {
           vehicle_abuse: number | null
           vehicles_stolen: number | null
           verified_references: number | null
+          weekly_checkin_amount: number | null
           years_driving: number | null
         }
         Insert: {
@@ -397,6 +452,7 @@ export type Database = {
           criminal_check_submitted?: boolean | null
           criminal_check_url?: string | null
           damage_incidents?: number | null
+          deposit_amount?: number | null
           doc_car_url?: string | null
           doc_expires_at?: string | null
           doc_holding_id_url?: string | null
@@ -412,8 +468,10 @@ export type Database = {
           indrive_rating?: string | null
           indrive_trips?: string | null
           late_payments?: number | null
+          license_date?: string | null
           license_number?: string | null
           license_verified?: boolean | null
+          license_year?: number | null
           major_accidents?: number | null
           missed_checkins?: number | null
           missed_payments?: number | null
@@ -423,6 +481,7 @@ export type Database = {
           photo_headshot_url?: string | null
           photo_holding_id_url?: string | null
           platforms?: string[] | null
+          proof_of_residence_url?: string | null
           reckless_driving?: number | null
           rejected_at?: string | null
           rejection_reason?: string | null
@@ -441,6 +500,7 @@ export type Database = {
           vehicle_abuse?: number | null
           vehicles_stolen?: number | null
           verified_references?: number | null
+          weekly_checkin_amount?: number | null
           years_driving?: number | null
         }
         Update: {
@@ -455,6 +515,7 @@ export type Database = {
           criminal_check_submitted?: boolean | null
           criminal_check_url?: string | null
           damage_incidents?: number | null
+          deposit_amount?: number | null
           doc_car_url?: string | null
           doc_expires_at?: string | null
           doc_holding_id_url?: string | null
@@ -470,8 +531,10 @@ export type Database = {
           indrive_rating?: string | null
           indrive_trips?: string | null
           late_payments?: number | null
+          license_date?: string | null
           license_number?: string | null
           license_verified?: boolean | null
+          license_year?: number | null
           major_accidents?: number | null
           missed_checkins?: number | null
           missed_payments?: number | null
@@ -481,6 +544,7 @@ export type Database = {
           photo_headshot_url?: string | null
           photo_holding_id_url?: string | null
           platforms?: string[] | null
+          proof_of_residence_url?: string | null
           reckless_driving?: number | null
           rejected_at?: string | null
           rejection_reason?: string | null
@@ -499,6 +563,7 @@ export type Database = {
           vehicle_abuse?: number | null
           vehicles_stolen?: number | null
           verified_references?: number | null
+          weekly_checkin_amount?: number | null
           years_driving?: number | null
         }
         Relationships: [
@@ -542,6 +607,20 @@ export type Database = {
             columns: ["driver_id"]
             isOneToOne: false
             referencedRelation: "driver_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incidents_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "driver_stats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incidents_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_driver_listing"
             referencedColumns: ["id"]
           },
           {
@@ -816,6 +895,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "reviews_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "driver_stats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_driver_listing"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "reviews_reviewer_id_fkey"
             columns: ["reviewer_id"]
             isOneToOne: false
@@ -922,6 +1015,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "trust_actions_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "driver_stats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trust_actions_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_driver_listing"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "trust_actions_owner_id_fkey"
             columns: ["owner_id"]
             isOneToOne: false
@@ -967,6 +1074,20 @@ export type Database = {
             columns: ["driver_id"]
             isOneToOne: false
             referencedRelation: "driver_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trust_score_log_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "driver_stats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trust_score_log_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_driver_listing"
             referencedColumns: ["id"]
           },
         ]
@@ -1018,6 +1139,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "vehicle_inspections_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "active_matches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "vehicle_inspections_application_id_fkey"
             columns: ["application_id"]
@@ -1171,6 +1299,22 @@ export type Database = {
           owner_id: string | null
           status: string | null
         }
+        Insert: {
+          car_id?: string | null
+          driver_id?: string | null
+          id?: string | null
+          matched_at?: string | null
+          owner_id?: string | null
+          status?: string | null
+        }
+        Update: {
+          car_id?: string | null
+          driver_id?: string | null
+          id?: string | null
+          matched_at?: string | null
+          owner_id?: string | null
+          status?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "applications_car_id_fkey"
@@ -1208,6 +1352,30 @@ export type Database = {
           uber_rating: string | null
           user_id: string | null
         }
+        Insert: {
+          bolt_rating?: string | null
+          id?: string | null
+          indrive_rating?: string | null
+          late_payments?: number | null
+          ontime_payments?: number | null
+          rentals_completed?: number | null
+          status?: string | null
+          trust_score?: number | null
+          uber_rating?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          bolt_rating?: string | null
+          id?: string | null
+          indrive_rating?: string | null
+          late_payments?: number | null
+          ontime_payments?: number | null
+          rentals_completed?: number | null
+          status?: string | null
+          trust_score?: number | null
+          uber_rating?: string | null
+          user_id?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "driver_profiles_user_id_fkey"
@@ -1225,6 +1393,7 @@ export type Database = {
           bolt_rating: string | null
           bolt_trips: string | null
           damage_incidents: number | null
+          deposit_amount: number | null
           doc_id_url: string | null
           doc_license_url: string | null
           full_name: string | null
@@ -1245,6 +1414,7 @@ export type Database = {
           uber_rating: string | null
           uber_trips: string | null
           user_id: string | null
+          weekly_checkin_amount: number | null
           years_driving: number | null
         }
         Relationships: [
@@ -1276,18 +1446,124 @@ export type Database = {
 }
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-type DefaultSchema = DatabaseWithoutInternals["public"]
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
-  TableName extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"]),
-> = (DefaultSchema["Tables"] & DefaultSchema["Views"])[TableName] extends {
-  Row: infer R
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
 }
-  ? R
-  : never
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
-export type TablesInsert<TableName extends keyof DefaultSchema["Tables"]> =
-  DefaultSchema["Tables"][TableName] extends { Insert: infer I } ? I : never
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
 
-export type TablesUpdate<TableName extends keyof DefaultSchema["Tables"]> =
-  DefaultSchema["Tables"][TableName] extends { Update: infer U } ? U : never
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const

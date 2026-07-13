@@ -46,6 +46,11 @@ export default function DashboardScreen() {
           Keep an eye on your email — once a match is confirmed on the
           TrustMate website, your rental will appear here.
         </Text>
+        {myProfile?.role === 'both' && (
+          <Button mode="outlined" onPress={() => router.push('/owner')} style={styles.switchButton}>
+            Switch to Owner View
+          </Button>
+        )}
         <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
           Sign Out
         </Button>
@@ -76,6 +81,12 @@ export default function DashboardScreen() {
       <Text variant="headlineMedium" style={styles.greeting}>
         {getGreeting()}, {firstName}
       </Text>
+
+      {myProfile?.role === 'both' && (
+        <Button mode="outlined" onPress={() => router.push('/owner')} style={styles.switchButton}>
+          Switch to Owner View
+        </Button>
+      )}
 
       <Card style={styles.card}>
         <Card.Content>
@@ -146,6 +157,9 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   greeting: {
+    marginBottom: 16,
+  },
+  switchButton: {
     marginBottom: 16,
   },
   card: {

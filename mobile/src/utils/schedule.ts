@@ -29,3 +29,15 @@ export function getRentalWeekNumber(matchedAt: string | null): number | null {
   if (now < start) return 1
   return Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000)) + 1
 }
+
+// Life360-style "here for 1 day, 21 hrs" duration since a given timestamp.
+export function formatElapsedSince(iso: string): string {
+  const totalMinutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
+  const days = Math.floor(totalMinutes / (60 * 24))
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
+  const minutes = totalMinutes % 60
+
+  if (days > 0) return `${days} day${days === 1 ? '' : 's'}, ${hours} hr${hours === 1 ? '' : 's'}`
+  if (hours > 0) return `${hours} hr${hours === 1 ? '' : 's'}, ${minutes} min`
+  return `${minutes} min`
+}

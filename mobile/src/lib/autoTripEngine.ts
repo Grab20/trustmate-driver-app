@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { haversineDistanceKm } from '../utils/geo'
 import { reverseGeocodeLabel } from './reverseGeocode'
 import { reportPossibleCrash } from './crashAlert'
+import { upsertLiveStatus } from './liveStatus'
 import {
   getAutoTripContext,
   getAutoTripState,
@@ -11,19 +12,22 @@ import {
   type AutoTripPoint,
 } from './autoTripStorage'
 
-// A trip starts once the vehicle sustains this speed for MOVING_SAMPLES_TO_START
-// consecutive location samples (avoids false starts from GPS jitter while parked).
+// A trip starts as soon as a single sample crosses this speed (device-reported GPS
+// speed is trusted immediately; a stray false start just ends itself via idle timeout).
 const MOVEMENT_THRESHOLD_KMH = 8
-const MOVING_SAMPLES_TO_START = 2
+const MOVING_SAMPLES_TO_START = 1
 // A trip ends once the vehicle has been below the movement threshold for this long.
 const IDLE_THRESHOLD_MS = 7 * 60 * 1000
 
-// Crash heuristic: highway-ish speed on one sample followed by near-stationary on the
-// very next sample. This is a coarse GPS-only signal (~30s between samples), so it will
-// occasionally flag a hard stop that wasn't a crash — the confirm window below keeps
-// that low-friction (one tap to dismiss) rather than silently alerting anyone.
+// Crash heuristic: highway-ish speed followed by the vehicle staying near-stationary for
+// two consecutive samples (~60s). Requiring two samples (not one) filters out ordinary
+// hard braking, sharp turns, and GPS jitter, which would otherwise look identical to a
+// crash after just one reading. This is still a coarse GPS-only signal, so it will
+// occasionally flag a stop that wasn't a crash — the confirm window keeps that
+// low-friction (one tap to dismiss) rather than silently alerting anyone.
 const CRASH_SPEED_BEFORE_KMH = 60
 const CRASH_SPEED_AFTER_KMH = 8
+const CRASH_CANDIDATE_SAMPLES = 2
 export const CRASH_CONFIRM_WINDOW_MS = 30_000
 
 export type LocationSample = {
@@ -86,6 +90,7 @@ async function startTrip(sample: LocationSample) {
     consecutiveMovingSamples: 0,
     lastSpeedKmh: null,
     crashPendingAt: null,
+    crashCandidateCount: 0,
   })
 
   await notify('Trip started', 'TrustMate Driver is tracking your route.')
@@ -130,6 +135,9 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
   const speedKmh = speedKmhFromSample(sample, state.lastPoint, lastTimestamp)
   const isMoving = speedKmh >= MOVEMENT_THRESHOLD_KMH
 
+  // Live status is independent of trip state — owners need to see this even while parked.
+  await upsertLiveStatus(context, isMoving, speedKmh, sample)
+
   if (!state.activeTripId) {
     if (isMoving) {
       const consecutive = state.consecutiveMovingSamples + 1
@@ -145,6 +153,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
   }
 
   let crashPendingAt = state.crashPendingAt
+  let crashCandidateCount = state.crashCandidateCount
   if (crashPendingAt) {
     if (isMoving) {
       // Driver resumed normal driving — treat the earlier stop as a false alarm.
@@ -153,12 +162,23 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
       await reportPossibleCrash(context, state.lastSpeedKmh ?? 0, sample)
       crashPendingAt = null
     }
-  } else if ((state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH && speedKmh <= CRASH_SPEED_AFTER_KMH) {
-    crashPendingAt = Date.now()
-    await notify(
-      'Possible crash detected',
-      "Tap to confirm you're OK. TrustMate admin will be alerted if you don't respond.",
-    )
+  } else if (speedKmh <= CRASH_SPEED_AFTER_KMH) {
+    // Only start (or continue) counting candidate samples if the vehicle was going fast
+    // just before this streak began, or is already mid-streak from a prior fast reading.
+    crashCandidateCount =
+      crashCandidateCount > 0 || (state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH ? crashCandidateCount + 1 : 0
+
+    if (crashCandidateCount >= CRASH_CANDIDATE_SAMPLES) {
+      crashPendingAt = Date.now()
+      crashCandidateCount = 0
+      await notify(
+        'Possible crash detected',
+        "Tap to confirm you're OK. TrustMate admin will be alerted if you don't respond.",
+      )
+    }
+  } else {
+    // Moving at a normal pace again — clear any in-progress candidate streak.
+    crashCandidateCount = 0
   }
 
   const { error: waypointError } = await supabase.from('trip_waypoints').insert({
@@ -182,6 +202,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     lastMovingAt: isMoving ? Date.now() : state.lastMovingAt,
     lastSpeedKmh: speedKmh,
     crashPendingAt,
+    crashCandidateCount,
   }
 
   const idleSince = Date.now() - (updatedState.lastMovingAt ?? Date.now())
