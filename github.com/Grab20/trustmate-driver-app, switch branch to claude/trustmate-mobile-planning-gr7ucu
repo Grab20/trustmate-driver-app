@@ -1,0 +1,1277 @@
+diff --git a/mobile/app/(app)/_layout.tsx b/mobile/app/(app)/_layout.tsx
+index bca3a51..17cb4f0 100644
+--- a/mobile/app/(app)/_layout.tsx
++++ b/mobile/app/(app)/_layout.tsx
+@@ -1,5 +1,6 @@
+ import { Redirect, Stack } from 'expo-router'
+ import { useAuthStore } from '../../src/stores/authStore'
++import { useMyProfile } from '../../src/hooks/useMyProfile'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+ import { usePushNotifications } from '../../src/hooks/usePushNotifications'
+ import { useAutoTripTracking } from '../../src/hooks/useAutoTripTracking'
+@@ -8,11 +9,13 @@ import { CrashAlertModal } from '../../src/components/CrashAlertModal'
+ export default function AppLayout() {
+   const session = useAuthStore((s) => s.session)
+   const isInitializing = useAuthStore((s) => s.isInitializing)
++  const { data: profile, isLoading: isProfileLoading } = useMyProfile()
+   usePushNotifications()
+   useAutoTripTracking()
+ 
+-  if (isInitializing) return <LoadingScreen />
++  if (isInitializing || isProfileLoading) return <LoadingScreen />
+   if (!session) return <Redirect href="/login" />
++  if (profile?.role === 'owner') return <Redirect href="/owner" />
+ 
+   return (
+     <>
+diff --git a/mobile/app/(app)/index.tsx b/mobile/app/(app)/index.tsx
+index 4e77d95..8c85369 100644
+--- a/mobile/app/(app)/index.tsx
++++ b/mobile/app/(app)/index.tsx
+@@ -46,6 +46,11 @@ export default function DashboardScreen() {
+           Keep an eye on your email — once a match is confirmed on the
+           TrustMate website, your rental will appear here.
+         </Text>
++        {myProfile?.role === 'both' && (
++          <Button mode="outlined" onPress={() => router.push('/owner')} style={styles.switchButton}>
++            Switch to Owner View
++          </Button>
++        )}
+         <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
+           Sign Out
+         </Button>
+@@ -77,6 +82,12 @@ export default function DashboardScreen() {
+         {getGreeting()}, {firstName}
+       </Text>
+ 
++      {myProfile?.role === 'both' && (
++        <Button mode="outlined" onPress={() => router.push('/owner')} style={styles.switchButton}>
++          Switch to Owner View
++        </Button>
++      )}
++
+       <Card style={styles.card}>
+         <Card.Content>
+           <Chip icon="check-circle" style={styles.statusChip}>
+@@ -148,6 +159,9 @@ const styles = StyleSheet.create({
+   greeting: {
+     marginBottom: 16,
+   },
++  switchButton: {
++    marginBottom: 16,
++  },
+   card: {
+     marginBottom: 24,
+   },
+diff --git a/mobile/app/owner/_layout.tsx b/mobile/app/owner/_layout.tsx
+new file mode 100644
+index 0000000..d9e860a
+--- /dev/null
++++ b/mobile/app/owner/_layout.tsx
+@@ -0,0 +1,23 @@
++import { Redirect, Stack } from 'expo-router'
++import { useAuthStore } from '../../src/stores/authStore'
++import { useMyProfile } from '../../src/hooks/useMyProfile'
++import { LoadingScreen } from '../../src/components/LoadingScreen'
++import { usePushNotifications } from '../../src/hooks/usePushNotifications'
++
++export default function OwnerLayout() {
++  const session = useAuthStore((s) => s.session)
++  const isInitializing = useAuthStore((s) => s.isInitializing)
++  const { data: profile, isLoading: isProfileLoading } = useMyProfile()
++  usePushNotifications()
++
++  if (isInitializing || isProfileLoading) return <LoadingScreen />
++  if (!session) return <Redirect href="/login" />
++  if (profile?.role === 'driver') return <Redirect href="/" />
++
++  return (
++    <Stack>
++      <Stack.Screen name="index" options={{ title: 'Your Fleet' }} />
++      <Stack.Screen name="driver/[id]" options={{ title: 'Driver' }} />
++    </Stack>
++  )
++}
+diff --git a/mobile/app/owner/driver/[id].tsx b/mobile/app/owner/driver/[id].tsx
+new file mode 100644
+index 0000000..02cd7a8
+--- /dev/null
++++ b/mobile/app/owner/driver/[id].tsx
+@@ -0,0 +1,201 @@
++import { useEffect, useState } from 'react'
++import { useLocalSearchParams } from 'expo-router'
++import { ScrollView, View, StyleSheet } from 'react-native'
++import { Text, Card } from 'react-native-paper'
++import MapView, { Marker } from 'react-native-maps'
++import { useDriverLiveStatus } from '../../../src/hooks/useDriverLiveStatus'
++import { useDriverTripHistory } from '../../../src/hooks/useDriverTripHistory'
++import { useDriverInspectionsForOwner } from '../../../src/hooks/useInspections'
++import { LoadingScreen } from '../../../src/components/LoadingScreen'
++import { InspectionPhotoThumbnail } from '../../../src/components/InspectionPhotoThumbnail'
++import { StatTile } from '../../../src/components/StatTile'
++import { formatElapsedSince } from '../../../src/utils/schedule'
++import { reverseGeocodeLabel } from '../../../src/lib/reverseGeocode'
++
++const TYPE_LABELS: Record<string, string> = {
++  weekly_checkin: 'Vehicle Inspection',
++  proof_of_payment: 'Proof of Payment',
++  incident_report: 'Incident Report',
++}
++
++export default function OwnerDriverDetailScreen() {
++  const { id } = useLocalSearchParams<{ id: string }>()
++  const { data: liveStatus, isLoading: isLiveStatusLoading } = useDriverLiveStatus(id)
++  const { data: trips } = useDriverTripHistory(id)
++  const { data: inspections } = useDriverInspectionsForOwner(id)
++  const [addressLabel, setAddressLabel] = useState<string | null>(null)
++
++  useEffect(() => {
++    if (!liveStatus) {
++      setAddressLabel(null)
++      return
++    }
++    let cancelled = false
++    reverseGeocodeLabel(Number(liveStatus.lat), Number(liveStatus.lng)).then((label) => {
++      if (!cancelled) setAddressLabel(label)
++    })
++    return () => {
++      cancelled = true
++    }
++  }, [liveStatus?.lat, liveStatus?.lng])
++
++  if (isLiveStatusLoading) return <LoadingScreen />
++
++  return (
++    <ScrollView contentContainerStyle={styles.container}>
++      {liveStatus ? (
++        <>
++          <MapView
++            style={styles.map}
++            initialRegion={{
++              latitude: Number(liveStatus.lat),
++              longitude: Number(liveStatus.lng),
++              latitudeDelta: 0.01,
++              longitudeDelta: 0.01,
++            }}
++            region={{
++              latitude: Number(liveStatus.lat),
++              longitude: Number(liveStatus.lng),
++              latitudeDelta: 0.01,
++              longitudeDelta: 0.01,
++            }}
++          >
++            <Marker
++              coordinate={{ latitude: Number(liveStatus.lat), longitude: Number(liveStatus.lng) }}
++              title={liveStatus.is_moving ? 'Driving' : 'Parked'}
++            />
++          </MapView>
++
++          <Card style={styles.statusCard}>
++            <Card.Content>
++              <Text variant="titleMedium">{liveStatus.is_moving ? 'Driving' : 'Parked'}</Text>
++              <Text variant="bodyMedium" style={styles.address}>
++                {addressLabel ?? 'Locating…'}
++              </Text>
++              <Text variant="bodySmall" style={styles.since}>
++                {liveStatus.is_moving
++                  ? `${Math.round(liveStatus.speed_kmh ?? 0)} km/h`
++                  : `Here for ${formatElapsedSince(liveStatus.state_since)}`}
++              </Text>
++            </Card.Content>
++          </Card>
++        </>
++      ) : (
++        <Text variant="bodyMedium" style={styles.noLocation}>
++          No location data yet for this driver.
++        </Text>
++      )}
++
++      <Text variant="titleMedium" style={styles.sectionHeading}>
++        Recent Trips
++      </Text>
++      {trips && trips.length > 0 ? (
++        trips.map((trip) => (
++          <Card key={trip.id} style={styles.tripCard}>
++            <Card.Content>
++              <Text variant="bodyMedium">
++                {trip.start_location ?? 'Unknown'} → {trip.end_location ?? 'Unknown'}
++              </Text>
++              <View style={styles.tripStatsRow}>
++                <StatTile label="Distance" value={`${(trip.distance_km ?? 0).toFixed(1)} km`} />
++                <StatTile label="Avg Speed" value={`${Math.round(trip.avg_speed_kmh ?? 0)} km/h`} />
++                <StatTile label="Max Speed" value={`${Math.round(trip.max_speed_kmh ?? 0)} km/h`} />
++              </View>
++              <Text variant="bodySmall" style={styles.tripDate}>
++                {new Date(trip.started_at).toLocaleDateString(undefined, {
++                  weekday: 'short',
++                  month: 'short',
++                  day: 'numeric',
++                })}
++              </Text>
++            </Card.Content>
++          </Card>
++        ))
++      ) : (
++        <Text variant="bodyMedium" style={styles.empty}>
++          No completed trips yet.
++        </Text>
++      )}
++
++      <Text variant="titleMedium" style={styles.sectionHeading}>
++        Inspections
++      </Text>
++      {inspections && inspections.length > 0 ? (
++        inspections.map((inspection) => (
++          <Card key={inspection.id} style={styles.tripCard}>
++            <Card.Content>
++              <Text variant="bodyMedium">
++                {TYPE_LABELS[inspection.inspection_type] ?? inspection.inspection_type}
++              </Text>
++              <Text variant="bodySmall" style={styles.tripDate}>
++                {new Date(inspection.created_at ?? '').toLocaleDateString()}
++              </Text>
++              <View style={styles.photoRow}>
++                {(inspection.photo_urls ?? []).map((path) => (
++                  <InspectionPhotoThumbnail key={path} path={path} />
++                ))}
++              </View>
++            </Card.Content>
++          </Card>
++        ))
++      ) : (
++        <Text variant="bodyMedium" style={styles.empty}>
++          No inspections submitted yet.
++        </Text>
++      )}
++    </ScrollView>
++  )
++}
++
++const styles = StyleSheet.create({
++  container: {
++    paddingBottom: 24,
++  },
++  map: {
++    width: '100%',
++    height: 220,
++  },
++  statusCard: {
++    margin: 16,
++  },
++  address: {
++    marginTop: 4,
++  },
++  since: {
++    opacity: 0.6,
++    marginTop: 4,
++  },
++  noLocation: {
++    margin: 24,
++    textAlign: 'center',
++    opacity: 0.6,
++  },
++  sectionHeading: {
++    marginHorizontal: 16,
++    marginTop: 8,
++    marginBottom: 8,
++  },
++  tripCard: {
++    marginHorizontal: 16,
++    marginBottom: 12,
++  },
++  tripStatsRow: {
++    flexDirection: 'row',
++    justifyContent: 'space-between',
++    marginTop: 8,
++  },
++  tripDate: {
++    opacity: 0.6,
++    marginTop: 4,
++  },
++  photoRow: {
++    flexDirection: 'row',
++    flexWrap: 'wrap',
++    marginTop: 8,
++  },
++  empty: {
++    marginHorizontal: 16,
++    opacity: 0.6,
++    marginBottom: 24,
++  },
++})
+diff --git a/mobile/app/owner/index.tsx b/mobile/app/owner/index.tsx
+new file mode 100644
+index 0000000..672f19b
+--- /dev/null
++++ b/mobile/app/owner/index.tsx
+@@ -0,0 +1,80 @@
++import { ScrollView, StyleSheet } from 'react-native'
++import { Text, Button } from 'react-native-paper'
++import { useRouter } from 'expo-router'
++import { useOwnerFleet } from '../../src/hooks/useOwnerFleet'
++import { useMyProfile } from '../../src/hooks/useMyProfile'
++import { useAuthStore } from '../../src/stores/authStore'
++import { LoadingScreen } from '../../src/components/LoadingScreen'
++import { FleetDriverCard } from '../../src/components/FleetDriverCard'
++
++function getGreeting(): string {
++  const hour = new Date().getHours()
++  if (hour < 12) return 'Good Morning'
++  if (hour < 18) return 'Good Afternoon'
++  return 'Good Evening'
++}
++
++export default function OwnerDashboardScreen() {
++  const router = useRouter()
++  const { data: fleet, isLoading } = useOwnerFleet()
++  const { data: profile } = useMyProfile()
++  const signOut = useAuthStore((s) => s.signOut)
++
++  if (isLoading) return <LoadingScreen />
++
++  const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
++
++  return (
++    <ScrollView contentContainerStyle={styles.container}>
++      <Text variant="headlineMedium" style={styles.greeting}>
++        {getGreeting()}, {firstName}
++      </Text>
++
++      {profile?.role === 'both' && (
++        <Button mode="outlined" onPress={() => router.push('/')} style={styles.switchButton}>
++          Switch to Driver View
++        </Button>
++      )}
++
++      {fleet && fleet.length > 0 ? (
++        fleet.map((entry) => (
++          <FleetDriverCard
++            key={entry.id}
++            entry={entry}
++            onPress={() => router.push(`/owner/driver/${entry.driver_id}`)}
++          />
++        ))
++      ) : (
++        <Text variant="bodyMedium" style={styles.empty}>
++          No matched drivers yet. Once a driver is matched to one of your vehicles on the
++          TrustMate website, they'll appear here.
++        </Text>
++      )}
++
++      <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
++        Sign Out
++      </Button>
++    </ScrollView>
++  )
++}
++
++const styles = StyleSheet.create({
++  container: {
++    padding: 24,
++  },
++  greeting: {
++    marginBottom: 16,
++  },
++  switchButton: {
++    marginBottom: 16,
++  },
++  empty: {
++    opacity: 0.6,
++    textAlign: 'center',
++    marginTop: 32,
++    marginBottom: 32,
++  },
++  signOutButton: {
++    marginTop: 16,
++  },
++})
+diff --git a/mobile/src/components/FleetDriverCard.tsx b/mobile/src/components/FleetDriverCard.tsx
+new file mode 100644
+index 0000000..7a97080
+--- /dev/null
++++ b/mobile/src/components/FleetDriverCard.tsx
+@@ -0,0 +1,86 @@
++import { View, StyleSheet, Pressable } from 'react-native'
++import { Text, Card, Avatar, Chip } from 'react-native-paper'
++import type { OwnerFleetEntry } from '../hooks/useOwnerFleet'
++import { formatElapsedSince } from '../utils/schedule'
++
++export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; onPress: () => void }) {
++  const isMoving = entry.liveStatus?.is_moving ?? false
++  const initials = (entry.driver?.full_name ?? '?')
++    .split(' ')
++    .map((part) => part[0])
++    .slice(0, 2)
++    .join('')
++    .toUpperCase()
++
++  return (
++    <Pressable onPress={onPress}>
++      <Card style={styles.card}>
++        <Card.Content style={styles.content}>
++          {entry.driver?.photo_url ? (
++            <Avatar.Image size={56} source={{ uri: entry.driver.photo_url }} />
++          ) : (
++            <Avatar.Text size={56} label={initials} />
++          )}
++          <View style={styles.info}>
++            <Text variant="titleMedium">{entry.driver?.full_name ?? 'Driver'}</Text>
++            <Text variant="bodySmall" style={styles.vehicle}>
++              {entry.cars ? `${entry.cars.make} ${entry.cars.model}` : 'Vehicle unavailable'}
++            </Text>
++            {entry.liveStatus ? (
++              <Text variant="bodySmall" style={styles.since}>
++                {isMoving
++                  ? `Driving${entry.liveStatus.speed_kmh != null ? ` · ${Math.round(entry.liveStatus.speed_kmh)} km/h` : ''}`
++                  : `Parked · here for ${formatElapsedSince(entry.liveStatus.state_since)}`}
++              </Text>
++            ) : (
++              <Text variant="bodySmall" style={styles.since}>
++                No location yet
++              </Text>
++            )}
++          </View>
++          <Chip
++            compact
++            style={isMoving ? styles.drivingChip : styles.parkedChip}
++            textStyle={isMoving ? styles.drivingChipText : styles.parkedChipText}
++          >
++            {isMoving ? 'Driving' : 'Parked'}
++          </Chip>
++        </Card.Content>
++      </Card>
++    </Pressable>
++  )
++}
++
++const styles = StyleSheet.create({
++  card: {
++    marginBottom: 12,
++  },
++  content: {
++    flexDirection: 'row',
++    alignItems: 'center',
++  },
++  info: {
++    flex: 1,
++    marginLeft: 12,
++  },
++  vehicle: {
++    opacity: 0.7,
++    marginTop: 2,
++  },
++  since: {
++    opacity: 0.6,
++    marginTop: 4,
++  },
++  drivingChip: {
++    backgroundColor: '#DFF5E6',
++  },
++  drivingChipText: {
++    color: '#1E7A3D',
++  },
++  parkedChip: {
++    backgroundColor: '#EEE',
++  },
++  parkedChipText: {
++    color: '#555',
++  },
++})
+diff --git a/mobile/src/hooks/useDriverLiveStatus.ts b/mobile/src/hooks/useDriverLiveStatus.ts
+new file mode 100644
+index 0000000..d6fd8d0
+--- /dev/null
++++ b/mobile/src/hooks/useDriverLiveStatus.ts
+@@ -0,0 +1,21 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import type { Tables } from '../types/database'
++
++export function useDriverLiveStatus(driverId: string | undefined) {
++  return useQuery({
++    queryKey: ['driver-live-status', driverId],
++    queryFn: async (): Promise<Tables<'driver_live_status'> | null> => {
++      const { data, error } = await supabase
++        .from('driver_live_status')
++        .select('*')
++        .eq('driver_id', driverId as string)
++        .maybeSingle()
++
++      if (error) throw error
++      return data
++    },
++    enabled: !!driverId,
++    refetchInterval: 15000,
++  })
++}
+diff --git a/mobile/src/hooks/useDriverTripHistory.ts b/mobile/src/hooks/useDriverTripHistory.ts
+new file mode 100644
+index 0000000..6c09f50
+--- /dev/null
++++ b/mobile/src/hooks/useDriverTripHistory.ts
+@@ -0,0 +1,25 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import type { Tables } from '../types/database'
++
++const HISTORY_LIMIT = 20
++
++export function useDriverTripHistory(driverId: string | undefined) {
++  return useQuery({
++    queryKey: ['driver-trip-history', driverId],
++    queryFn: async (): Promise<Tables<'vehicle_trips'>[]> => {
++      const { data, error } = await supabase
++        .from('vehicle_trips')
++        .select('*')
++        .eq('driver_id', driverId as string)
++        .eq('status', 'completed')
++        .order('started_at', { ascending: false })
++        .limit(HISTORY_LIMIT)
++
++      if (error) throw error
++      return data
++    },
++    enabled: !!driverId,
++    refetchInterval: 30000,
++  })
++}
+diff --git a/mobile/src/hooks/useInspections.ts b/mobile/src/hooks/useInspections.ts
+index 9e1a0c0..385dfcc 100644
+--- a/mobile/src/hooks/useInspections.ts
++++ b/mobile/src/hooks/useInspections.ts
+@@ -77,3 +77,20 @@ export function useSubmitInspection() {
+     },
+   })
+ }
++
++export function useDriverInspectionsForOwner(driverId: string | undefined) {
++  return useQuery({
++    queryKey: ['driver-inspections-for-owner', driverId],
++    queryFn: async (): Promise<Tables<'vehicle_inspections'>[]> => {
++      const { data, error } = await supabase
++        .from('vehicle_inspections')
++        .select('*')
++        .eq('driver_id', driverId as string)
++        .order('created_at', { ascending: false })
++
++      if (error) throw error
++      return data
++    },
++    enabled: !!driverId,
++  })
++}
+diff --git a/mobile/src/hooks/useOwnerFleet.ts b/mobile/src/hooks/useOwnerFleet.ts
+new file mode 100644
+index 0000000..ba6a0a0
+--- /dev/null
++++ b/mobile/src/hooks/useOwnerFleet.ts
+@@ -0,0 +1,49 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import { useAuthStore } from '../stores/authStore'
++import type { Tables } from '../types/database'
++
++export type OwnerFleetEntry = Tables<'applications'> & {
++  cars: Tables<'cars'> | null
++  driver: Pick<Tables<'profiles'>, 'id' | 'full_name' | 'photo_url'> | null
++  liveStatus: Tables<'driver_live_status'> | null
++}
++
++async function fetchOwnerFleet(ownerId: string): Promise<OwnerFleetEntry[]> {
++  const { data: applications, error } = await supabase
++    .from('applications')
++    .select('*, cars(*), driver:profiles!applications_driver_id_fkey(id, full_name, photo_url)')
++    .eq('owner_id', ownerId)
++    .eq('status', 'approved')
++    .is('unmatched_at', null)
++
++  if (error) throw error
++  if (!applications || applications.length === 0) return []
++
++  const driverIds = applications.map((a) => a.driver_id).filter((id): id is string => !!id)
++
++  const { data: liveStatuses, error: liveStatusError } = await supabase
++    .from('driver_live_status')
++    .select('*')
++    .in('driver_id', driverIds)
++
++  if (liveStatusError) throw liveStatusError
++
++  const liveStatusByDriverId = new Map((liveStatuses ?? []).map((ls) => [ls.driver_id, ls]))
++
++  return applications.map((application) => ({
++    ...application,
++    liveStatus: application.driver_id ? (liveStatusByDriverId.get(application.driver_id) ?? null) : null,
++  })) as OwnerFleetEntry[]
++}
++
++export function useOwnerFleet() {
++  const userId = useAuthStore((s) => s.session?.user.id)
++
++  return useQuery({
++    queryKey: ['owner-fleet', userId],
++    queryFn: () => fetchOwnerFleet(userId as string),
++    enabled: !!userId,
++    refetchInterval: 20000,
++  })
++}
+diff --git a/mobile/src/lib/autoTripEngine.ts b/mobile/src/lib/autoTripEngine.ts
+index a1b3746..1c5d1e2 100644
+--- a/mobile/src/lib/autoTripEngine.ts
++++ b/mobile/src/lib/autoTripEngine.ts
+@@ -3,6 +3,7 @@ import { supabase } from './supabase'
+ import { haversineDistanceKm } from '../utils/geo'
+ import { reverseGeocodeLabel } from './reverseGeocode'
+ import { reportPossibleCrash } from './crashAlert'
++import { upsertLiveStatus } from './liveStatus'
+ import {
+   getAutoTripContext,
+   getAutoTripState,
+@@ -11,19 +12,22 @@ import {
+   type AutoTripPoint,
+ } from './autoTripStorage'
+ 
+-// A trip starts once the vehicle sustains this speed for MOVING_SAMPLES_TO_START
+-// consecutive location samples (avoids false starts from GPS jitter while parked).
++// A trip starts as soon as a single sample crosses this speed (device-reported GPS
++// speed is trusted immediately; a stray false start just ends itself via idle timeout).
+ const MOVEMENT_THRESHOLD_KMH = 8
+-const MOVING_SAMPLES_TO_START = 2
++const MOVING_SAMPLES_TO_START = 1
+ // A trip ends once the vehicle has been below the movement threshold for this long.
+ const IDLE_THRESHOLD_MS = 7 * 60 * 1000
+ 
+-// Crash heuristic: highway-ish speed on one sample followed by near-stationary on the
+-// very next sample. This is a coarse GPS-only signal (~30s between samples), so it will
+-// occasionally flag a hard stop that wasn't a crash — the confirm window below keeps
+-// that low-friction (one tap to dismiss) rather than silently alerting anyone.
++// Crash heuristic: highway-ish speed followed by the vehicle staying near-stationary for
++// two consecutive samples (~60s). Requiring two samples (not one) filters out ordinary
++// hard braking, sharp turns, and GPS jitter, which would otherwise look identical to a
++// crash after just one reading. This is still a coarse GPS-only signal, so it will
++// occasionally flag a stop that wasn't a crash — the confirm window keeps that
++// low-friction (one tap to dismiss) rather than silently alerting anyone.
+ const CRASH_SPEED_BEFORE_KMH = 60
+ const CRASH_SPEED_AFTER_KMH = 8
++const CRASH_CANDIDATE_SAMPLES = 2
+ export const CRASH_CONFIRM_WINDOW_MS = 30_000
+ 
+ export type LocationSample = {
+@@ -86,6 +90,7 @@ async function startTrip(sample: LocationSample) {
+     consecutiveMovingSamples: 0,
+     lastSpeedKmh: null,
+     crashPendingAt: null,
++    crashCandidateCount: 0,
+   })
+ 
+   await notify('Trip started', 'TrustMate Driver is tracking your route.')
+@@ -130,6 +135,9 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
+   const speedKmh = speedKmhFromSample(sample, state.lastPoint, lastTimestamp)
+   const isMoving = speedKmh >= MOVEMENT_THRESHOLD_KMH
+ 
++  // Live status is independent of trip state — owners need to see this even while parked.
++  await upsertLiveStatus(context, isMoving, speedKmh, sample)
++
+   if (!state.activeTripId) {
+     if (isMoving) {
+       const consecutive = state.consecutiveMovingSamples + 1
+@@ -145,6 +153,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
+   }
+ 
+   let crashPendingAt = state.crashPendingAt
++  let crashCandidateCount = state.crashCandidateCount
+   if (crashPendingAt) {
+     if (isMoving) {
+       // Driver resumed normal driving — treat the earlier stop as a false alarm.
+@@ -153,12 +162,23 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
+       await reportPossibleCrash(context, state.lastSpeedKmh ?? 0, sample)
+       crashPendingAt = null
+     }
+-  } else if ((state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH && speedKmh <= CRASH_SPEED_AFTER_KMH) {
+-    crashPendingAt = Date.now()
+-    await notify(
+-      'Possible crash detected',
+-      "Tap to confirm you're OK. TrustMate admin will be alerted if you don't respond.",
+-    )
++  } else if (speedKmh <= CRASH_SPEED_AFTER_KMH) {
++    // Only start (or continue) counting candidate samples if the vehicle was going fast
++    // just before this streak began, or is already mid-streak from a prior fast reading.
++    crashCandidateCount =
++      crashCandidateCount > 0 || (state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH ? crashCandidateCount + 1 : 0
++
++    if (crashCandidateCount >= CRASH_CANDIDATE_SAMPLES) {
++      crashPendingAt = Date.now()
++      crashCandidateCount = 0
++      await notify(
++        'Possible crash detected',
++        "Tap to confirm you're OK. TrustMate admin will be alerted if you don't respond.",
++      )
++    }
++  } else {
++    // Moving at a normal pace again — clear any in-progress candidate streak.
++    crashCandidateCount = 0
+   }
+ 
+   const { error: waypointError } = await supabase.from('trip_waypoints').insert({
+@@ -182,6 +202,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
+     lastMovingAt: isMoving ? Date.now() : state.lastMovingAt,
+     lastSpeedKmh: speedKmh,
+     crashPendingAt,
++    crashCandidateCount,
+   }
+ 
+   const idleSince = Date.now() - (updatedState.lastMovingAt ?? Date.now())
+diff --git a/mobile/src/lib/autoTripStorage.ts b/mobile/src/lib/autoTripStorage.ts
+index 85a0b2b..f2c2f9a 100644
+--- a/mobile/src/lib/autoTripStorage.ts
++++ b/mobile/src/lib/autoTripStorage.ts
+@@ -21,6 +21,7 @@ export type AutoTripState = {
+   consecutiveMovingSamples: number
+   lastSpeedKmh: number | null
+   crashPendingAt: number | null
++  crashCandidateCount: number
+ }
+ 
+ const EMPTY_STATE: AutoTripState = {
+@@ -33,6 +34,7 @@ const EMPTY_STATE: AutoTripState = {
+   consecutiveMovingSamples: 0,
+   lastSpeedKmh: null,
+   crashPendingAt: null,
++  crashCandidateCount: 0,
+ }
+ 
+ export async function getAutoTripContext(): Promise<AutoTripContext | null> {
+diff --git a/mobile/src/lib/liveStatus.ts b/mobile/src/lib/liveStatus.ts
+new file mode 100644
+index 0000000..9b8f915
+--- /dev/null
++++ b/mobile/src/lib/liveStatus.ts
+@@ -0,0 +1,32 @@
++import { supabase } from './supabase'
++import type { AutoTripContext } from './autoTripStorage'
++
++export async function upsertLiveStatus(
++  context: AutoTripContext,
++  isMoving: boolean,
++  speedKmh: number,
++  sample: { latitude: number; longitude: number },
++): Promise<void> {
++  const { data: existing } = await supabase
++    .from('driver_live_status')
++    .select('is_moving, state_since')
++    .eq('driver_id', context.driverId)
++    .maybeSingle()
++
++  const stateSince = existing && existing.is_moving === isMoving ? existing.state_since : new Date().toISOString()
++
++  const { error } = await supabase.from('driver_live_status').upsert(
++    {
++      driver_id: context.driverId,
++      car_id: context.carId,
++      lat: sample.latitude,
++      lng: sample.longitude,
++      speed_kmh: speedKmh,
++      is_moving: isMoving,
++      state_since: stateSince,
++      updated_at: new Date().toISOString(),
++    },
++    { onConflict: 'driver_id' },
++  )
++  if (error) console.warn('Live status: failed to upsert', error.message)
++}
+diff --git a/mobile/src/types/database.ts b/mobile/src/types/database.ts
+index 9d5c993..40c90f6 100644
+--- a/mobile/src/types/database.ts
++++ b/mobile/src/types/database.ts
+@@ -9,6 +9,8 @@ export type Json =
+   | Json[]
+ 
+ export type Database = {
++  // Allows to automatically instantiate createClient with right options
++  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+   __InternalSupabase: {
+     PostgrestVersion: "14.5"
+   }
+@@ -326,6 +328,54 @@ export type Database = {
+           },
+         ]
+       }
++      driver_live_status: {
++        Row: {
++          car_id: string | null
++          driver_id: string
++          is_moving: boolean
++          lat: number
++          lng: number
++          speed_kmh: number | null
++          state_since: string
++          updated_at: string
++        }
++        Insert: {
++          car_id?: string | null
++          driver_id: string
++          is_moving?: boolean
++          lat: number
++          lng: number
++          speed_kmh?: number | null
++          state_since?: string
++          updated_at?: string
++        }
++        Update: {
++          car_id?: string | null
++          driver_id?: string
++          is_moving?: boolean
++          lat?: number
++          lng?: number
++          speed_kmh?: number | null
++          state_since?: string
++          updated_at?: string
++        }
++        Relationships: [
++          {
++            foreignKeyName: "driver_live_status_car_id_fkey"
++            columns: ["car_id"]
++            isOneToOne: false
++            referencedRelation: "cars"
++            referencedColumns: ["id"]
++          },
++          {
++            foreignKeyName: "driver_live_status_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: true
++            referencedRelation: "profiles"
++            referencedColumns: ["id"]
++          },
++        ]
++      }
+       driver_profiles: {
+         Row: {
+           accidents: number | null
+@@ -339,6 +389,7 @@ export type Database = {
+           criminal_check_submitted: boolean | null
+           criminal_check_url: string | null
+           damage_incidents: number | null
++          deposit_amount: number | null
+           doc_car_url: string | null
+           doc_expires_at: string | null
+           doc_holding_id_url: string | null
+@@ -354,8 +405,10 @@ export type Database = {
+           indrive_rating: string | null
+           indrive_trips: string | null
+           late_payments: number | null
++          license_date: string | null
+           license_number: string | null
+           license_verified: boolean | null
++          license_year: number | null
+           major_accidents: number | null
+           missed_checkins: number | null
+           missed_payments: number | null
+@@ -365,6 +418,7 @@ export type Database = {
+           photo_headshot_url: string | null
+           photo_holding_id_url: string | null
+           platforms: string[] | null
++          proof_of_residence_url: string | null
+           reckless_driving: number | null
+           rejected_at: string | null
+           rejection_reason: string | null
+@@ -383,6 +437,7 @@ export type Database = {
+           vehicle_abuse: number | null
+           vehicles_stolen: number | null
+           verified_references: number | null
++          weekly_checkin_amount: number | null
+           years_driving: number | null
+         }
+         Insert: {
+@@ -397,6 +452,7 @@ export type Database = {
+           criminal_check_submitted?: boolean | null
+           criminal_check_url?: string | null
+           damage_incidents?: number | null
++          deposit_amount?: number | null
+           doc_car_url?: string | null
+           doc_expires_at?: string | null
+           doc_holding_id_url?: string | null
+@@ -412,8 +468,10 @@ export type Database = {
+           indrive_rating?: string | null
+           indrive_trips?: string | null
+           late_payments?: number | null
++          license_date?: string | null
+           license_number?: string | null
+           license_verified?: boolean | null
++          license_year?: number | null
+           major_accidents?: number | null
+           missed_checkins?: number | null
+           missed_payments?: number | null
+@@ -423,6 +481,7 @@ export type Database = {
+           photo_headshot_url?: string | null
+           photo_holding_id_url?: string | null
+           platforms?: string[] | null
++          proof_of_residence_url?: string | null
+           reckless_driving?: number | null
+           rejected_at?: string | null
+           rejection_reason?: string | null
+@@ -441,6 +500,7 @@ export type Database = {
+           vehicle_abuse?: number | null
+           vehicles_stolen?: number | null
+           verified_references?: number | null
++          weekly_checkin_amount?: number | null
+           years_driving?: number | null
+         }
+         Update: {
+@@ -455,6 +515,7 @@ export type Database = {
+           criminal_check_submitted?: boolean | null
+           criminal_check_url?: string | null
+           damage_incidents?: number | null
++          deposit_amount?: number | null
+           doc_car_url?: string | null
+           doc_expires_at?: string | null
+           doc_holding_id_url?: string | null
+@@ -470,8 +531,10 @@ export type Database = {
+           indrive_rating?: string | null
+           indrive_trips?: string | null
+           late_payments?: number | null
++          license_date?: string | null
+           license_number?: string | null
+           license_verified?: boolean | null
++          license_year?: number | null
+           major_accidents?: number | null
+           missed_checkins?: number | null
+           missed_payments?: number | null
+@@ -481,6 +544,7 @@ export type Database = {
+           photo_headshot_url?: string | null
+           photo_holding_id_url?: string | null
+           platforms?: string[] | null
++          proof_of_residence_url?: string | null
+           reckless_driving?: number | null
+           rejected_at?: string | null
+           rejection_reason?: string | null
+@@ -499,6 +563,7 @@ export type Database = {
+           vehicle_abuse?: number | null
+           vehicles_stolen?: number | null
+           verified_references?: number | null
++          weekly_checkin_amount?: number | null
+           years_driving?: number | null
+         }
+         Relationships: [
+@@ -544,6 +609,20 @@ export type Database = {
+             referencedRelation: "driver_profiles"
+             referencedColumns: ["id"]
+           },
++          {
++            foreignKeyName: "incidents_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: false
++            referencedRelation: "driver_stats"
++            referencedColumns: ["id"]
++          },
++          {
++            foreignKeyName: "incidents_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: false
++            referencedRelation: "v_driver_listing"
++            referencedColumns: ["id"]
++          },
+           {
+             foreignKeyName: "incidents_reporter_id_fkey"
+             columns: ["reporter_id"]
+@@ -815,6 +894,20 @@ export type Database = {
+             referencedRelation: "driver_profiles"
+             referencedColumns: ["id"]
+           },
++          {
++            foreignKeyName: "reviews_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: false
++            referencedRelation: "driver_stats"
++            referencedColumns: ["id"]
++          },
++          {
++            foreignKeyName: "reviews_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: false
++            referencedRelation: "v_driver_listing"
++            referencedColumns: ["id"]
++          },
+           {
+             foreignKeyName: "reviews_reviewer_id_fkey"
+             columns: ["reviewer_id"]
+@@ -921,6 +1014,20 @@ export type Database = {
+             referencedRelation: "driver_profiles"
+             referencedColumns: ["id"]
+           },
++          {
++            foreignKeyName: "trust_actions_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: false
++            referencedRelation: "driver_stats"
++            referencedColumns: ["id"]
++          },
++          {
++            foreignKeyName: "trust_actions_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: false
++            referencedRelation: "v_driver_listing"
++            referencedColumns: ["id"]
++          },
+           {
+             foreignKeyName: "trust_actions_owner_id_fkey"
+             columns: ["owner_id"]
+@@ -969,6 +1076,20 @@ export type Database = {
+             referencedRelation: "driver_profiles"
+             referencedColumns: ["id"]
+           },
++          {
++            foreignKeyName: "trust_score_log_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: false
++            referencedRelation: "driver_stats"
++            referencedColumns: ["id"]
++          },
++          {
++            foreignKeyName: "trust_score_log_driver_id_fkey"
++            columns: ["driver_id"]
++            isOneToOne: false
++            referencedRelation: "v_driver_listing"
++            referencedColumns: ["id"]
++          },
+         ]
+       }
+       vehicle_inspections: {
+@@ -1018,6 +1139,13 @@ export type Database = {
+           status?: string
+         }
+         Relationships: [
++          {
++            foreignKeyName: "vehicle_inspections_application_id_fkey"
++            columns: ["application_id"]
++            isOneToOne: false
++            referencedRelation: "active_matches"
++            referencedColumns: ["id"]
++          },
+           {
+             foreignKeyName: "vehicle_inspections_application_id_fkey"
+             columns: ["application_id"]
+@@ -1171,6 +1299,22 @@ export type Database = {
+           owner_id: string | null
+           status: string | null
+         }
++        Insert: {
++          car_id?: string | null
++          driver_id?: string | null
++          id?: string | null
++          matched_at?: string | null
++          owner_id?: string | null
++          status?: string | null
++        }
++        Update: {
++          car_id?: string | null
++          driver_id?: string | null
++          id?: string | null
++          matched_at?: string | null
++          owner_id?: string | null
++          status?: string | null
++        }
+         Relationships: [
+           {
+             foreignKeyName: "applications_car_id_fkey"
+@@ -1208,6 +1352,30 @@ export type Database = {
+           uber_rating: string | null
+           user_id: string | null
+         }
++        Insert: {
++          bolt_rating?: string | null
++          id?: string | null
++          indrive_rating?: string | null
++          late_payments?: number | null
++          ontime_payments?: number | null
++          rentals_completed?: number | null
++          status?: string | null
++          trust_score?: number | null
++          uber_rating?: string | null
++          user_id?: string | null
++        }
++        Update: {
++          bolt_rating?: string | null
++          id?: string | null
++          indrive_rating?: string | null
++          late_payments?: number | null
++          ontime_payments?: number | null
++          rentals_completed?: number | null
++          status?: string | null
++          trust_score?: number | null
++          uber_rating?: string | null
++          user_id?: string | null
++        }
+         Relationships: [
+           {
+             foreignKeyName: "driver_profiles_user_id_fkey"
+@@ -1225,6 +1393,7 @@ export type Database = {
+           bolt_rating: string | null
+           bolt_trips: string | null
+           damage_incidents: number | null
++          deposit_amount: number | null
+           doc_id_url: string | null
+           doc_license_url: string | null
+           full_name: string | null
+@@ -1245,6 +1414,7 @@ export type Database = {
+           uber_rating: string | null
+           uber_trips: string | null
+           user_id: string | null
++          weekly_checkin_amount: number | null
+           years_driving: number | null
+         }
+         Relationships: [
+@@ -1276,18 +1446,124 @@ export type Database = {
+ }
+ 
+ type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+-type DefaultSchema = DatabaseWithoutInternals["public"]
++
++type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+ 
+ export type Tables<
+-  TableName extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"]),
+-> = (DefaultSchema["Tables"] & DefaultSchema["Views"])[TableName] extends {
+-  Row: infer R
++  DefaultSchemaTableNameOrOptions extends
++    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
++    | { schema: keyof DatabaseWithoutInternals },
++  TableName extends DefaultSchemaTableNameOrOptions extends {
++    schema: keyof DatabaseWithoutInternals
++  }
++    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
++        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
++    : never = never,
++> = DefaultSchemaTableNameOrOptions extends {
++  schema: keyof DatabaseWithoutInternals
+ }
+-  ? R
+-  : never
++  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
++      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
++      Row: infer R
++    }
++    ? R
++    : never
++  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
++        DefaultSchema["Views"])
++    ? (DefaultSchema["Tables"] &
++        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
++        Row: infer R
++      }
++      ? R
++      : never
++    : never
++
++export type TablesInsert<
++  DefaultSchemaTableNameOrOptions extends
++    | keyof DefaultSchema["Tables"]
++    | { schema: keyof DatabaseWithoutInternals },
++  TableName extends DefaultSchemaTableNameOrOptions extends {
++    schema: keyof DatabaseWithoutInternals
++  }
++    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
++    : never = never,
++> = DefaultSchemaTableNameOrOptions extends {
++  schema: keyof DatabaseWithoutInternals
++}
++  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
++      Insert: infer I
++    }
++    ? I
++    : never
++  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
++    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
++        Insert: infer I
++      }
++      ? I
++      : never
++    : never
++
++export type TablesUpdate<
++  DefaultSchemaTableNameOrOptions extends
++    | keyof DefaultSchema["Tables"]
++    | { schema: keyof DatabaseWithoutInternals },
++  TableName extends DefaultSchemaTableNameOrOptions extends {
++    schema: keyof DatabaseWithoutInternals
++  }
++    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
++    : never = never,
++> = DefaultSchemaTableNameOrOptions extends {
++  schema: keyof DatabaseWithoutInternals
++}
++  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
++      Update: infer U
++    }
++    ? U
++    : never
++  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
++    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
++        Update: infer U
++      }
++      ? U
++      : never
++    : never
+ 
+-export type TablesInsert<TableName extends keyof DefaultSchema["Tables"]> =
+-  DefaultSchema["Tables"][TableName] extends { Insert: infer I } ? I : never
++export type Enums<
++  DefaultSchemaEnumNameOrOptions extends
++    | keyof DefaultSchema["Enums"]
++    | { schema: keyof DatabaseWithoutInternals },
++  EnumName extends DefaultSchemaEnumNameOrOptions extends {
++    schema: keyof DatabaseWithoutInternals
++  }
++    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
++    : never = never,
++> = DefaultSchemaEnumNameOrOptions extends {
++  schema: keyof DatabaseWithoutInternals
++}
++  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
++  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
++    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
++    : never
+ 
+-export type TablesUpdate<TableName extends keyof DefaultSchema["Tables"]> =
+-  DefaultSchema["Tables"][TableName] extends { Update: infer U } ? U : never
++export type CompositeTypes<
++  PublicCompositeTypeNameOrOptions extends
++    | keyof DefaultSchema["CompositeTypes"]
++    | { schema: keyof DatabaseWithoutInternals },
++  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
++    schema: keyof DatabaseWithoutInternals
++  }
++    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
++    : never = never,
++> = PublicCompositeTypeNameOrOptions extends {
++  schema: keyof DatabaseWithoutInternals
++}
++  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
++  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
++    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
++    : never
++
++export const Constants = {
++  public: {
++    Enums: {},
++  },
++} as const
+diff --git a/mobile/src/utils/schedule.ts b/mobile/src/utils/schedule.ts
+index 422bda8..9528f38 100644
+--- a/mobile/src/utils/schedule.ts
++++ b/mobile/src/utils/schedule.ts
+@@ -29,3 +29,15 @@ export function getRentalWeekNumber(matchedAt: string | null): number | null {
+   if (now < start) return 1
+   return Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000)) + 1
+ }
++
++// Life360-style "here for 1 day, 21 hrs" duration since a given timestamp.
++export function formatElapsedSince(iso: string): string {
++  const totalMinutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
++  const days = Math.floor(totalMinutes / (60 * 24))
++  const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
++  const minutes = totalMinutes % 60
++
++  if (days > 0) return `${days} day${days === 1 ? '' : 's'}, ${hours} hr${hours === 1 ? '' : 's'}`
++  if (hours > 0) return `${hours} hr${hours === 1 ? '' : 's'}, ${minutes} min`
++  return `${minutes} min`
++}
