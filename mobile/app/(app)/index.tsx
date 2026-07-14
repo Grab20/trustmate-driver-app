@@ -8,16 +8,16 @@ import { useDistanceTotals } from '../../src/hooks/useDistanceTotals'
 import { useDriverProfile } from '../../src/hooks/useDriverProfile'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { useMyLiveStatus } from '../../src/hooks/useMyLiveStatus'
-import { useRecentActivity } from '../../src/hooks/useRecentActivity'
+import { useTrustScoreTrend } from '../../src/hooks/useTrustScoreTrend'
 import { useAuthStore } from '../../src/stores/authStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 import { StatTile } from '../../src/components/StatTile'
-import { ActivityRow } from '../../src/components/ActivityRow'
 import { AlertBanner } from '../../src/components/AlertBanner'
 import { TrustScoreRing } from '../../src/components/TrustScoreRing'
 import { IconBadge } from '../../src/components/IconBadge'
 import { reverseGeocodeLabel } from '../../src/lib/reverseGeocode'
 import { formatElapsedSince, getNextOccurrence, formatShortDate } from '../../src/utils/schedule'
+import { computePaymentRecord } from '../../src/utils/paymentRecord'
 import { brandColors } from '../../src/theme/theme'
 
 function getGreeting(): string {
@@ -42,7 +42,7 @@ export default function HomeScreen() {
   const { data: driverProfile } = useDriverProfile()
   const { data: myProfile } = useMyProfile()
   const { data: liveStatus } = useMyLiveStatus()
-  const { data: recentActivity } = useRecentActivity()
+  const { data: trendPoints } = useTrustScoreTrend()
   const signOut = useAuthStore((s) => s.signOut)
   const [addressLabel, setAddressLabel] = useState<string | null>(null)
 
@@ -92,6 +92,7 @@ export default function HomeScreen() {
 
   const nextInspection = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
   const nextPayment = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
+  const paymentRecord = computePaymentRecord(activeRental.matched_at, driverProfile?.ontime_payments ?? null)
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -180,7 +181,7 @@ export default function HomeScreen() {
 
       <Card style={styles.trustCard}>
         <Card.Content style={styles.trustCardContent}>
-          <View>
+          <View style={styles.trustCardTextColumn}>
             <View style={styles.trustCardLabelRow}>
               <IconBadge source="shield-star" backgroundColor="rgba(255,255,255,0.15)" size={14} />
               <Text variant="labelMedium" style={styles.trustCardLabel}>
@@ -190,23 +191,47 @@ export default function HomeScreen() {
             <Text variant="bodyMedium" style={styles.trustCardStanding}>
               {trustScoreLabel(driverProfile?.trust_score)}
             </Text>
+            {trendPoints != null && trendPoints !== 0 && (
+              <View style={styles.trendRow}>
+                <IconBadge
+                  source={trendPoints > 0 ? 'trending-up' : 'trending-down'}
+                  size={12}
+                  backgroundColor={trendPoints > 0 ? brandColors.mintGreen : brandColors.errorRed}
+                  color={brandColors.darkGreen}
+                />
+                <Text variant="bodySmall" style={styles.trendText}>
+                  {trendPoints > 0 ? '+' : ''}
+                  {trendPoints} points this month
+                </Text>
+              </View>
+            )}
           </View>
           <TrustScoreRing score={driverProfile?.trust_score ?? 0} />
         </Card.Content>
       </Card>
 
-      <View style={styles.activityHeadingRow}>
-        <IconBadge source="history" backgroundColor={brandColors.green} size={14} />
-        <Text variant="titleMedium" style={styles.activityHeading}>
-          Recent Activity
-        </Text>
-      </View>
-      {recentActivity && recentActivity.length > 0 ? (
-        recentActivity.map((item) => <ActivityRow key={`${item.type}-${item.id}`} item={item} />)
-      ) : (
-        <Text variant="bodyMedium" style={styles.noActivity}>
-          Nothing yet — trips and submissions will show up here.
-        </Text>
+      {paymentRecord && (
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.recordHeadingRow}>
+              <IconBadge source="calendar-check" backgroundColor={brandColors.green} size={14} />
+              <Text variant="labelMedium" style={styles.recordHeading}>
+                DRIVER RECORD
+              </Text>
+            </View>
+            <Text variant="titleMedium" style={styles.recordValue}>
+              {paymentRecord.weeksOnTime} of {paymentRecord.weeksElapsed} weeks paid on time
+            </Text>
+            <View style={styles.recordTrack}>
+              <View
+                style={[
+                  styles.recordFill,
+                  { width: `${Math.min(100, (paymentRecord.weeksOnTime / paymentRecord.weeksElapsed) * 100)}%` },
+                ]}
+              />
+            </View>
+          </Card.Content>
+        </Card>
       )}
 
       <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
@@ -293,12 +318,16 @@ const styles = StyleSheet.create({
   trustCard: {
     backgroundColor: brandColors.darkGreen,
     marginTop: 8,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   trustCardContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  trustCardTextColumn: {
+    flex: 1,
+    marginRight: 12,
   },
   trustCardLabelRow: {
     flexDirection: 'row',
@@ -313,16 +342,42 @@ const styles = StyleSheet.create({
     color: brandColors.mintGreen,
     marginTop: 4,
   },
-  activityHeadingRow: {
+  trendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  trendText: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  card: {
+    marginBottom: 24,
+  },
+  recordHeadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
   },
-  activityHeading: {},
-  noActivity: {
+  recordHeading: {
     opacity: 0.6,
-    marginBottom: 24,
+    letterSpacing: 0.5,
+  },
+  recordValue: {
+    color: brandColors.darkGreen,
+    marginBottom: 10,
+  },
+  recordTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EAEAE5',
+    overflow: 'hidden',
+  },
+  recordFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: brandColors.green,
   },
   signOutButton: {
     marginTop: 16,

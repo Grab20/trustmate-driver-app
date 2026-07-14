@@ -10,6 +10,7 @@ type TripRouteRowProps = {
   durationSeconds: number
   maxSpeedKmh: number
   onPress?: () => void
+  driverName?: string
 }
 
 function formatTime(iso: string): string {
@@ -29,6 +30,7 @@ export function TripRouteRow({
   durationSeconds,
   maxSpeedKmh,
   onPress,
+  driverName,
 }: TripRouteRowProps) {
   const Wrapper = onPress ? Pressable : View
 
@@ -40,6 +42,11 @@ export function TripRouteRow({
         <View style={styles.filledDot} />
       </View>
       <View style={styles.content}>
+        {driverName && (
+          <Text variant="labelSmall" style={styles.driverName}>
+            {driverName}
+          </Text>
+        )}
         <View style={styles.topRow}>
           <Text variant="bodyMedium" style={styles.location}>
             {startLabel}
@@ -98,6 +105,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  driverName: {
+    color: brandColors.green,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   chevron: {
     alignSelf: 'center',

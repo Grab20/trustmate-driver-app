@@ -110,6 +110,7 @@ export type Database = {
           owner_notes: string | null
           owner_rated: boolean | null
           status: string | null
+          unmatch_reason: string | null
           unmatched_at: string | null
           unmatched_by: string | null
         }
@@ -127,6 +128,7 @@ export type Database = {
           owner_notes?: string | null
           owner_rated?: boolean | null
           status?: string | null
+          unmatch_reason?: string | null
           unmatched_at?: string | null
           unmatched_by?: string | null
         }
@@ -144,6 +146,7 @@ export type Database = {
           owner_notes?: string | null
           owner_rated?: boolean | null
           status?: string | null
+          unmatch_reason?: string | null
           unmatched_at?: string | null
           unmatched_by?: string | null
         }
@@ -175,6 +178,7 @@ export type Database = {
         Row: {
           admin_note: string | null
           admin_status: string | null
+          applications_paused: boolean | null
           checkin_time: string | null
           color: string | null
           created_at: string | null
@@ -213,6 +217,7 @@ export type Database = {
         Insert: {
           admin_note?: string | null
           admin_status?: string | null
+          applications_paused?: boolean | null
           checkin_time?: string | null
           color?: string | null
           created_at?: string | null
@@ -251,6 +256,7 @@ export type Database = {
         Update: {
           admin_note?: string | null
           admin_status?: string | null
+          applications_paused?: boolean | null
           checkin_time?: string | null
           color?: string | null
           created_at?: string | null
@@ -402,6 +408,8 @@ export type Database = {
           doc_uploaded_at: string | null
           docs_verified: boolean | null
           excellent_care: number | null
+          has_1yr_experience: boolean | null
+          has_pdp: boolean | null
           id: string
           id_number: string | null
           id_verified: boolean | null
@@ -417,6 +425,7 @@ export type Database = {
           missed_payments: number | null
           months_with_owner: number | null
           ontime_payments: number | null
+          pdp_url: string | null
           photo_fullbody_url: string | null
           photo_headshot_url: string | null
           photo_holding_id_url: string | null
@@ -430,6 +439,12 @@ export type Database = {
           screenshot_bolt_url: string | null
           screenshot_indrive_url: string | null
           screenshot_uber_url: string | null
+          self_bolt_rating: number | null
+          self_bolt_trips: number | null
+          self_indrive_rating: number | null
+          self_indrive_trips: number | null
+          self_uber_rating: number | null
+          self_uber_trips: number | null
           status: string | null
           suspended: boolean | null
           trust_score: number | null
@@ -465,6 +480,8 @@ export type Database = {
           doc_uploaded_at?: string | null
           docs_verified?: boolean | null
           excellent_care?: number | null
+          has_1yr_experience?: boolean | null
+          has_pdp?: boolean | null
           id?: string
           id_number?: string | null
           id_verified?: boolean | null
@@ -480,6 +497,7 @@ export type Database = {
           missed_payments?: number | null
           months_with_owner?: number | null
           ontime_payments?: number | null
+          pdp_url?: string | null
           photo_fullbody_url?: string | null
           photo_headshot_url?: string | null
           photo_holding_id_url?: string | null
@@ -493,6 +511,12 @@ export type Database = {
           screenshot_bolt_url?: string | null
           screenshot_indrive_url?: string | null
           screenshot_uber_url?: string | null
+          self_bolt_rating?: number | null
+          self_bolt_trips?: number | null
+          self_indrive_rating?: number | null
+          self_indrive_trips?: number | null
+          self_uber_rating?: number | null
+          self_uber_trips?: number | null
           status?: string | null
           suspended?: boolean | null
           trust_score?: number | null
@@ -528,6 +552,8 @@ export type Database = {
           doc_uploaded_at?: string | null
           docs_verified?: boolean | null
           excellent_care?: number | null
+          has_1yr_experience?: boolean | null
+          has_pdp?: boolean | null
           id?: string
           id_number?: string | null
           id_verified?: boolean | null
@@ -543,6 +569,7 @@ export type Database = {
           missed_payments?: number | null
           months_with_owner?: number | null
           ontime_payments?: number | null
+          pdp_url?: string | null
           photo_fullbody_url?: string | null
           photo_headshot_url?: string | null
           photo_holding_id_url?: string | null
@@ -556,6 +583,12 @@ export type Database = {
           screenshot_bolt_url?: string | null
           screenshot_indrive_url?: string | null
           screenshot_uber_url?: string | null
+          self_bolt_rating?: number | null
+          self_bolt_trips?: number | null
+          self_indrive_rating?: number | null
+          self_indrive_trips?: number | null
+          self_uber_rating?: number | null
+          self_uber_trips?: number | null
           status?: string | null
           suspended?: boolean | null
           trust_score?: number | null
@@ -779,13 +812,21 @@ export type Database = {
           full_name: string
           id: string
           is_admin: boolean | null
+          is_suspended: boolean | null
           location: string | null
           phone: string | null
+          photo_headshot_url: string | null
+          photo_holding_id_url: string | null
           photo_url: string | null
           popia_accepted: boolean | null
           popia_accepted_at: string | null
           preferred_contact: string | null
           role: string
+          suspended_at: string | null
+          suspension_reason: string | null
+          tc_accepted_at: string | null
+          tc_accepted_ip: string | null
+          tc_version: string | null
           terms_accepted: boolean | null
           terms_accepted_at: string | null
           terms_version: string | null
@@ -803,13 +844,21 @@ export type Database = {
           full_name: string
           id: string
           is_admin?: boolean | null
+          is_suspended?: boolean | null
           location?: string | null
           phone?: string | null
+          photo_headshot_url?: string | null
+          photo_holding_id_url?: string | null
           photo_url?: string | null
           popia_accepted?: boolean | null
           popia_accepted_at?: string | null
           preferred_contact?: string | null
           role: string
+          suspended_at?: string | null
+          suspension_reason?: string | null
+          tc_accepted_at?: string | null
+          tc_accepted_ip?: string | null
+          tc_version?: string | null
           terms_accepted?: boolean | null
           terms_accepted_at?: string | null
           terms_version?: string | null
@@ -827,13 +876,21 @@ export type Database = {
           full_name?: string
           id?: string
           is_admin?: boolean | null
+          is_suspended?: boolean | null
           location?: string | null
           phone?: string | null
+          photo_headshot_url?: string | null
+          photo_holding_id_url?: string | null
           photo_url?: string | null
           popia_accepted?: boolean | null
           popia_accepted_at?: string | null
           preferred_contact?: string | null
           role?: string
+          suspended_at?: string | null
+          suspension_reason?: string | null
+          tc_accepted_at?: string | null
+          tc_accepted_ip?: string | null
+          tc_version?: string | null
           terms_accepted?: boolean | null
           terms_accepted_at?: string | null
           terms_version?: string | null
@@ -1187,6 +1244,9 @@ export type Database = {
           inspection_type: string
           notes: string | null
           odometer_km: number | null
+          owner_review_comment: string | null
+          owner_review_status: string
+          owner_reviewed_at: string | null
           photo_urls: string[] | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -1202,6 +1262,9 @@ export type Database = {
           inspection_type?: string
           notes?: string | null
           odometer_km?: number | null
+          owner_review_comment?: string | null
+          owner_review_status?: string
+          owner_reviewed_at?: string | null
           photo_urls?: string[] | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -1217,6 +1280,9 @@ export type Database = {
           inspection_type?: string
           notes?: string | null
           odometer_km?: number | null
+          owner_review_comment?: string | null
+          owner_review_status?: string
+          owner_reviewed_at?: string | null
           photo_urls?: string[] | null
           reviewed_at?: string | null
           reviewed_by?: string | null

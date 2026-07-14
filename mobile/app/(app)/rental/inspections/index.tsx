@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router'
 import { useInspectionHistory } from '../../../../src/hooks/useInspections'
 import { InspectionPhotoThumbnail } from '../../../../src/components/InspectionPhotoThumbnail'
 import { LoadingScreen } from '../../../../src/components/LoadingScreen'
+import { IconBadge } from '../../../../src/components/IconBadge'
+import { brandColors } from '../../../../src/theme/theme'
 import type { Tables } from '../../../../src/types/database'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -12,7 +14,14 @@ const TYPE_LABELS: Record<string, string> = {
   incident_report: 'Incident Report',
 }
 
+const REVIEW_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+  approved: { label: 'Approved by owner', icon: 'check-circle', color: brandColors.green },
+  declined: { label: 'Declined by owner', icon: 'close-circle', color: brandColors.errorRed },
+}
+
 function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspections'> }) {
+  const reviewConfig = REVIEW_CONFIG[inspection.owner_review_status ?? '']
+
   return (
     <Card style={styles.card}>
       <Card.Content>
@@ -42,6 +51,21 @@ function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspection
             {inspection.photo_urls.map((path) => (
               <InspectionPhotoThumbnail key={path} path={path} />
             ))}
+          </View>
+        )}
+        {reviewConfig && (
+          <View style={styles.reviewRow}>
+            <IconBadge source={reviewConfig.icon} size={14} backgroundColor={`${reviewConfig.color}22`} color={reviewConfig.color} />
+            <View style={styles.reviewTextColumn}>
+              <Text variant="bodyMedium" style={{ color: reviewConfig.color, fontWeight: '700' }}>
+                {reviewConfig.label}
+              </Text>
+              {inspection.owner_review_comment && (
+                <Text variant="bodySmall" style={styles.reviewComment}>
+                  "{inspection.owner_review_comment}"
+                </Text>
+              )}
+            </View>
           </View>
         )}
       </Card.Content>
@@ -110,6 +134,23 @@ const styles = StyleSheet.create({
   photoRow: {
     flexDirection: 'row',
     marginTop: 8,
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E3E3DD',
+  },
+  reviewTextColumn: {
+    marginLeft: 10,
+    flex: 1,
+  },
+  reviewComment: {
+    opacity: 0.7,
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   empty: {
     textAlign: 'center',

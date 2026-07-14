@@ -12,7 +12,7 @@ import { useDriverTrafficOffencesForOwner } from '../../../src/hooks/useTrafficO
 import { useCar, useUpdateNextServiceDate } from '../../../src/hooks/useCar'
 import { useProfile } from '../../../src/hooks/useProfile'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
-import { InspectionPhotoThumbnail } from '../../../src/components/InspectionPhotoThumbnail'
+import { InspectionReviewCard } from '../../../src/components/InspectionReviewCard'
 import { StatTile } from '../../../src/components/StatTile'
 import { TrafficOffenceRow } from '../../../src/components/TrafficOffenceRow'
 import { TripRouteRow } from '../../../src/components/TripRouteRow'
@@ -22,12 +22,6 @@ import { ChecklistRow } from '../../../src/components/ChecklistRow'
 import { formatShortDate, getNextOccurrence } from '../../../src/utils/schedule'
 import { reverseGeocodeLabel } from '../../../src/lib/reverseGeocode'
 import { brandColors } from '../../../src/theme/theme'
-
-const TYPE_LABELS: Record<string, string> = {
-  weekly_checkin: 'Vehicle Inspection',
-  proof_of_payment: 'Proof of Payment',
-  incident_report: 'Incident Report',
-}
 
 function formatDrivingTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600)
@@ -241,21 +235,7 @@ export default function OwnerDriverDetailScreen() {
       <SectionLabel icon="clipboard-check-outline" label="INSPECTIONS" />
       {inspections && inspections.length > 0 ? (
         inspections.map((inspection) => (
-          <Card key={inspection.id} style={styles.card}>
-            <Card.Content>
-              <Text variant="bodyMedium">
-                {TYPE_LABELS[inspection.inspection_type] ?? inspection.inspection_type}
-              </Text>
-              <Text variant="bodySmall" style={styles.detail}>
-                {new Date(inspection.created_at ?? '').toLocaleDateString()}
-              </Text>
-              <View style={styles.photoRow}>
-                {(inspection.photo_urls ?? []).map((path) => (
-                  <InspectionPhotoThumbnail key={path} path={path} />
-                ))}
-              </View>
-            </Card.Content>
-          </Card>
+          <InspectionReviewCard key={inspection.id} inspection={inspection} driverId={id} />
         ))
       ) : (
         <Text variant="bodyMedium" style={styles.empty}>
@@ -346,11 +326,6 @@ const styles = StyleSheet.create({
   dateInput: {
     marginTop: 12,
     marginBottom: 12,
-  },
-  photoRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
   },
   empty: {
     opacity: 0.6,

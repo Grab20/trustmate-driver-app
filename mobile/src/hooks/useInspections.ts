@@ -94,3 +94,31 @@ export function useDriverInspectionsForOwner(driverId: string | undefined) {
     enabled: !!driverId,
   })
 }
+
+type ReviewInspectionInput = {
+  inspectionId: string
+  status: 'approved' | 'declined'
+  comment: string
+}
+
+export function useReviewInspection(driverId: string | undefined) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: ReviewInspectionInput) => {
+      const { error } = await supabase
+        .from('vehicle_inspections')
+        .update({
+          owner_review_status: input.status,
+          owner_review_comment: input.comment || null,
+          owner_reviewed_at: new Date().toISOString(),
+        })
+        .eq('id', input.inspectionId)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['driver-inspections-for-owner', driverId] })
+    },
+  })
+}

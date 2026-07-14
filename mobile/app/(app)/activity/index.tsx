@@ -3,8 +3,10 @@ import { Text, Card } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useDistanceTotals } from '../../../src/hooks/useDistanceTotals'
 import { useTodayTrips } from '../../../src/hooks/useTodayTrips'
+import { useRecentActivity } from '../../../src/hooks/useRecentActivity'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
 import { TripRouteRow } from '../../../src/components/TripRouteRow'
+import { ActivityRow } from '../../../src/components/ActivityRow'
 import { IconBadge } from '../../../src/components/IconBadge'
 import { brandColors } from '../../../src/theme/theme'
 
@@ -19,8 +21,9 @@ export default function ActivityScreen() {
   const router = useRouter()
   const { data: distanceTotals, isLoading: isTotalsLoading } = useDistanceTotals()
   const { data: todayTrips, isLoading: isTripsLoading } = useTodayTrips()
+  const { data: recentActivity, isLoading: isRecentLoading } = useRecentActivity()
 
-  if (isTotalsLoading || isTripsLoading) return <LoadingScreen />
+  if (isTotalsLoading || isTripsLoading || isRecentLoading) return <LoadingScreen />
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -82,6 +85,27 @@ export default function ActivityScreen() {
       ) : (
         <Text variant="bodyMedium" style={styles.noTrips}>
           No trips recorded yet today.
+        </Text>
+      )}
+
+      <Text variant="labelMedium" style={styles.sectionLabel}>
+        RECENT ACTIVITY
+      </Text>
+      {recentActivity && recentActivity.length > 0 ? (
+        <Card style={styles.tripsCard}>
+          <Card.Content>
+            {recentActivity.map((item) => (
+              <ActivityRow
+                key={`${item.type}-${item.id}`}
+                item={item}
+                onPress={item.type === 'trip' ? () => router.push(`/activity/${item.trip.id}`) : undefined}
+              />
+            ))}
+          </Card.Content>
+        </Card>
+      ) : (
+        <Text variant="bodyMedium" style={styles.noTrips}>
+          Nothing yet — trips and submissions will show up here.
         </Text>
       )}
     </ScrollView>
