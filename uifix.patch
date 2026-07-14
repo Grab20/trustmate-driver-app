@@ -1,0 +1,223 @@
+diff --git a/mobile/app/(app)/_layout.tsx b/mobile/app/(app)/_layout.tsx
+index dfc50af5..d700b451 100644
+--- a/mobile/app/(app)/_layout.tsx
++++ b/mobile/app/(app)/_layout.tsx
+@@ -28,6 +28,21 @@ export default function AppLayout() {
+           headerTitleStyle: { color: '#fff' },
+           tabBarActiveTintColor: brandColors.green,
+           tabBarInactiveTintColor: '#8A8A8A',
++          tabBarStyle: {
++            height: 64,
++            paddingTop: 6,
++            paddingBottom: 10,
++            borderTopWidth: 0,
++            shadowColor: '#000',
++            shadowOpacity: 0.08,
++            shadowRadius: 10,
++            shadowOffset: { width: 0, height: -2 },
++            elevation: 8,
++          },
++          tabBarLabelStyle: {
++            fontSize: 11,
++            fontWeight: '600',
++          },
+         }}
+       >
+         <Tabs.Screen
+diff --git a/mobile/app/(auth)/login.tsx b/mobile/app/(auth)/login.tsx
+index 917278b8..617b4b23 100644
+--- a/mobile/app/(auth)/login.tsx
++++ b/mobile/app/(auth)/login.tsx
+@@ -2,6 +2,8 @@ import { useState } from 'react'
+ import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
+ import { Text, TextInput, Button, HelperText } from 'react-native-paper'
+ import { useAuthStore } from '../../src/stores/authStore'
++import { IconBadge } from '../../src/components/IconBadge'
++import { brandColors } from '../../src/theme/theme'
+ 
+ export default function LoginScreen() {
+   const signIn = useAuthStore((s) => s.signIn)
+@@ -24,6 +26,9 @@ export default function LoginScreen() {
+       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+     >
+       <View style={styles.container}>
++        <View style={styles.heroBadge}>
++          <IconBadge source="shield-car" size={36} backgroundColor={brandColors.darkGreen} />
++        </View>
+         <Text variant="headlineMedium" style={styles.title}>
+           TrustMate Driver
+         </Text>
+@@ -32,20 +37,28 @@ export default function LoginScreen() {
+         </Text>
+ 
+         <TextInput
++          mode="outlined"
+           label="Email"
+           value={email}
+           onChangeText={setEmail}
+           autoCapitalize="none"
+           keyboardType="email-address"
+           textContentType="emailAddress"
++          left={<TextInput.Icon icon="email-outline" />}
++          outlineColor="#DDE3DE"
++          activeOutlineColor={brandColors.green}
+           style={styles.input}
+         />
+         <TextInput
++          mode="outlined"
+           label="Password"
+           value={password}
+           onChangeText={setPassword}
+           secureTextEntry
+           textContentType="password"
++          left={<TextInput.Icon icon="lock-outline" />}
++          outlineColor="#DDE3DE"
++          activeOutlineColor={brandColors.green}
+           style={styles.input}
+         />
+ 
+@@ -58,6 +71,8 @@ export default function LoginScreen() {
+           onPress={handleSignIn}
+           loading={isSubmitting}
+           disabled={isSubmitting || !email || !password}
++          style={styles.signInButton}
++          contentStyle={styles.signInButtonContent}
+         >
+           Sign In
+         </Button>
+@@ -78,6 +93,10 @@ const styles = StyleSheet.create({
+     justifyContent: 'center',
+     paddingHorizontal: 24,
+   },
++  heroBadge: {
++    alignSelf: 'center',
++    marginBottom: 20,
++  },
+   title: {
+     textAlign: 'center',
+     marginBottom: 8,
+@@ -89,6 +108,13 @@ const styles = StyleSheet.create({
+   },
+   input: {
+     marginBottom: 12,
++    backgroundColor: '#fff',
++  },
++  signInButton: {
++    marginTop: 4,
++  },
++  signInButtonContent: {
++    paddingVertical: 4,
+   },
+   footnote: {
+     textAlign: 'center',
+diff --git a/mobile/src/components/CrashAlertModal.tsx b/mobile/src/components/CrashAlertModal.tsx
+index d218c13b..cd0dc795 100644
+--- a/mobile/src/components/CrashAlertModal.tsx
++++ b/mobile/src/components/CrashAlertModal.tsx
+@@ -3,6 +3,8 @@ import { Modal, View, StyleSheet } from 'react-native'
+ import { Text, Button } from 'react-native-paper'
+ import { useCrashAlert } from '../hooks/useCrashAlert'
+ import { CRASH_CONFIRM_WINDOW_MS } from '../lib/autoTripEngine'
++import { IconBadge } from './IconBadge'
++import { brandColors } from '../theme/theme'
+ 
+ export function CrashAlertModal() {
+   const { pendingSince, confirmOk } = useCrashAlert()
+@@ -24,6 +26,9 @@ export function CrashAlertModal() {
+     <Modal visible transparent animationType="fade">
+       <View style={styles.overlay}>
+         <View style={styles.card}>
++          <View style={styles.iconRow}>
++            <IconBadge source="car-emergency" size={28} backgroundColor={brandColors.errorRed} />
++          </View>
+           <Text variant="headlineSmall" style={styles.title}>
+             Possible Crash Detected
+           </Text>
+@@ -55,6 +60,10 @@ const styles = StyleSheet.create({
+     padding: 24,
+     width: '100%',
+   },
++  iconRow: {
++    alignItems: 'center',
++    marginBottom: 16,
++  },
+   title: {
+     marginBottom: 12,
+     textAlign: 'center',
+diff --git a/mobile/src/components/TrafficOffenceRow.tsx b/mobile/src/components/TrafficOffenceRow.tsx
+index d9c9ed08..2bf0ea0f 100644
+--- a/mobile/src/components/TrafficOffenceRow.tsx
++++ b/mobile/src/components/TrafficOffenceRow.tsx
+@@ -1,15 +1,35 @@
+ import { View, StyleSheet } from 'react-native'
+ import { Text, Card, Chip } from 'react-native-paper'
+ import type { Tables } from '../types/database'
++import { IconBadge } from './IconBadge'
++
++const STATUS_ICONS: Record<string, string> = {
++  unpaid: 'alert-circle',
++  paid: 'check-circle',
++  disputed: 'flag-outline',
++}
++
++const STATUS_ICON_COLORS: Record<string, string> = {
++  unpaid: '#B3261E',
++  paid: '#1E7A3D',
++  disputed: '#8A6D00',
++}
+ 
+ export function TrafficOffenceRow({ offence }: { offence: Tables<'traffic_offences'> }) {
+   const statusStyle = STATUS_STYLES[offence.status] ?? STATUS_STYLES.unpaid
++  const statusIcon = STATUS_ICONS[offence.status] ?? STATUS_ICONS.unpaid
++  const statusIconColor = STATUS_ICON_COLORS[offence.status] ?? STATUS_ICON_COLORS.unpaid
+ 
+   return (
+     <Card style={styles.card}>
+       <Card.Content>
+         <View style={styles.header}>
+-          <Text variant="titleMedium">{offence.offence_type ?? 'Traffic Offence'}</Text>
++          <View style={styles.titleRow}>
++            <IconBadge source={statusIcon} backgroundColor={`${statusIconColor}22`} color={statusIconColor} />
++            <Text variant="titleMedium" style={styles.titleText}>
++              {offence.offence_type ?? 'Traffic Offence'}
++            </Text>
++          </View>
+           <Chip compact style={statusStyle.chip} textStyle={statusStyle.text}>
+             {offence.status}
+           </Chip>
+@@ -43,11 +63,21 @@ const styles = StyleSheet.create({
+   header: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+-    alignItems: 'flex-start',
++    alignItems: 'center',
++  },
++  titleRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 10,
++    flex: 1,
++    marginRight: 8,
++  },
++  titleText: {
++    flexShrink: 1,
+   },
+   date: {
+     opacity: 0.6,
+-    marginTop: 2,
++    marginTop: 8,
+   },
+   description: {
+     marginTop: 8,
+diff --git a/mobile/src/theme/theme.ts b/mobile/src/theme/theme.ts
+index a2ab8901..2827b6f0 100644
+--- a/mobile/src/theme/theme.ts
++++ b/mobile/src/theme/theme.ts
+@@ -12,6 +12,7 @@ export const brandColors = {
+ 
+ export const theme = {
+   ...MD3LightTheme,
++  roundness: 6,
+   colors: {
+     ...MD3LightTheme.colors,
+     primary: brandColors.green,
