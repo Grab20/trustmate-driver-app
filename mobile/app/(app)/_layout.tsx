@@ -1,11 +1,11 @@
 import { Redirect, Tabs } from 'expo-router'
-import { Icon } from 'react-native-paper'
 import { useAuthStore } from '../../src/stores/authStore'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 import { usePushNotifications } from '../../src/hooks/usePushNotifications'
 import { useAutoTripTracking } from '../../src/hooks/useAutoTripTracking'
 import { CrashAlertModal } from '../../src/components/CrashAlertModal'
+import { TabIcon } from '../../src/components/TabIcon'
 import { brandColors } from '../../src/theme/theme'
 
 export default function AppLayout() {
@@ -34,14 +34,19 @@ export default function AppLayout() {
           name="index"
           options={{
             title: 'Home',
-            tabBarIcon: ({ color, size }) => <Icon source="home-variant" size={size} color={color as string} />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <TabIcon source="home-variant" size={size} color={color as string} focused={focused} />
+            ),
           }}
         />
         <Tabs.Screen
           name="activity"
           options={{
             title: 'Activity',
-            tabBarIcon: ({ color, size }) => <Icon source="pulse" size={size} color={color as string} />,
+            headerShown: false,
+            tabBarIcon: ({ color, size, focused }) => (
+              <TabIcon source="pulse" size={size} color={color as string} focused={focused} />
+            ),
           }}
         />
         <Tabs.Screen
@@ -49,14 +54,18 @@ export default function AppLayout() {
           options={{
             title: 'Rental',
             headerShown: false,
-            tabBarIcon: ({ color, size }) => <Icon source="car" size={size} color={color as string} />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <TabIcon source="car" size={size} color={color as string} focused={focused} />
+            ),
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
             title: 'Profile',
-            tabBarIcon: ({ color, size }) => <Icon source="account" size={size} color={color as string} />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <TabIcon source="account" size={size} color={color as string} focused={focused} />
+            ),
           }}
         />
       </Tabs>

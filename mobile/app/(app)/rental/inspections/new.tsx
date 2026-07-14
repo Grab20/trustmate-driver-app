@@ -7,6 +7,7 @@ import { useActiveRental } from '../../../../src/hooks/useActiveRental'
 import { useVehicleOdometer } from '../../../../src/hooks/useVehicleOdometer'
 import { useSubmitInspection } from '../../../../src/hooks/useInspections'
 import { PhotoSlot } from '../../../../src/components/PhotoSlot'
+import { InspectionProgress } from '../../../../src/components/InspectionProgress'
 
 // Order matters: photo_urls is a plain array, and this order is the convention
 // used to interpret which shot is which when displaying an inspection later.
@@ -40,7 +41,8 @@ export default function NewInspectionScreen() {
     dashboard: null,
   })
 
-  const allShotsCaptured = REQUIRED_SHOTS.every((shot) => shots[shot.key] !== null)
+  const capturedCount = REQUIRED_SHOTS.filter((shot) => shots[shot.key] !== null).length
+  const allShotsCaptured = capturedCount === REQUIRED_SHOTS.length
 
   async function handleCapture(key: ShotKey) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync()
@@ -78,6 +80,8 @@ export default function NewInspectionScreen() {
       <Text variant="bodyMedium" style={styles.subheading}>
         Take all 6 photos using your camera so your vehicle owner can review the car's condition.
       </Text>
+
+      <InspectionProgress completed={capturedCount} total={REQUIRED_SHOTS.length} />
 
       <TextInput
         label="Odometer (km)"

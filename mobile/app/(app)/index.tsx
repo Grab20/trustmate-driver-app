@@ -15,6 +15,7 @@ import { StatTile } from '../../src/components/StatTile'
 import { ActivityRow } from '../../src/components/ActivityRow'
 import { AlertBanner } from '../../src/components/AlertBanner'
 import { TrustScoreRing } from '../../src/components/TrustScoreRing'
+import { IconBadge } from '../../src/components/IconBadge'
 import { reverseGeocodeLabel } from '../../src/lib/reverseGeocode'
 import { formatElapsedSince, getNextOccurrence, formatShortDate } from '../../src/utils/schedule'
 import { brandColors } from '../../src/theme/theme'
@@ -125,9 +126,12 @@ export default function HomeScreen() {
               {isMoving ? 'Driving' : 'Parked'}
             </Chip>
           </View>
-          <Text variant="titleLarge" style={styles.rentalCardTitle}>
-            {car ? `${car.make} ${car.model}` : 'Vehicle details unavailable'}
-          </Text>
+          <View style={styles.rentalCardTitleRow}>
+            <IconBadge source="car" backgroundColor="rgba(255,255,255,0.15)" />
+            <Text variant="titleLarge" style={styles.rentalCardTitle}>
+              {car ? `${car.make} ${car.model}` : 'Vehicle details unavailable'}
+            </Text>
+          </View>
           {liveStatus && (
             <>
               <View style={styles.rentalDivider} />
@@ -147,8 +151,8 @@ export default function HomeScreen() {
       </Card>
 
       <View style={styles.statsGrid}>
-        <StatTile label="Today" value={`${todaysDistanceKm.toFixed(1)} km`} />
-        <StatTile label="Status" value={activeTrip ? 'Driving' : 'Parked'} />
+        <StatTile label="Today" value={`${todaysDistanceKm.toFixed(1)} km`} icon="map-marker-distance" />
+        <StatTile label="Status" value={activeTrip ? 'Driving' : 'Parked'} icon={activeTrip ? 'navigation' : 'parking'} />
       </View>
 
       <Text variant="labelMedium" style={styles.sectionLabel}>
@@ -159,6 +163,7 @@ export default function HomeScreen() {
           title="Payment due"
           subtitle={formatShortDate(nextPayment)}
           buttonLabel="View"
+          icon="credit-card-clock-outline"
           onPress={() => router.push('/rental')}
         />
       )}
@@ -168,6 +173,7 @@ export default function HomeScreen() {
           subtitle={formatShortDate(nextInspection)}
           buttonLabel="Complete"
           variant="dark"
+          icon="clipboard-check-outline"
           onPress={() => router.push('/rental/inspections/new')}
         />
       )}
@@ -175,9 +181,12 @@ export default function HomeScreen() {
       <Card style={styles.trustCard}>
         <Card.Content style={styles.trustCardContent}>
           <View>
-            <Text variant="labelMedium" style={styles.trustCardLabel}>
-              TRUSTSCORE
-            </Text>
+            <View style={styles.trustCardLabelRow}>
+              <IconBadge source="shield-star" backgroundColor="rgba(255,255,255,0.15)" size={14} />
+              <Text variant="labelMedium" style={styles.trustCardLabel}>
+                TRUSTSCORE
+              </Text>
+            </View>
             <Text variant="bodyMedium" style={styles.trustCardStanding}>
               {trustScoreLabel(driverProfile?.trust_score)}
             </Text>
@@ -186,9 +195,12 @@ export default function HomeScreen() {
         </Card.Content>
       </Card>
 
-      <Text variant="titleMedium" style={styles.activityHeading}>
-        Recent Activity
-      </Text>
+      <View style={styles.activityHeadingRow}>
+        <IconBadge source="history" backgroundColor={brandColors.green} size={14} />
+        <Text variant="titleMedium" style={styles.activityHeading}>
+          Recent Activity
+        </Text>
+      </View>
       {recentActivity && recentActivity.length > 0 ? (
         recentActivity.map((item) => <ActivityRow key={`${item.type}-${item.id}`} item={item} />)
       ) : (
@@ -242,9 +254,14 @@ const styles = StyleSheet.create({
   chipText: {
     color: '#fff',
   },
+  rentalCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 10,
+  },
   rentalCardTitle: {
     color: '#fff',
-    marginTop: 4,
   },
   rentalDivider: {
     height: StyleSheet.hairlineWidth,
@@ -283,6 +300,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  trustCardLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   trustCardLabel: {
     color: 'rgba(255,255,255,0.6)',
     letterSpacing: 0.5,
@@ -291,9 +313,13 @@ const styles = StyleSheet.create({
     color: brandColors.mintGreen,
     marginTop: 4,
   },
-  activityHeading: {
+  activityHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 8,
   },
+  activityHeading: {},
   noActivity: {
     opacity: 0.6,
     marginBottom: 24,

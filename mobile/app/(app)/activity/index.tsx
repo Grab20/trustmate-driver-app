@@ -1,10 +1,12 @@
 import { View, StyleSheet, ScrollView } from 'react-native'
 import { Text, Card } from 'react-native-paper'
-import { useDistanceTotals } from '../../src/hooks/useDistanceTotals'
-import { useTodayTrips } from '../../src/hooks/useTodayTrips'
-import { LoadingScreen } from '../../src/components/LoadingScreen'
-import { TripRouteRow } from '../../src/components/TripRouteRow'
-import { brandColors } from '../../src/theme/theme'
+import { useRouter } from 'expo-router'
+import { useDistanceTotals } from '../../../src/hooks/useDistanceTotals'
+import { useTodayTrips } from '../../../src/hooks/useTodayTrips'
+import { LoadingScreen } from '../../../src/components/LoadingScreen'
+import { TripRouteRow } from '../../../src/components/TripRouteRow'
+import { IconBadge } from '../../../src/components/IconBadge'
+import { brandColors } from '../../../src/theme/theme'
 
 function formatDrivingTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600)
@@ -14,6 +16,7 @@ function formatDrivingTime(seconds: number): string {
 }
 
 export default function ActivityScreen() {
+  const router = useRouter()
   const { data: distanceTotals, isLoading: isTotalsLoading } = useDistanceTotals()
   const { data: todayTrips, isLoading: isTripsLoading } = useTodayTrips()
 
@@ -28,6 +31,7 @@ export default function ActivityScreen() {
       <View style={styles.statsRow}>
         <Card style={styles.statCard}>
           <Card.Content>
+            <IconBadge source="map-marker-distance" backgroundColor={brandColors.green} />
             <Text variant="labelMedium" style={styles.statLabel}>
               TODAY
             </Text>
@@ -41,6 +45,7 @@ export default function ActivityScreen() {
         </Card>
         <Card style={styles.statCard}>
           <Card.Content>
+            <IconBadge source="calendar-week" backgroundColor={brandColors.darkGreen} />
             <Text variant="labelMedium" style={styles.statLabel}>
               THIS WEEK
             </Text>
@@ -69,6 +74,7 @@ export default function ActivityScreen() {
                 distanceKm={trip.distance_km ?? 0}
                 durationSeconds={trip.duration_seconds ?? 0}
                 maxSpeedKmh={trip.max_speed_kmh ?? 0}
+                onPress={() => router.push(`/activity/${trip.id}`)}
               />
             ))}
           </Card.Content>
@@ -100,6 +106,7 @@ const styles = StyleSheet.create({
   statLabel: {
     opacity: 0.6,
     letterSpacing: 0.5,
+    marginTop: 8,
   },
   statValue: {
     marginTop: 4,

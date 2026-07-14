@@ -1,11 +1,12 @@
 import { View, StyleSheet } from 'react-native'
-import { Text } from 'react-native-paper'
+import { Text, Icon } from 'react-native-paper'
 import { brandColors } from '../theme/theme'
 
 export type TimelineEvent = {
   id: string
   title: string
   date: string
+  icon?: string
 }
 
 export function RentalTimeline({ events }: { events: TimelineEvent[] }) {
@@ -14,7 +15,9 @@ export function RentalTimeline({ events }: { events: TimelineEvent[] }) {
       {events.map((event, index) => (
         <View key={event.id} style={styles.row}>
           <View style={styles.dotColumn}>
-            <View style={styles.dot} />
+            <View style={styles.dot}>
+              <Icon source={event.icon ?? 'check'} size={12} color="#fff" />
+            </View>
             {index < events.length - 1 && <View style={styles.line} />}
           </View>
           <View style={styles.textColumn}>
@@ -41,15 +44,16 @@ const styles = StyleSheet.create({
   },
   dotColumn: {
     alignItems: 'center',
-    width: 16,
+    width: 22,
     marginRight: 12,
   },
   dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: brandColors.green,
-    marginTop: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   line: {
     width: 1.5,
@@ -60,6 +64,7 @@ const styles = StyleSheet.create({
   textColumn: {
     flex: 1,
     paddingBottom: 16,
+    paddingTop: 2,
   },
   title: {
     fontWeight: '600',

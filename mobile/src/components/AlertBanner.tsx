@@ -1,5 +1,6 @@
 import { View, StyleSheet } from 'react-native'
 import { Text, Button } from 'react-native-paper'
+import { IconBadge } from './IconBadge'
 
 type AlertBannerProps = {
   title: string
@@ -7,13 +8,26 @@ type AlertBannerProps = {
   buttonLabel: string
   onPress: () => void
   variant?: 'amber' | 'dark'
+  icon?: string
 }
 
-export function AlertBanner({ title, subtitle, buttonLabel, onPress, variant = 'amber' }: AlertBannerProps) {
+export function AlertBanner({
+  title,
+  subtitle,
+  buttonLabel,
+  onPress,
+  variant = 'amber',
+  icon = 'alert-circle-outline',
+}: AlertBannerProps) {
   const isDark = variant === 'dark'
 
   return (
     <View style={[styles.container, isDark ? styles.darkContainer : styles.amberContainer]}>
+      <IconBadge
+        source={icon}
+        backgroundColor={isDark ? 'rgba(255,255,255,0.15)' : 'rgba(122,74,0,0.15)'}
+        color={isDark ? '#fff' : '#7A4A00'}
+      />
       <View style={styles.textColumn}>
         <Text variant="bodyMedium" style={isDark ? styles.darkTitle : styles.amberTitle}>
           {title}
@@ -55,7 +69,7 @@ const styles = StyleSheet.create({
   },
   textColumn: {
     flex: 1,
-    marginRight: 12,
+    marginHorizontal: 12,
   },
   amberTitle: {
     color: '#7A4A00',

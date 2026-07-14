@@ -1,15 +1,19 @@
 import { View, StyleSheet } from 'react-native'
 import { Text } from 'react-native-paper'
+import { IconBadge } from './IconBadge'
+import { brandColors } from '../theme/theme'
 
 type StatTileProps = {
   label: string
   value: string
+  icon?: string
 }
 
-export function StatTile({ label, value }: StatTileProps) {
+export function StatTile({ label, value, icon }: StatTileProps) {
   return (
     <View style={styles.tile}>
-      <Text variant="labelMedium" style={styles.label}>
+      {icon && <IconBadge source={icon} size={14} backgroundColor={brandColors.green} />}
+      <Text variant="labelMedium" style={[styles.label, icon && styles.labelWithIcon]}>
         {label}
       </Text>
       <Text variant="titleMedium">{value}</Text>
@@ -25,5 +29,8 @@ const styles = StyleSheet.create({
   label: {
     opacity: 0.6,
     marginBottom: 2,
+  },
+  labelWithIcon: {
+    marginTop: 6,
   },
 })

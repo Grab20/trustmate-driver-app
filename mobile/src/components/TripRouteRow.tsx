@@ -1,5 +1,5 @@
-import { View, StyleSheet } from 'react-native'
-import { Text } from 'react-native-paper'
+import { View, StyleSheet, Pressable } from 'react-native'
+import { Text, Icon } from 'react-native-paper'
 import { brandColors } from '../theme/theme'
 
 type TripRouteRowProps = {
@@ -9,6 +9,7 @@ type TripRouteRowProps = {
   distanceKm: number
   durationSeconds: number
   maxSpeedKmh: number
+  onPress?: () => void
 }
 
 function formatTime(iso: string): string {
@@ -27,9 +28,12 @@ export function TripRouteRow({
   distanceKm,
   durationSeconds,
   maxSpeedKmh,
+  onPress,
 }: TripRouteRowProps) {
+  const Wrapper = onPress ? Pressable : View
+
   return (
-    <View style={styles.container}>
+    <Wrapper style={styles.container} onPress={onPress} {...(onPress ? { android_ripple: { color: '#E3E3DD' } } : {})}>
       <View style={styles.dots}>
         <View style={styles.outlineDot} />
         <View style={styles.line} />
@@ -51,7 +55,12 @@ export function TripRouteRow({
           {distanceKm.toFixed(1)} km · {formatDurationShort(durationSeconds)} · Max {Math.round(maxSpeedKmh)} km/h
         </Text>
       </View>
-    </View>
+      {onPress && (
+        <View style={styles.chevron}>
+          <Icon source="chevron-right" size={20} color="#B8B8AE" />
+        </View>
+      )}
+    </Wrapper>
   )
 }
 
@@ -89,6 +98,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  chevron: {
+    alignSelf: 'center',
+    marginLeft: 4,
   },
   topRow: {
     flexDirection: 'row',
