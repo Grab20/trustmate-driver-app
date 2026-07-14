@@ -1,20 +1,27 @@
 import { useEffect, useState } from 'react'
-import { useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { ScrollView, View, StyleSheet, Alert } from 'react-native'
-import { Text, Card, TextInput, Button } from 'react-native-paper'
-import MapView, { Marker } from 'react-native-maps'
+import { Text, Card, TextInput, Button, Avatar } from 'react-native-paper'
 import { useDriverLiveStatus } from '../../../src/hooks/useDriverLiveStatus'
 import { useDriverTripHistory } from '../../../src/hooks/useDriverTripHistory'
 import { useDriverInspectionsForOwner } from '../../../src/hooks/useInspections'
 import { useDriverLifetimeStats } from '../../../src/hooks/useDriverLifetimeStats'
+import { useDriverDistanceTotals } from '../../../src/hooks/useDriverDistanceTotals'
+import { useDriverProfileForOwner } from '../../../src/hooks/useDriverProfileForOwner'
 import { useDriverTrafficOffencesForOwner } from '../../../src/hooks/useTrafficOffences'
 import { useCar, useUpdateNextServiceDate } from '../../../src/hooks/useCar'
+import { useProfile } from '../../../src/hooks/useProfile'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
 import { InspectionPhotoThumbnail } from '../../../src/components/InspectionPhotoThumbnail'
 import { StatTile } from '../../../src/components/StatTile'
 import { TrafficOffenceRow } from '../../../src/components/TrafficOffenceRow'
-import { formatElapsedSince, formatShortDate } from '../../../src/utils/schedule'
+import { TripRouteRow } from '../../../src/components/TripRouteRow'
+import { LiveStatusMap } from '../../../src/components/LiveStatusMap'
+import { SectionLabel } from '../../../src/components/SectionLabel'
+import { ChecklistRow } from '../../../src/components/ChecklistRow'
+import { formatShortDate, getNextOccurrence } from '../../../src/utils/schedule'
 import { reverseGeocodeLabel } from '../../../src/lib/reverseGeocode'
+import { brandColors } from '../../../src/theme/theme'
 
 const TYPE_LABELS: Record<string, string> = {
   weekly_checkin: 'Vehicle Inspection',
@@ -22,13 +29,34 @@ const TYPE_LABELS: Record<string, string> = {
   incident_report: 'Incident Report',
 }
 
+function formatDrivingTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.round((seconds % 3600) / 60)
+  if (hours === 0) return `${minutes}m`
+  return `${hours}h${minutes.toString().padStart(2, '0')}m`
+}
+
+function getInitials(name: string | null | undefined): string {
+  if (!name) return '?'
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join('')
+}
+
 export default function OwnerDriverDetailScreen() {
+  const router = useRouter()
   const { id, carId } = useLocalSearchParams<{ id: string; carId: string }>()
   const { data: liveStatus, isLoading: isLiveStatusLoading } = useDriverLiveStatus(id)
   const { data: trips } = useDriverTripHistory(id)
   const { data: inspections } = useDriverInspectionsForOwner(id)
   const { data: lifetimeStats } = useDriverLifetimeStats(id)
+  const { data: distanceTotals } = useDriverDistanceTotals(id)
+  const { data: driverProfile } = useDriverProfileForOwner(id)
   const { data: offences } = useDriverTrafficOffencesForOwner(id)
+  const { data: profile } = useProfile(id)
   const { data: car } = useCar(carId || undefined)
   const updateNextServiceDate = useUpdateNextServiceDate(carId || undefined)
   const [nextServiceInput, setNextServiceInput] = useState('')
@@ -54,67 +82,113 @@ export default function OwnerDriverDetailScreen() {
 
   if (isLiveStatusLoading) return <LoadingScreen />
 
+  const lastInspection = inspections?.find((i) => i.inspection_type === 'weekly_checkin') ?? null
+  const nextInspection = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
+  const nextPayment = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
+
+  const missedPayments = driverProfile?.missed_payments ?? 0
+  const hasIncidents = (driverProfile?.accidents ?? 0) > 0 || (driverProfile?.damage_incidents ?? 0) > 0
+  const paymentsUpToDate = missedPayments === 0
+  const inspectionCompleted = lastInspection != null
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {liveStatus ? (
-        <>
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: Number(liveStatus.lat),
-              longitude: Number(liveStatus.lng),
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            region={{
-              latitude: Number(liveStatus.lat),
-              longitude: Number(liveStatus.lng),
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            <Marker
-              coordinate={{ latitude: Number(liveStatus.lat), longitude: Number(liveStatus.lng) }}
-              title={liveStatus.is_moving ? 'Driving' : 'Parked'}
-            />
-          </MapView>
+      <Card style={styles.headerCard}>
+        <Card.Content style={styles.headerContent}>
+          {profile?.photo_url ? (
+            <Avatar.Image size={56} source={{ uri: profile.photo_url }} />
+          ) : (
+            <Avatar.Text size={56} label={getInitials(profile?.full_name)} />
+          )}
+          <View style={styles.headerText}>
+            <Text variant="titleLarge" style={styles.headerName}>
+              {profile?.full_name ?? 'Driver'}
+            </Text>
+            <Text variant="bodySmall" style={styles.headerVehicle}>
+              {car ? `${car.make} ${car.model}` : 'Vehicle unavailable'}
+            </Text>
+          </View>
+        </Card.Content>
+      </Card>
 
-          <Card style={styles.statusCard}>
-            <Card.Content>
-              <Text variant="titleMedium">{liveStatus.is_moving ? 'Driving' : 'Parked'}</Text>
-              <Text variant="bodyMedium" style={styles.address}>
-                {addressLabel ?? 'Locating…'}
-              </Text>
-              <Text variant="bodySmall" style={styles.since}>
-                {liveStatus.is_moving
-                  ? `${Math.round(liveStatus.speed_kmh ?? 0)} km/h`
-                  : `Here for ${formatElapsedSince(liveStatus.state_since)}`}
-              </Text>
-            </Card.Content>
-          </Card>
-        </>
+      {liveStatus ? (
+        <LiveStatusMap liveStatus={liveStatus} addressLabel={addressLabel} height={240} />
       ) : (
         <Text variant="bodyMedium" style={styles.noLocation}>
           No location data yet for this driver.
         </Text>
       )}
 
-      <Text variant="titleMedium" style={styles.sectionHeading}>
-        Lifetime Stats
-      </Text>
-      <View style={styles.tripStatsRow}>
-        <StatTile label="Total Trips" value={String(lifetimeStats?.totalTrips ?? 0)} />
-        <StatTile label="Total Distance" value={`${(lifetimeStats?.totalDistanceKm ?? 0).toFixed(0)} km`} />
-        <StatTile label="Top Speed" value={`${(lifetimeStats?.topSpeedKmh ?? 0).toFixed(0)} km/h`} />
+      <SectionLabel icon="map-marker-distance" label="DISTANCE DRIVEN" />
+      <View style={styles.statsRow}>
+        <StatTile label="Today" value={`${(distanceTotals?.today ?? 0).toFixed(0)} km`} style={styles.tripleStat} />
+        <StatTile label="This Week" value={`${(distanceTotals?.week ?? 0).toFixed(0)} km`} style={styles.tripleStat} />
+        <StatTile label="This Month" value={`${(distanceTotals?.month ?? 0).toFixed(0)} km`} style={styles.tripleStat} />
+      </View>
+      <View style={styles.statsRow}>
+        <StatTile
+          label="Driving Today"
+          value={formatDrivingTime(distanceTotals?.durationTodaySeconds ?? 0)}
+          style={styles.tripleStat}
+        />
+        <StatTile
+          label="Total Trips"
+          value={String(lifetimeStats?.totalTrips ?? 0)}
+          style={styles.tripleStat}
+        />
+        <StatTile
+          label="Top Speed"
+          value={`${(lifetimeStats?.topSpeedKmh ?? 0).toFixed(0)} km/h`}
+          style={styles.tripleStat}
+        />
       </View>
 
-      <Text variant="titleMedium" style={styles.sectionHeading}>
-        Next Service
-      </Text>
-      <Card style={styles.tripCard}>
+      <Card style={[styles.card, paymentsUpToDate && inspectionCompleted && !hasIncidents && styles.goodStandingCard]}>
         <Card.Content>
-          <Text variant="bodySmall" style={styles.since}>
-            {car?.next_service_date ? formatShortDate(new Date(car.next_service_date)) : 'Not scheduled'}
+          <SectionLabel icon="shield-check" label="RENTAL HEALTH" />
+          <Text variant="titleMedium" style={styles.healthTitle}>
+            {paymentsUpToDate && inspectionCompleted && !hasIncidents ? 'Good Standing' : 'Needs Attention'}
+          </Text>
+          <View style={styles.checklist}>
+            <ChecklistRow ok={paymentsUpToDate} label="Payment up to date" />
+            <ChecklistRow ok={inspectionCompleted} label="Inspection completed" />
+            <ChecklistRow ok={!hasIncidents} label="No active incidents" />
+          </View>
+        </Card.Content>
+      </Card>
+
+      <Card style={styles.card}>
+        <Card.Content>
+          <SectionLabel icon="cash-multiple" label="PAYMENTS" />
+          <Text variant="titleLarge" style={styles.paymentAmount}>
+            R{car?.price_per_week ?? 0}/week
+          </Text>
+          {nextPayment && (
+            <Text variant="bodySmall" style={styles.detail}>
+              Next payment due {formatShortDate(nextPayment)}
+            </Text>
+          )}
+          {(driverProfile?.consecutive_payments ?? 0) > 0 && (
+            <Text variant="bodyMedium" style={styles.streak}>
+              🔥 {driverProfile?.consecutive_payments}-week streak
+            </Text>
+          )}
+        </Card.Content>
+      </Card>
+
+      <Card style={styles.card}>
+        <Card.Content>
+          <SectionLabel icon="car-wrench" label="VEHICLE CONDITION & NEXT SERVICE" />
+          <Text variant="bodyMedium" style={styles.detail}>
+            Last inspection: {lastInspection?.created_at ? formatShortDate(new Date(lastInspection.created_at)) : 'None yet'}
+          </Text>
+          {nextInspection && (
+            <Text variant="bodyMedium" style={styles.detail}>
+              Next inspection: {formatShortDate(nextInspection)}
+            </Text>
+          )}
+          <Text variant="bodySmall" style={styles.detail}>
+            Next service: {car?.next_service_date ? formatShortDate(new Date(car.next_service_date)) : 'Not scheduled'}
           </Text>
           <TextInput
             label="Next service date (YYYY-MM-DD)"
@@ -140,48 +214,39 @@ export default function OwnerDriverDetailScreen() {
         </Card.Content>
       </Card>
 
-      <Text variant="titleMedium" style={styles.sectionHeading}>
-        Recent Trips
-      </Text>
+      <SectionLabel icon="road-variant" label="ALL TRIPS" />
       {trips && trips.length > 0 ? (
-        trips.map((trip) => (
-          <Card key={trip.id} style={styles.tripCard}>
-            <Card.Content>
-              <Text variant="bodyMedium">
-                {trip.start_location ?? 'Unknown'} → {trip.end_location ?? 'Unknown'}
-              </Text>
-              <View style={styles.tripStatsRow}>
-                <StatTile label="Distance" value={`${(trip.distance_km ?? 0).toFixed(1)} km`} />
-                <StatTile label="Avg Speed" value={`${Math.round(trip.avg_speed_kmh ?? 0)} km/h`} />
-                <StatTile label="Max Speed" value={`${Math.round(trip.max_speed_kmh ?? 0)} km/h`} />
-              </View>
-              <Text variant="bodySmall" style={styles.tripDate}>
-                {new Date(trip.started_at).toLocaleDateString(undefined, {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </Text>
-            </Card.Content>
-          </Card>
-        ))
+        <Card style={styles.card}>
+          <Card.Content>
+            {trips.map((trip) => (
+              <TripRouteRow
+                key={trip.id}
+                startLabel={trip.start_location ?? 'Unknown location'}
+                endLabel={trip.end_location ?? 'Unknown location'}
+                startTime={trip.started_at}
+                distanceKm={trip.distance_km ?? 0}
+                durationSeconds={trip.duration_seconds ?? 0}
+                maxSpeedKmh={trip.max_speed_kmh ?? 0}
+                onPress={() => router.push(`/owner/driver/trip/${trip.id}`)}
+              />
+            ))}
+          </Card.Content>
+        </Card>
       ) : (
         <Text variant="bodyMedium" style={styles.empty}>
           No completed trips yet.
         </Text>
       )}
 
-      <Text variant="titleMedium" style={styles.sectionHeading}>
-        Inspections
-      </Text>
+      <SectionLabel icon="clipboard-check-outline" label="INSPECTIONS" />
       {inspections && inspections.length > 0 ? (
         inspections.map((inspection) => (
-          <Card key={inspection.id} style={styles.tripCard}>
+          <Card key={inspection.id} style={styles.card}>
             <Card.Content>
               <Text variant="bodyMedium">
                 {TYPE_LABELS[inspection.inspection_type] ?? inspection.inspection_type}
               </Text>
-              <Text variant="bodySmall" style={styles.tripDate}>
+              <Text variant="bodySmall" style={styles.detail}>
                 {new Date(inspection.created_at ?? '').toLocaleDateString()}
               </Text>
               <View style={styles.photoRow}>
@@ -198,15 +263,15 @@ export default function OwnerDriverDetailScreen() {
         </Text>
       )}
 
-      <Text variant="titleMedium" style={styles.sectionHeading}>
-        Traffic Offences
-      </Text>
+      <SectionLabel icon="alert-octagon-outline" label="TRAFFIC OFFENCES" />
       {offences && offences.length > 0 ? (
-        <View style={styles.tripCard}>
-          {offences.map((offence) => (
-            <TrafficOffenceRow key={offence.id} offence={offence} />
-          ))}
-        </View>
+        <Card style={styles.card}>
+          <Card.Content>
+            {offences.map((offence) => (
+              <TrafficOffenceRow key={offence.id} offence={offence} />
+            ))}
+          </Card.Content>
+        </Card>
       ) : (
         <Text variant="bodyMedium" style={styles.empty}>
           No traffic offences on record.
@@ -218,48 +283,69 @@ export default function OwnerDriverDetailScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingBottom: 24,
+    padding: 24,
+    paddingBottom: 40,
   },
-  map: {
-    width: '100%',
-    height: 220,
+  headerCard: {
+    backgroundColor: brandColors.darkGreen,
+    marginBottom: 16,
   },
-  statusCard: {
-    margin: 16,
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  address: {
-    marginTop: 4,
+  headerText: {
+    marginLeft: 16,
+    flex: 1,
   },
-  since: {
-    opacity: 0.6,
-    marginTop: 4,
+  headerName: {
+    color: '#fff',
   },
-  dateInput: {
-    marginTop: 8,
-    marginBottom: 12,
+  headerVehicle: {
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
   },
   noLocation: {
-    margin: 24,
+    marginVertical: 16,
     textAlign: 'center',
     opacity: 0.6,
   },
-  sectionHeading: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  tripCard: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-  },
-  tripStatsRow: {
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginBottom: 4,
   },
-  tripDate: {
+  tripleStat: {
+    width: '31%',
+  },
+  card: {
+    marginBottom: 16,
+  },
+  goodStandingCard: {
+    borderColor: brandColors.green,
+    borderWidth: 1,
+  },
+  healthTitle: {
+    color: brandColors.darkGreen,
+    marginBottom: 12,
+  },
+  checklist: {
+    gap: 8,
+  },
+  detail: {
     opacity: 0.6,
     marginTop: 4,
+  },
+  paymentAmount: {
+    marginTop: 4,
+    color: brandColors.darkGreen,
+  },
+  streak: {
+    marginTop: 8,
+  },
+  dateInput: {
+    marginTop: 12,
+    marginBottom: 12,
   },
   photoRow: {
     flexDirection: 'row',
@@ -267,7 +353,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   empty: {
-    marginHorizontal: 16,
     opacity: 0.6,
     marginBottom: 24,
   },

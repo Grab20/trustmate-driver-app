@@ -25,6 +25,7 @@ export default function OwnerLayout() {
     >
       <Stack.Screen name="index" options={{ title: 'Your Fleet' }} />
       <Stack.Screen name="driver/[id]" options={{ title: 'Driver' }} />
+      <Stack.Screen name="driver/trip/[tripId]" options={{ title: 'Trip Details' }} />
     </Stack>
   )
 }

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { View, StyleSheet, ScrollView, Linking } from 'react-native'
-import { Text, Card, Button, Icon } from 'react-native-paper'
+import { Text, Card, Button } from 'react-native-paper'
 import { useRouter } from 'expo-router'
-import MapView, { Marker } from 'react-native-maps'
 import { useActiveRental } from '../../../src/hooks/useActiveRental'
 import { useDriverProfile } from '../../../src/hooks/useDriverProfile'
 import { useInspectionHistory } from '../../../src/hooks/useInspections'
@@ -10,32 +9,12 @@ import { useMyTrafficOffences } from '../../../src/hooks/useTrafficOffences'
 import { useMyLiveStatus } from '../../../src/hooks/useMyLiveStatus'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
 import { RentalTimeline, type TimelineEvent } from '../../../src/components/RentalTimeline'
-import { IconBadge } from '../../../src/components/IconBadge'
+import { LiveStatusMap } from '../../../src/components/LiveStatusMap'
+import { SectionLabel } from '../../../src/components/SectionLabel'
+import { ChecklistRow } from '../../../src/components/ChecklistRow'
 import { reverseGeocodeLabel } from '../../../src/lib/reverseGeocode'
-import { formatElapsedSince, getNextOccurrence, formatShortDate } from '../../../src/utils/schedule'
+import { getNextOccurrence, formatShortDate } from '../../../src/utils/schedule'
 import { brandColors } from '../../../src/theme/theme'
-
-function ChecklistRow({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <View style={styles.checklistRow}>
-      <Icon source={ok ? 'check-circle' : 'alert-circle'} size={18} color={ok ? brandColors.green : '#B5651D'} />
-      <Text variant="bodyMedium" style={styles.checklistLabel}>
-        {label}
-      </Text>
-    </View>
-  )
-}
-
-function SectionLabel({ icon, label }: { icon: string; label: string }) {
-  return (
-    <View style={styles.sectionLabelRow}>
-      <IconBadge source={icon} size={14} backgroundColor={brandColors.darkGreen} />
-      <Text variant="labelMedium" style={styles.sectionLabel}>
-        {label}
-      </Text>
-    </View>
-  )
-}
 
 export default function RentalScreen() {
   const router = useRouter()
@@ -115,41 +94,7 @@ export default function RentalScreen() {
         {car ? `${car.make} ${car.model}` : 'Vehicle'}
       </Text>
 
-      {liveStatus && (
-        <View style={styles.mapCard}>
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: Number(liveStatus.lat),
-              longitude: Number(liveStatus.lng),
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            region={{
-              latitude: Number(liveStatus.lat),
-              longitude: Number(liveStatus.lng),
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            <Marker
-              coordinate={{ latitude: Number(liveStatus.lat), longitude: Number(liveStatus.lng) }}
-              title={isMoving ? 'Driving' : 'Parked'}
-            />
-          </MapView>
-          <View style={styles.mapOverlay}>
-            <IconBadge source={isMoving ? 'navigation' : 'map-marker'} backgroundColor={brandColors.darkGreen} />
-            <View style={styles.mapOverlayText}>
-              <Text variant="bodyMedium" style={styles.mapOverlayLocation} numberOfLines={1}>
-                {addressLabel ?? 'Locating…'}
-              </Text>
-              <Text variant="bodySmall" style={styles.mapOverlaySince}>
-                {isMoving ? `${Math.round(liveStatus.speed_kmh ?? 0)} km/h` : `Parked ${formatElapsedSince(liveStatus.state_since)} ago`}
-              </Text>
-            </View>
-          </View>
-        </View>
-      )}
+      {liveStatus && <LiveStatusMap liveStatus={liveStatus} addressLabel={addressLabel} />}
 
       <Card style={styles.card}>
         <Card.Content>
@@ -278,58 +223,12 @@ const styles = StyleSheet.create({
   heading: {
     marginBottom: 16,
   },
-  mapCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  map: {
-    width: '100%',
-    height: 180,
-  },
-  mapOverlay: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    right: 12,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  mapOverlayText: {
-    marginLeft: 10,
-    flex: 1,
-  },
-  mapOverlayLocation: {
-    fontWeight: '600',
-  },
-  mapOverlaySince: {
-    opacity: 0.6,
-    marginTop: 2,
-  },
   card: {
     marginBottom: 16,
   },
   goodStandingCard: {
     borderColor: brandColors.green,
     borderWidth: 1,
-  },
-  sectionLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    opacity: 0.6,
-    letterSpacing: 0.5,
   },
   ownerRow: {
     flexDirection: 'row',
@@ -346,14 +245,6 @@ const styles = StyleSheet.create({
   },
   checklist: {
     gap: 8,
-  },
-  checklistRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  checklistLabel: {
-    marginLeft: 4,
   },
   rowBetween: {
     flexDirection: 'row',
