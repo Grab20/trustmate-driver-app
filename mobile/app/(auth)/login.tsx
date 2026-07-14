@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
 import { Text, TextInput, Button, HelperText } from 'react-native-paper'
 import { useAuthStore } from '../../src/stores/authStore'
+import { IconBadge } from '../../src/components/IconBadge'
+import { brandColors } from '../../src/theme/theme'
 
 export default function LoginScreen() {
   const signIn = useAuthStore((s) => s.signIn)
@@ -24,6 +26,9 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={styles.container}>
+        <View style={styles.heroBadge}>
+          <IconBadge source="shield-car" size={36} backgroundColor={brandColors.darkGreen} />
+        </View>
         <Text variant="headlineMedium" style={styles.title}>
           TrustMate Driver
         </Text>
@@ -32,20 +37,28 @@ export default function LoginScreen() {
         </Text>
 
         <TextInput
+          mode="outlined"
           label="Email"
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
           textContentType="emailAddress"
+          left={<TextInput.Icon icon="email-outline" />}
+          outlineColor="#DDE3DE"
+          activeOutlineColor={brandColors.green}
           style={styles.input}
         />
         <TextInput
+          mode="outlined"
           label="Password"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
           textContentType="password"
+          left={<TextInput.Icon icon="lock-outline" />}
+          outlineColor="#DDE3DE"
+          activeOutlineColor={brandColors.green}
           style={styles.input}
         />
 
@@ -58,6 +71,8 @@ export default function LoginScreen() {
           onPress={handleSignIn}
           loading={isSubmitting}
           disabled={isSubmitting || !email || !password}
+          style={styles.signInButton}
+          contentStyle={styles.signInButtonContent}
         >
           Sign In
         </Button>
@@ -78,6 +93,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  heroBadge: {
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
   title: {
     textAlign: 'center',
     marginBottom: 8,
@@ -89,6 +108,13 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+    backgroundColor: '#fff',
+  },
+  signInButton: {
+    marginTop: 4,
+  },
+  signInButtonContent: {
+    paddingVertical: 4,
   },
   footnote: {
     textAlign: 'center',

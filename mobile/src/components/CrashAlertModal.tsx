@@ -3,6 +3,8 @@ import { Modal, View, StyleSheet } from 'react-native'
 import { Text, Button } from 'react-native-paper'
 import { useCrashAlert } from '../hooks/useCrashAlert'
 import { CRASH_CONFIRM_WINDOW_MS } from '../lib/autoTripEngine'
+import { IconBadge } from './IconBadge'
+import { brandColors } from '../theme/theme'
 
 export function CrashAlertModal() {
   const { pendingSince, confirmOk } = useCrashAlert()
@@ -24,6 +26,9 @@ export function CrashAlertModal() {
     <Modal visible transparent animationType="fade">
       <View style={styles.overlay}>
         <View style={styles.card}>
+          <View style={styles.iconRow}>
+            <IconBadge source="car-emergency" size={28} backgroundColor={brandColors.errorRed} />
+          </View>
           <Text variant="headlineSmall" style={styles.title}>
             Possible Crash Detected
           </Text>
@@ -54,6 +59,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     width: '100%',
+  },
+  iconRow: {
+    alignItems: 'center',
+    marginBottom: 16,
   },
   title: {
     marginBottom: 12,

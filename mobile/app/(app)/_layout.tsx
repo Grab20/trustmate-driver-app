@@ -28,6 +28,21 @@ export default function AppLayout() {
           headerTitleStyle: { color: '#fff' },
           tabBarActiveTintColor: brandColors.green,
           tabBarInactiveTintColor: '#8A8A8A',
+          tabBarStyle: {
+            height: 64,
+            paddingTop: 6,
+            paddingBottom: 10,
+            borderTopWidth: 0,
+            shadowColor: '#000',
+            shadowOpacity: 0.08,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: -2 },
+            elevation: 8,
+          },
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: '600',
+          },
         }}
       >
         <Tabs.Screen

@@ -12,6 +12,7 @@ export const brandColors = {
 
 export const theme = {
   ...MD3LightTheme,
+  roundness: 6,
   colors: {
     ...MD3LightTheme.colors,
     primary: brandColors.green,

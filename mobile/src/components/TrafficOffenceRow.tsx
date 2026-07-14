@@ -1,15 +1,35 @@
 import { View, StyleSheet } from 'react-native'
 import { Text, Card, Chip } from 'react-native-paper'
 import type { Tables } from '../types/database'
+import { IconBadge } from './IconBadge'
+
+const STATUS_ICONS: Record<string, string> = {
+  unpaid: 'alert-circle',
+  paid: 'check-circle',
+  disputed: 'flag-outline',
+}
+
+const STATUS_ICON_COLORS: Record<string, string> = {
+  unpaid: '#B3261E',
+  paid: '#1E7A3D',
+  disputed: '#8A6D00',
+}
 
 export function TrafficOffenceRow({ offence }: { offence: Tables<'traffic_offences'> }) {
   const statusStyle = STATUS_STYLES[offence.status] ?? STATUS_STYLES.unpaid
+  const statusIcon = STATUS_ICONS[offence.status] ?? STATUS_ICONS.unpaid
+  const statusIconColor = STATUS_ICON_COLORS[offence.status] ?? STATUS_ICON_COLORS.unpaid
 
   return (
     <Card style={styles.card}>
       <Card.Content>
         <View style={styles.header}>
-          <Text variant="titleMedium">{offence.offence_type ?? 'Traffic Offence'}</Text>
+          <View style={styles.titleRow}>
+            <IconBadge source={statusIcon} backgroundColor={`${statusIconColor}22`} color={statusIconColor} />
+            <Text variant="titleMedium" style={styles.titleText}>
+              {offence.offence_type ?? 'Traffic Offence'}
+            </Text>
+          </View>
           <Chip compact style={statusStyle.chip} textStyle={statusStyle.text}>
             {offence.status}
           </Chip>
@@ -43,11 +63,21 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    marginRight: 8,
+  },
+  titleText: {
+    flexShrink: 1,
   },
   date: {
     opacity: 0.6,
-    marginTop: 2,
+    marginTop: 8,
   },
   description: {
     marginTop: 8,
