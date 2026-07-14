@@ -5,13 +5,13 @@ import type { Tables } from '../types/database'
 
 export type ActiveRental = Tables<'applications'> & {
   cars: Tables<'cars'> | null
-  owner: Pick<Tables<'profiles'>, 'id' | 'full_name'> | null
+  owner: Pick<Tables<'profiles'>, 'id' | 'full_name' | 'phone' | 'whatsapp'> | null
 }
 
 async function fetchActiveRental(driverId: string): Promise<ActiveRental | null> {
   const { data, error } = await supabase
     .from('applications')
-    .select('*, cars(*), owner:profiles!applications_owner_id_fkey(id, full_name)')
+    .select('*, cars(*), owner:profiles!applications_owner_id_fkey(id, full_name, phone, whatsapp)')
     .eq('driver_id', driverId)
     .eq('status', 'approved')
     .is('unmatched_at', null)

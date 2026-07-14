@@ -3,10 +3,10 @@ import { View, StyleSheet, ScrollView, Alert } from 'react-native'
 import { Text, TextInput, Button } from 'react-native-paper'
 import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
-import { useActiveRental } from '../../../src/hooks/useActiveRental'
-import { useVehicleOdometer } from '../../../src/hooks/useVehicleOdometer'
-import { useSubmitInspection } from '../../../src/hooks/useInspections'
-import { PhotoSlot } from '../../../src/components/PhotoSlot'
+import { useActiveRental } from '../../../../src/hooks/useActiveRental'
+import { useVehicleOdometer } from '../../../../src/hooks/useVehicleOdometer'
+import { useSubmitInspection } from '../../../../src/hooks/useInspections'
+import { PhotoSlot } from '../../../../src/components/PhotoSlot'
 
 // Order matters: photo_urls is a plain array, and this order is the convention
 // used to interpret which shot is which when displaying an inspection later.

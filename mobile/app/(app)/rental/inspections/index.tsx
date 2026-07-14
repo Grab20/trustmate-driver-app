@@ -1,10 +1,10 @@
 import { FlatList, View, StyleSheet } from 'react-native'
 import { Text, Card, Button, Chip } from 'react-native-paper'
 import { useRouter } from 'expo-router'
-import { useInspectionHistory } from '../../../src/hooks/useInspections'
-import { InspectionPhotoThumbnail } from '../../../src/components/InspectionPhotoThumbnail'
-import { LoadingScreen } from '../../../src/components/LoadingScreen'
-import type { Tables } from '../../../src/types/database'
+import { useInspectionHistory } from '../../../../src/hooks/useInspections'
+import { InspectionPhotoThumbnail } from '../../../../src/components/InspectionPhotoThumbnail'
+import { LoadingScreen } from '../../../../src/components/LoadingScreen'
+import type { Tables } from '../../../../src/types/database'
 
 const TYPE_LABELS: Record<string, string> = {
   weekly_checkin: 'Vehicle Inspection',
@@ -69,12 +69,12 @@ export default function InspectionHistoryScreen() {
         }
       />
       <View style={styles.newButtons}>
-        <Button mode="contained" onPress={() => router.push('/inspections/new')} style={styles.newButton}>
+        <Button mode="contained" onPress={() => router.push('/rental/inspections/new')} style={styles.newButton}>
           New Inspection
         </Button>
         <Button
           mode="contained-tonal"
-          onPress={() => router.push('/inspections/payment')}
+          onPress={() => router.push('/rental/inspections/payment')}
           style={styles.newButton}
         >
           Proof of Payment

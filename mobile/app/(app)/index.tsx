@@ -1,20 +1,23 @@
+import { useEffect, useState } from 'react'
 import { View, StyleSheet, ScrollView } from 'react-native'
 import { Text, Card, Button, Chip } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../src/hooks/useActiveRental'
 import { useActiveTrip } from '../../src/hooks/useActiveTrip'
-import { useTripWaypoints } from '../../src/hooks/useTripWaypoints'
 import { useDistanceTotals } from '../../src/hooks/useDistanceTotals'
 import { useDriverProfile } from '../../src/hooks/useDriverProfile'
-import { useDriverLifetimeStats } from '../../src/hooks/useDriverLifetimeStats'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
+import { useMyLiveStatus } from '../../src/hooks/useMyLiveStatus'
 import { useRecentActivity } from '../../src/hooks/useRecentActivity'
 import { useAuthStore } from '../../src/stores/authStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 import { StatTile } from '../../src/components/StatTile'
 import { ActivityRow } from '../../src/components/ActivityRow'
-import { haversineDistanceKm } from '../../src/utils/geo'
-import { getNextOccurrence, formatShortDate, getRentalWeekNumber } from '../../src/utils/schedule'
+import { AlertBanner } from '../../src/components/AlertBanner'
+import { TrustScoreRing } from '../../src/components/TrustScoreRing'
+import { reverseGeocodeLabel } from '../../src/lib/reverseGeocode'
+import { formatElapsedSince, getNextOccurrence, formatShortDate } from '../../src/utils/schedule'
+import { brandColors } from '../../src/theme/theme'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -23,18 +26,38 @@ function getGreeting(): string {
   return 'Good Evening'
 }
 
-export default function DashboardScreen() {
+function trustScoreLabel(score: number | null | undefined): string {
+  if (score == null) return 'Not Rated'
+  if (score >= 80) return 'Good Standing'
+  if (score >= 50) return 'Fair Standing'
+  return 'Needs Improvement'
+}
+
+export default function HomeScreen() {
   const router = useRouter()
   const { data: activeRental, isLoading } = useActiveRental()
   const { data: activeTrip } = useActiveTrip()
-  const { data: waypoints } = useTripWaypoints(activeTrip?.id)
   const { data: distanceTotals } = useDistanceTotals()
   const { data: driverProfile } = useDriverProfile()
   const { data: myProfile } = useMyProfile()
-  const userId = useAuthStore((s) => s.session?.user.id)
-  const { data: lifetimeStats } = useDriverLifetimeStats(userId)
+  const { data: liveStatus } = useMyLiveStatus()
   const { data: recentActivity } = useRecentActivity()
   const signOut = useAuthStore((s) => s.signOut)
+  const [addressLabel, setAddressLabel] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!liveStatus) {
+      setAddressLabel(null)
+      return
+    }
+    let cancelled = false
+    reverseGeocodeLabel(Number(liveStatus.lat), Number(liveStatus.lng)).then((label) => {
+      if (!cancelled) setAddressLabel(label)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [liveStatus?.lat, liveStatus?.lng])
 
   if (isLoading) return <LoadingScreen />
 
@@ -45,9 +68,9 @@ export default function DashboardScreen() {
           No Active Rental Yet
         </Text>
         <Text variant="bodyMedium" style={styles.emptyBody}>
-          This app unlocks once you've been matched with a vehicle owner.
-          Keep an eye on your email — once a match is confirmed on the
-          TrustMate website, your rental will appear here.
+          This app unlocks once you've been matched with a vehicle owner. Keep an eye on your
+          email — once a match is confirmed on the TrustMate website, your rental will appear
+          here.
         </Text>
         {myProfile?.role === 'both' && (
           <Button mode="outlined" onPress={() => router.push('/owner')} style={styles.switchButton}>
@@ -63,27 +86,24 @@ export default function DashboardScreen() {
 
   const car = activeRental.cars
   const firstName = myProfile?.full_name?.split(' ')[0] ?? 'Driver'
-
-  const liveWaypoints = (waypoints ?? []).map((w) => ({ latitude: Number(w.lat), longitude: Number(w.lng) }))
-  const liveDistanceKm = liveWaypoints.reduce((total, point, index) => {
-    if (index === 0) return total
-    const prev = liveWaypoints[index - 1]
-    return total + haversineDistanceKm(prev.latitude, prev.longitude, point.latitude, point.longitude)
-  }, 0)
-  const todaysDistanceKm = (distanceTotals?.today ?? 0) + (activeTrip ? liveDistanceKm : 0)
-  const weekDistanceKm = (distanceTotals?.week ?? 0) + (activeTrip ? liveDistanceKm : 0)
-  const monthDistanceKm = (distanceTotals?.month ?? 0) + (activeTrip ? liveDistanceKm : 0)
-  const currentSpeedKmh = waypoints && waypoints.length > 0 ? Number(waypoints[waypoints.length - 1].speed_kmh ?? 0) : 0
+  const isMoving = liveStatus?.is_moving ?? false
+  const todaysDistanceKm = distanceTotals?.today ?? 0
 
   const nextInspection = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
   const nextPayment = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
-  const rentalWeek = getRentalWeekNumber(activeRental.matched_at)
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineMedium" style={styles.greeting}>
-        {getGreeting()}, {firstName}
-      </Text>
+      <View style={styles.greetingRow}>
+        <View>
+          <Text variant="bodyMedium" style={styles.dateText}>
+            {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+          </Text>
+          <Text variant="headlineMedium" style={styles.greeting}>
+            {getGreeting()}, {firstName}
+          </Text>
+        </View>
+      </View>
 
       {myProfile?.role === 'both' && (
         <Button mode="outlined" onPress={() => router.push('/owner')} style={styles.switchButton}>
@@ -91,73 +111,80 @@ export default function DashboardScreen() {
         </Button>
       )}
 
-      <Card style={styles.card}>
+      <Card style={styles.rentalCard}>
         <Card.Content>
-          <Chip icon="check-circle" style={styles.statusChip}>
-            Active
-          </Chip>
-          <Text variant="titleLarge" style={styles.carTitle}>
+          <View style={styles.rentalCardHeader}>
+            <Text variant="labelMedium" style={styles.rentalCardLabel}>
+              ACTIVE RENTAL
+            </Text>
+            <Chip
+              compact
+              style={isMoving ? styles.drivingChip : styles.parkedChip}
+              textStyle={styles.chipText}
+            >
+              {isMoving ? 'Driving' : 'Parked'}
+            </Chip>
+          </View>
+          <Text variant="titleLarge" style={styles.rentalCardTitle}>
             {car ? `${car.make} ${car.model}` : 'Vehicle details unavailable'}
           </Text>
-          {activeRental.owner?.full_name && (
-            <Text variant="bodyMedium" style={styles.ownerText}>
-              Owner: {activeRental.owner.full_name}
-            </Text>
+          {liveStatus && (
+            <>
+              <View style={styles.rentalDivider} />
+              <View style={styles.locationRow}>
+                <Text variant="bodyMedium" style={styles.locationText}>
+                  {addressLabel ?? 'Locating…'}
+                </Text>
+              </View>
+              <Text variant="bodySmall" style={styles.sinceText}>
+                {isMoving
+                  ? `${Math.round(liveStatus.speed_kmh ?? 0)} km/h`
+                  : `Parked ${formatElapsedSince(liveStatus.state_since)} ago`}
+              </Text>
+            </>
           )}
         </Card.Content>
       </Card>
 
       <View style={styles.statsGrid}>
-        <StatTile label="Current Status" value={activeTrip ? 'Driving' : 'Parked'} />
-        <StatTile label="Current Speed" value={activeTrip ? `${currentSpeedKmh.toFixed(0)} km/h` : '—'} />
-        <StatTile label="Today's Distance" value={`${todaysDistanceKm.toFixed(1)} km`} />
-        <StatTile label="This Week" value={`${weekDistanceKm.toFixed(1)} km`} />
-        <StatTile label="This Month" value={`${monthDistanceKm.toFixed(1)} km`} />
-        <StatTile label="Rental Week" value={rentalWeek != null ? `Week ${rentalWeek}` : '—'} />
-        <StatTile
-          label="Next Payment"
-          value={nextPayment ? formatShortDate(nextPayment) : 'Not scheduled'}
-        />
-        <StatTile
-          label="Next Inspection"
-          value={nextInspection ? formatShortDate(nextInspection) : 'Not scheduled'}
-        />
-        <StatTile
-          label="TrustScore"
-          value={driverProfile?.trust_score != null ? String(driverProfile.trust_score) : '—'}
-        />
-        <StatTile
-          label="Next Service"
-          value={car?.next_service_date ? formatShortDate(new Date(car.next_service_date)) : 'Not scheduled'}
-        />
+        <StatTile label="Today" value={`${todaysDistanceKm.toFixed(1)} km`} />
+        <StatTile label="Status" value={activeTrip ? 'Driving' : 'Parked'} />
       </View>
 
-      <Text variant="titleMedium" style={styles.activityHeading}>
-        Lifetime Stats
+      <Text variant="labelMedium" style={styles.sectionLabel}>
+        NEEDS YOUR ATTENTION
       </Text>
-      <View style={styles.statsGrid}>
-        <StatTile label="Total Trips" value={String(lifetimeStats?.totalTrips ?? 0)} />
-        <StatTile label="Total Distance" value={`${(lifetimeStats?.totalDistanceKm ?? 0).toFixed(0)} km`} />
-        <StatTile label="Top Speed" value={`${(lifetimeStats?.topSpeedKmh ?? 0).toFixed(0)} km/h`} />
-      </View>
+      {nextPayment && (
+        <AlertBanner
+          title="Payment due"
+          subtitle={formatShortDate(nextPayment)}
+          buttonLabel="View"
+          onPress={() => router.push('/rental')}
+        />
+      )}
+      {nextInspection && (
+        <AlertBanner
+          title="Vehicle inspection"
+          subtitle={formatShortDate(nextInspection)}
+          buttonLabel="Complete"
+          variant="dark"
+          onPress={() => router.push('/rental/inspections/new')}
+        />
+      )}
 
-      <Button
-        mode="contained-tonal"
-        icon="clipboard-check-outline"
-        onPress={() => router.push('/inspections')}
-        style={styles.actionButton}
-      >
-        Inspections & Payments
-      </Button>
-
-      <Button
-        mode="contained-tonal"
-        icon="alert-circle-outline"
-        onPress={() => router.push('/traffic-offences')}
-        style={styles.actionButton}
-      >
-        Traffic Offences
-      </Button>
+      <Card style={styles.trustCard}>
+        <Card.Content style={styles.trustCardContent}>
+          <View>
+            <Text variant="labelMedium" style={styles.trustCardLabel}>
+              TRUSTSCORE
+            </Text>
+            <Text variant="bodyMedium" style={styles.trustCardStanding}>
+              {trustScoreLabel(driverProfile?.trust_score)}
+            </Text>
+          </View>
+          <TrustScoreRing score={driverProfile?.trust_score ?? 0} />
+        </Card.Content>
+      </Card>
 
       <Text variant="titleMedium" style={styles.activityHeading}>
         Recent Activity
@@ -181,32 +208,88 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
   },
-  greeting: {
+  greetingRow: {
     marginBottom: 16,
+  },
+  dateText: {
+    opacity: 0.6,
+  },
+  greeting: {
+    marginTop: 2,
   },
   switchButton: {
     marginBottom: 16,
   },
-  card: {
-    marginBottom: 24,
+  rentalCard: {
+    backgroundColor: brandColors.darkGreen,
+    marginBottom: 16,
   },
-  statusChip: {
-    alignSelf: 'flex-start',
-    marginBottom: 12,
+  rentalCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  carTitle: {
-    marginBottom: 4,
+  rentalCardLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 0.5,
   },
-  ownerText: {
-    opacity: 0.7,
+  drivingChip: {
+    backgroundColor: brandColors.mintGreen,
+  },
+  parkedChip: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  chipText: {
+    color: '#fff',
+  },
+  rentalCardTitle: {
+    color: '#fff',
+    marginTop: 4,
+  },
+  rentalDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginVertical: 12,
+  },
+  locationRow: {
+    flexDirection: 'row',
+  },
+  locationText: {
+    color: '#fff',
+  },
+  sinceText: {
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 4,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  actionButton: {
+  sectionLabel: {
+    opacity: 0.6,
+    letterSpacing: 0.5,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  trustCard: {
+    backgroundColor: brandColors.darkGreen,
+    marginTop: 8,
     marginBottom: 24,
+  },
+  trustCardContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  trustCardLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 0.5,
+  },
+  trustCardStanding: {
+    color: brandColors.mintGreen,
+    marginTop: 4,
   },
   activityHeading: {
     marginBottom: 8,

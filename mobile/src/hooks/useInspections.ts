@@ -29,7 +29,7 @@ type SubmitInspectionInput = {
   odometerKm: number | null
   notes: string
   photoUris: string[]
-  inspectionType?: 'weekly_checkin' | 'proof_of_payment'
+  inspectionType?: 'weekly_checkin' | 'proof_of_payment' | 'incident_report'
 }
 
 export function useSubmitInspection() {

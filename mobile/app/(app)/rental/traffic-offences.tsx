@@ -1,8 +1,8 @@
 import { View, StyleSheet, FlatList } from 'react-native'
 import { Text } from 'react-native-paper'
-import { useMyTrafficOffences } from '../../src/hooks/useTrafficOffences'
-import { TrafficOffenceRow } from '../../src/components/TrafficOffenceRow'
-import { LoadingScreen } from '../../src/components/LoadingScreen'
+import { useMyTrafficOffences } from '../../../src/hooks/useTrafficOffences'
+import { TrafficOffenceRow } from '../../../src/components/TrafficOffenceRow'
+import { LoadingScreen } from '../../../src/components/LoadingScreen'
 
 export default function TrafficOffencesScreen() {
   const { data: offences, isLoading } = useMyTrafficOffences()

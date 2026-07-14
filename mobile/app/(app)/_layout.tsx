@@ -1,4 +1,5 @@
-import { Redirect, Stack } from 'expo-router'
+import { Redirect, Tabs } from 'expo-router'
+import { Icon } from 'react-native-paper'
 import { useAuthStore } from '../../src/stores/authStore'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
@@ -20,19 +21,45 @@ export default function AppLayout() {
 
   return (
     <>
-      <Stack
+      <Tabs
         screenOptions={{
           headerStyle: { backgroundColor: brandColors.darkGreen },
           headerTintColor: '#fff',
           headerTitleStyle: { color: '#fff' },
+          tabBarActiveTintColor: brandColors.green,
+          tabBarInactiveTintColor: '#8A8A8A',
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'Dashboard' }} />
-        <Stack.Screen name="inspections/index" options={{ title: 'Inspection History' }} />
-        <Stack.Screen name="inspections/new" options={{ title: 'Vehicle Inspection' }} />
-        <Stack.Screen name="inspections/payment" options={{ title: 'Proof of Payment' }} />
-        <Stack.Screen name="traffic-offences" options={{ title: 'Traffic Offences' }} />
-      </Stack>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color, size }) => <Icon source="home-variant" size={size} color={color as string} />,
+          }}
+        />
+        <Tabs.Screen
+          name="activity"
+          options={{
+            title: 'Activity',
+            tabBarIcon: ({ color, size }) => <Icon source="pulse" size={size} color={color as string} />,
+          }}
+        />
+        <Tabs.Screen
+          name="rental"
+          options={{
+            title: 'Rental',
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => <Icon source="car" size={size} color={color as string} />,
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color, size }) => <Icon source="account" size={size} color={color as string} />,
+          }}
+        />
+      </Tabs>
       <CrashAlertModal />
     </>
   )
