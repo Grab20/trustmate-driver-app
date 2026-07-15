@@ -137,7 +137,15 @@ export default function HomeScreen() {
         </Card.Content>
       </Card>
 
-      {liveStatus && <LiveStatusMap liveStatus={liveStatus} addressLabel={addressLabel} height={300} />}
+      {liveStatus && (
+        <LiveStatusMap
+          liveStatus={liveStatus}
+          addressLabel={addressLabel}
+          height={300}
+          photoUrl={myProfile?.photo_url}
+          initials={myProfile?.full_name ?? undefined}
+        />
+      )}
 
       <View style={styles.statsGrid}>
         <StatTile label="Today" value={`${todaysDistanceKm.toFixed(1)} km`} icon="map-marker-distance" />

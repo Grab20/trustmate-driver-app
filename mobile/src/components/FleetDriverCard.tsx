@@ -110,7 +110,13 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
         <View style={styles.expandedPanel}>
           {selected === 'location' &&
             (entry.liveStatus ? (
-              <LiveStatusMap liveStatus={entry.liveStatus} addressLabel={addressLabel} height={180} />
+              <LiveStatusMap
+                liveStatus={entry.liveStatus}
+                addressLabel={addressLabel}
+                height={220}
+                photoUrl={entry.driver?.photo_url}
+                initials={entry.driver?.full_name ?? undefined}
+              />
             ) : (
               <Text variant="bodyMedium" style={styles.expandedEmpty}>
                 No location data yet.

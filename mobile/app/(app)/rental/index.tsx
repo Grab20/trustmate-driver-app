@@ -4,6 +4,7 @@ import { Text, Card, Button } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../../src/hooks/useActiveRental'
 import { useDriverProfile } from '../../../src/hooks/useDriverProfile'
+import { useMyProfile } from '../../../src/hooks/useMyProfile'
 import { useInspectionHistory } from '../../../src/hooks/useInspections'
 import { useMyTrafficOffences } from '../../../src/hooks/useTrafficOffences'
 import { useMyLiveStatus } from '../../../src/hooks/useMyLiveStatus'
@@ -23,6 +24,7 @@ export default function RentalScreen() {
   const { data: inspections, isLoading: isInspectionsLoading } = useInspectionHistory()
   const { data: trafficOffences } = useMyTrafficOffences()
   const { data: liveStatus } = useMyLiveStatus()
+  const { data: myProfile } = useMyProfile()
   const [addressLabel, setAddressLabel] = useState<string | null>(null)
 
   useEffect(() => {
@@ -94,7 +96,15 @@ export default function RentalScreen() {
         {car ? `${car.make} ${car.model}` : 'Vehicle'}
       </Text>
 
-      {liveStatus && <LiveStatusMap liveStatus={liveStatus} addressLabel={addressLabel} height={300} />}
+      {liveStatus && (
+        <LiveStatusMap
+          liveStatus={liveStatus}
+          addressLabel={addressLabel}
+          height={300}
+          photoUrl={myProfile?.photo_url}
+          initials={myProfile?.full_name ?? undefined}
+        />
+      )}
 
       <Card style={styles.card}>
         <Card.Content>

@@ -5,6 +5,7 @@ import { useTrip } from '../hooks/useTrip'
 import { useTripWaypoints } from '../hooks/useTripWaypoints'
 import { LoadingScreen } from './LoadingScreen'
 import { IconBadge } from './IconBadge'
+import { darkMapStyle } from '../theme/mapStyle'
 import { brandColors } from '../theme/theme'
 
 function formatTime(iso: string): string {
@@ -54,11 +55,12 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
       {routeCoords.length > 1 ? (
         <MapView
           style={styles.map}
+          customMapStyle={darkMapStyle}
           initialRegion={{
             latitude: start.latitude,
             longitude: start.longitude,
-            latitudeDelta: 0.02,
-            longitudeDelta: 0.02,
+            latitudeDelta: 0.012,
+            longitudeDelta: 0.012,
           }}
         >
           <Polyline coordinates={routeCoords} strokeColor={brandColors.green} strokeWidth={4} />
@@ -130,7 +132,7 @@ const styles = StyleSheet.create({
   },
   map: {
     width: '100%',
-    height: 260,
+    height: 320,
   },
   noRoute: {
     width: '100%',

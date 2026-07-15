@@ -106,7 +106,13 @@ export default function OwnerDriverDetailScreen() {
       </Card>
 
       {liveStatus ? (
-        <LiveStatusMap liveStatus={liveStatus} addressLabel={addressLabel} height={320} />
+        <LiveStatusMap
+          liveStatus={liveStatus}
+          addressLabel={addressLabel}
+          height={320}
+          photoUrl={profile?.photo_url}
+          initials={profile?.full_name ?? undefined}
+        />
       ) : (
         <Text variant="bodyMedium" style={styles.noLocation}>
           No location data yet for this driver.

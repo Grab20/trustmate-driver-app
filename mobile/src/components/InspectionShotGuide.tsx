@@ -82,16 +82,18 @@ const DIAGRAMS: Record<InspectionShotKey, () => React.JSX.Element> = {
   dashboard: DashboardDiagram,
 }
 
-export function InspectionShotGuide({ shotKey }: { shotKey: InspectionShotKey }) {
+export function InspectionShotGuide({ shotKey, compact }: { shotKey: InspectionShotKey; compact?: boolean }) {
   const Diagram = DIAGRAMS[shotKey]
   return (
     <View style={styles.container}>
       <View style={styles.diagramCard}>
         <Diagram />
       </View>
-      <Text variant="bodySmall" style={styles.instruction}>
-        {INSTRUCTIONS[shotKey]}
-      </Text>
+      {!compact && (
+        <Text variant="bodySmall" style={styles.instruction}>
+          {INSTRUCTIONS[shotKey]}
+        </Text>
+      )}
     </View>
   )
 }

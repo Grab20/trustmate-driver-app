@@ -8,6 +8,7 @@ import { useVehicleOdometer } from '../../../../src/hooks/useVehicleOdometer'
 import { useSubmitInspection } from '../../../../src/hooks/useInspections'
 import { PhotoSlot } from '../../../../src/components/PhotoSlot'
 import { InspectionProgress } from '../../../../src/components/InspectionProgress'
+import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
 
 // Order matters: photo_urls is a plain array, and this order is the convention
 // used to interpret which shot is which when displaying an inspection later.
@@ -40,6 +41,7 @@ export default function NewInspectionScreen() {
     interior: null,
     dashboard: null,
   })
+  const [pendingReview, setPendingReview] = useState<{ key: ShotKey; uri: string } | null>(null)
 
   const capturedCount = REQUIRED_SHOTS.filter((shot) => shots[shot.key] !== null).length
   const allShotsCaptured = capturedCount === REQUIRED_SHOTS.length
@@ -52,7 +54,7 @@ export default function NewInspectionScreen() {
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
     if (!result.canceled) {
-      setShots((prev) => ({ ...prev, [key]: result.assets[0].uri }))
+      setPendingReview({ key, uri: result.assets[0].uri })
     }
   }
 
@@ -120,6 +122,24 @@ export default function NewInspectionScreen() {
       >
         {allShotsCaptured ? 'Submit Inspection' : 'Take All 6 Photos to Continue'}
       </Button>
+
+      <PhotoReviewModal
+        visible={!!pendingReview}
+        photoUri={pendingReview?.uri ?? null}
+        shotKey={pendingReview?.key ?? 'front'}
+        label={REQUIRED_SHOTS.find((shot) => shot.key === pendingReview?.key)?.label ?? ''}
+        onRetake={() => {
+          const key = pendingReview?.key
+          setPendingReview(null)
+          if (key) handleCapture(key)
+        }}
+        onConfirm={() => {
+          if (pendingReview) {
+            setShots((prev) => ({ ...prev, [pendingReview.key]: pendingReview.uri }))
+          }
+          setPendingReview(null)
+        }}
+      />
     </ScrollView>
   )
 }
