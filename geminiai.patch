@@ -1,0 +1,302 @@
+diff --git a/mobile/app/(app)/rental/inspections/index.tsx b/mobile/app/(app)/rental/inspections/index.tsx
+index 90b33fc4..4f69ca89 100644
+--- a/mobile/app/(app)/rental/inspections/index.tsx
++++ b/mobile/app/(app)/rental/inspections/index.tsx
+@@ -5,6 +5,7 @@ import { useInspectionHistory } from '../../../../src/hooks/useInspections'
+ import { InspectionPhotoThumbnail } from '../../../../src/components/InspectionPhotoThumbnail'
+ import { LoadingScreen } from '../../../../src/components/LoadingScreen'
+ import { IconBadge } from '../../../../src/components/IconBadge'
++import { AIAnalysisSummary } from '../../../../src/components/AIAnalysisSummary'
+ import { brandColors } from '../../../../src/theme/theme'
+ import type { Tables } from '../../../../src/types/database'
+ 
+@@ -53,6 +54,11 @@ function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspection
+             ))}
+           </View>
+         )}
++        <AIAnalysisSummary
++          inspectionType={inspection.inspection_type}
++          aiAnalysis={inspection.ai_analysis}
++          aiAnalyzedAt={inspection.ai_analyzed_at}
++        />
+         {reviewConfig && (
+           <View style={styles.reviewRow}>
+             <IconBadge source={reviewConfig.icon} size={14} backgroundColor={`${reviewConfig.color}22`} color={reviewConfig.color} />
+diff --git a/mobile/src/components/AIAnalysisSummary.tsx b/mobile/src/components/AIAnalysisSummary.tsx
+new file mode 100644
+index 00000000..92549cc5
+--- /dev/null
++++ b/mobile/src/components/AIAnalysisSummary.tsx
+@@ -0,0 +1,183 @@
++import { useState } from 'react'
++import { View, StyleSheet, Pressable } from 'react-native'
++import { Text, ActivityIndicator } from 'react-native-paper'
++import { IconBadge } from './IconBadge'
++import { brandColors } from '../theme/theme'
++
++type AIShotResult = {
++  shot: string
++  carMatch: boolean | null
++  issues: string[]
++  quality: string
++}
++
++type AIAnalysisData = {
++  results?: AIShotResult[]
++  error?: string
++}
++
++const SHOT_LABELS: Record<string, string> = {
++  front: 'Front',
++  back: 'Back',
++  left: 'Left Side',
++  right: 'Right Side',
++  interior: 'Interior',
++  dashboard: 'Dashboard',
++}
++
++const QUALITY_LABELS: Record<string, string> = {
++  good: 'Good',
++  blurry: 'Blurry',
++  too_dark: 'Too dark',
++  too_far: 'Too far away',
++  too_close: 'Too close',
++  obstructed: 'Obstructed view',
++}
++
++export function AIAnalysisSummary({
++  inspectionType,
++  aiAnalysis,
++  aiAnalyzedAt,
++}: {
++  inspectionType: string
++  aiAnalysis: unknown
++  aiAnalyzedAt: string | null
++}) {
++  const [expanded, setExpanded] = useState(false)
++
++  if (inspectionType !== 'weekly_checkin') return null
++
++  if (!aiAnalyzedAt) {
++    return (
++      <View style={styles.pendingBanner}>
++        <ActivityIndicator size={16} color={brandColors.green} />
++        <Text variant="bodySmall" style={styles.pendingText}>
++          AI review in progress…
++        </Text>
++      </View>
++    )
++  }
++
++  const data = aiAnalysis as AIAnalysisData | null
++  if (!data || data.error || !data.results || data.results.length === 0) {
++    return (
++      <View style={styles.pendingBanner}>
++        <IconBadge source="robot-confused-outline" size={14} backgroundColor="#B8B8AE" />
++        <Text variant="bodySmall" style={styles.pendingText}>
++          AI review unavailable for this inspection.
++        </Text>
++      </View>
++    )
++  }
++
++  const mismatches = data.results.filter((r) => r.carMatch === false)
++  const withIssues = data.results.filter((r) => r.issues.length > 0)
++  const withQualityIssues = data.results.filter((r) => r.quality && r.quality !== 'good')
++  const hasFlags = mismatches.length > 0 || withIssues.length > 0 || withQualityIssues.length > 0
++
++  return (
++    <View>
++      <Pressable
++        onPress={() => setExpanded((prev) => !prev)}
++        style={[styles.summaryBanner, hasFlags ? styles.summaryBannerAlert : styles.summaryBannerOk]}
++      >
++        <IconBadge
++          source={hasFlags ? 'alert-circle' : 'check-circle'}
++          size={14}
++          backgroundColor={hasFlags ? '#B5651D' : brandColors.green}
++        />
++        <Text variant="bodySmall" style={styles.summaryText}>
++          {hasFlags ? 'AI Review: possible issues found' : 'AI Review: no issues found'}
++        </Text>
++        <IconBadge source={expanded ? 'chevron-up' : 'chevron-down'} size={12} backgroundColor="transparent" color="#8A8A8A" />
++      </Pressable>
++
++      {expanded && (
++        <View style={styles.detailsBox}>
++          {data.results.map((result) => (
++            <View key={result.shot} style={styles.detailRow}>
++              <Text variant="bodySmall" style={styles.detailShotLabel}>
++                {SHOT_LABELS[result.shot] ?? result.shot}
++              </Text>
++              {result.carMatch === false && (
++                <Text variant="bodySmall" style={styles.detailAlert}>
++                  Possible different vehicle
++                </Text>
++              )}
++              {result.issues.length > 0 && (
++                <Text variant="bodySmall" style={styles.detailAlert}>
++                  {result.issues.join(', ')}
++                </Text>
++              )}
++              {result.quality && result.quality !== 'good' && (
++                <Text variant="bodySmall" style={styles.detailWarn}>
++                  {QUALITY_LABELS[result.quality] ?? result.quality}
++                </Text>
++              )}
++              {result.carMatch !== false && result.issues.length === 0 && (!result.quality || result.quality === 'good') && (
++                <Text variant="bodySmall" style={styles.detailOk}>
++                  Looks good
++                </Text>
++              )}
++            </View>
++          ))}
++        </View>
++      )}
++    </View>
++  )
++}
++
++const styles = StyleSheet.create({
++  pendingBanner: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 8,
++    marginTop: 12,
++  },
++  pendingText: {
++    opacity: 0.6,
++  },
++  summaryBanner: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 8,
++    marginTop: 12,
++    paddingVertical: 8,
++    paddingHorizontal: 12,
++    borderRadius: 10,
++  },
++  summaryBannerOk: {
++    backgroundColor: '#DFF5E6',
++  },
++  summaryBannerAlert: {
++    backgroundColor: '#FBE8C8',
++  },
++  summaryText: {
++    flex: 1,
++    fontWeight: '600',
++  },
++  detailsBox: {
++    marginTop: 8,
++    paddingLeft: 8,
++    gap: 6,
++  },
++  detailRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    flexWrap: 'wrap',
++    gap: 6,
++  },
++  detailShotLabel: {
++    fontWeight: '700',
++    width: 80,
++  },
++  detailAlert: {
++    color: '#B5651D',
++  },
++  detailWarn: {
++    color: '#8A6D00',
++  },
++  detailOk: {
++    opacity: 0.6,
++  },
++})
+diff --git a/mobile/src/components/InspectionReviewCard.tsx b/mobile/src/components/InspectionReviewCard.tsx
+index 1aed51b0..7e85e1b3 100644
+--- a/mobile/src/components/InspectionReviewCard.tsx
++++ b/mobile/src/components/InspectionReviewCard.tsx
+@@ -4,6 +4,7 @@ import { Text, Card, Button, TextInput } from 'react-native-paper'
+ import type { Tables } from '../types/database'
+ import { useReviewInspection } from '../hooks/useInspections'
+ import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
++import { AIAnalysisSummary } from './AIAnalysisSummary'
+ import { IconBadge } from './IconBadge'
+ import { brandColors } from '../theme/theme'
+ 
+@@ -63,6 +64,12 @@ export function InspectionReviewCard({
+           </Text>
+         )}
+ 
++        <AIAnalysisSummary
++          inspectionType={inspection.inspection_type}
++          aiAnalysis={inspection.ai_analysis}
++          aiAnalyzedAt={inspection.ai_analyzed_at}
++        />
++
+         {canReview ? (
+           <>
+             <TextInput
+diff --git a/mobile/src/hooks/useInspections.ts b/mobile/src/hooks/useInspections.ts
+index 6e8e32cd..305ce404 100644
+--- a/mobile/src/hooks/useInspections.ts
++++ b/mobile/src/hooks/useInspections.ts
+@@ -20,6 +20,7 @@ export function useInspectionHistory() {
+       return data
+     },
+     enabled: !!userId,
++    refetchInterval: 15000,
+   })
+ }
+ 
+@@ -70,6 +71,12 @@ export function useSubmitInspection() {
+         if (updateError) throw updateError
+       }
+ 
++      if ((input.inspectionType ?? 'weekly_checkin') === 'weekly_checkin') {
++        // Fire-and-forget: AI review runs in the background and the inspection
++        // lists poll for the result, so a slow/failed analysis never blocks submission.
++        supabase.functions.invoke('analyze-inspection', { body: { inspectionId: inspection.id } }).catch(() => {})
++      }
++
+       return inspection
+     },
+     onSuccess: () => {
+@@ -92,6 +99,7 @@ export function useDriverInspectionsForOwner(driverId: string | undefined) {
+       return data
+     },
+     enabled: !!driverId,
++    refetchInterval: 15000,
+   })
+ }
+ 
+diff --git a/mobile/src/types/database.ts b/mobile/src/types/database.ts
+index 6cc24658..d0656339 100644
+--- a/mobile/src/types/database.ts
++++ b/mobile/src/types/database.ts
+@@ -1236,6 +1236,8 @@ export type Database = {
+       vehicle_inspections: {
+         Row: {
+           admin_note: string | null
++          ai_analysis: Json | null
++          ai_analyzed_at: string | null
+           application_id: string | null
+           car_id: string | null
+           created_at: string | null
+@@ -1254,6 +1256,8 @@ export type Database = {
+         }
+         Insert: {
+           admin_note?: string | null
++          ai_analysis?: Json | null
++          ai_analyzed_at?: string | null
+           application_id?: string | null
+           car_id?: string | null
+           created_at?: string | null
+@@ -1272,6 +1276,8 @@ export type Database = {
+         }
+         Update: {
+           admin_note?: string | null
++          ai_analysis?: Json | null
++          ai_analyzed_at?: string | null
+           application_id?: string | null
+           car_id?: string | null
+           created_at?: string | null
