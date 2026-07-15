@@ -5,6 +5,7 @@ import { useInspectionHistory } from '../../../../src/hooks/useInspections'
 import { InspectionPhotoThumbnail } from '../../../../src/components/InspectionPhotoThumbnail'
 import { LoadingScreen } from '../../../../src/components/LoadingScreen'
 import { IconBadge } from '../../../../src/components/IconBadge'
+import { AIAnalysisSummary } from '../../../../src/components/AIAnalysisSummary'
 import { brandColors } from '../../../../src/theme/theme'
 import type { Tables } from '../../../../src/types/database'
 
@@ -53,6 +54,11 @@ function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspection
             ))}
           </View>
         )}
+        <AIAnalysisSummary
+          inspectionType={inspection.inspection_type}
+          aiAnalysis={inspection.ai_analysis}
+          aiAnalyzedAt={inspection.ai_analyzed_at}
+        />
         {reviewConfig && (
           <View style={styles.reviewRow}>
             <IconBadge source={reviewConfig.icon} size={14} backgroundColor={`${reviewConfig.color}22`} color={reviewConfig.color} />

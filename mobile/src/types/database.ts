@@ -1236,6 +1236,8 @@ export type Database = {
       vehicle_inspections: {
         Row: {
           admin_note: string | null
+          ai_analysis: Json | null
+          ai_analyzed_at: string | null
           application_id: string | null
           car_id: string | null
           created_at: string | null
@@ -1254,6 +1256,8 @@ export type Database = {
         }
         Insert: {
           admin_note?: string | null
+          ai_analysis?: Json | null
+          ai_analyzed_at?: string | null
           application_id?: string | null
           car_id?: string | null
           created_at?: string | null
@@ -1272,6 +1276,8 @@ export type Database = {
         }
         Update: {
           admin_note?: string | null
+          ai_analysis?: Json | null
+          ai_analyzed_at?: string | null
           application_id?: string | null
           car_id?: string | null
           created_at?: string | null

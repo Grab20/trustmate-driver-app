@@ -4,6 +4,7 @@ import { Text, Card, Button, TextInput } from 'react-native-paper'
 import type { Tables } from '../types/database'
 import { useReviewInspection } from '../hooks/useInspections'
 import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+import { AIAnalysisSummary } from './AIAnalysisSummary'
 import { IconBadge } from './IconBadge'
 import { brandColors } from '../theme/theme'
 
@@ -62,6 +63,12 @@ export function InspectionReviewCard({
             No photos attached.
           </Text>
         )}
+
+        <AIAnalysisSummary
+          inspectionType={inspection.inspection_type}
+          aiAnalysis={inspection.ai_analysis}
+          aiAnalyzedAt={inspection.ai_analyzed_at}
+        />
 
         {canReview ? (
           <>

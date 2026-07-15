@@ -20,6 +20,7 @@ export function useInspectionHistory() {
       return data
     },
     enabled: !!userId,
+    refetchInterval: 15000,
   })
 }
 
@@ -70,6 +71,12 @@ export function useSubmitInspection() {
         if (updateError) throw updateError
       }
 
+      if ((input.inspectionType ?? 'weekly_checkin') === 'weekly_checkin') {
+        // Fire-and-forget: AI review runs in the background and the inspection
+        // lists poll for the result, so a slow/failed analysis never blocks submission.
+        supabase.functions.invoke('analyze-inspection', { body: { inspectionId: inspection.id } }).catch(() => {})
+      }
+
       return inspection
     },
     onSuccess: () => {
@@ -92,6 +99,7 @@ export function useDriverInspectionsForOwner(driverId: string | undefined) {
       return data
     },
     enabled: !!driverId,
+    refetchInterval: 15000,
   })
 }
 
