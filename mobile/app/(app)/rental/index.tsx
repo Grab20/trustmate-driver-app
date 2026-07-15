@@ -94,7 +94,7 @@ export default function RentalScreen() {
         {car ? `${car.make} ${car.model}` : 'Vehicle'}
       </Text>
 
-      {liveStatus && <LiveStatusMap liveStatus={liveStatus} addressLabel={addressLabel} />}
+      {liveStatus && <LiveStatusMap liveStatus={liveStatus} addressLabel={addressLabel} height={300} />}
 
       <Card style={styles.card}>
         <Card.Content>

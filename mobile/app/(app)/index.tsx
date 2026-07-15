@@ -15,8 +15,9 @@ import { StatTile } from '../../src/components/StatTile'
 import { AlertBanner } from '../../src/components/AlertBanner'
 import { TrustScoreRing } from '../../src/components/TrustScoreRing'
 import { IconBadge } from '../../src/components/IconBadge'
+import { LiveStatusMap } from '../../src/components/LiveStatusMap'
 import { reverseGeocodeLabel } from '../../src/lib/reverseGeocode'
-import { formatElapsedSince, getNextOccurrence, formatShortDate } from '../../src/utils/schedule'
+import { getNextOccurrence, formatShortDate } from '../../src/utils/schedule'
 import { computePaymentRecord } from '../../src/utils/paymentRecord'
 import { brandColors } from '../../src/theme/theme'
 
@@ -133,23 +134,10 @@ export default function HomeScreen() {
               {car ? `${car.make} ${car.model}` : 'Vehicle details unavailable'}
             </Text>
           </View>
-          {liveStatus && (
-            <>
-              <View style={styles.rentalDivider} />
-              <View style={styles.locationRow}>
-                <Text variant="bodyMedium" style={styles.locationText}>
-                  {addressLabel ?? 'Locating…'}
-                </Text>
-              </View>
-              <Text variant="bodySmall" style={styles.sinceText}>
-                {isMoving
-                  ? `${Math.round(liveStatus.speed_kmh ?? 0)} km/h`
-                  : `Parked ${formatElapsedSince(liveStatus.state_since)} ago`}
-              </Text>
-            </>
-          )}
         </Card.Content>
       </Card>
+
+      {liveStatus && <LiveStatusMap liveStatus={liveStatus} addressLabel={addressLabel} height={300} />}
 
       <View style={styles.statsGrid}>
         <StatTile label="Today" value={`${todaysDistanceKm.toFixed(1)} km`} icon="map-marker-distance" />
@@ -287,21 +275,6 @@ const styles = StyleSheet.create({
   },
   rentalCardTitle: {
     color: '#fff',
-  },
-  rentalDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    marginVertical: 12,
-  },
-  locationRow: {
-    flexDirection: 'row',
-  },
-  locationText: {
-    color: '#fff',
-  },
-  sinceText: {
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 4,
   },
   statsGrid: {
     flexDirection: 'row',

@@ -12,7 +12,7 @@ type LiveStatusMapProps = {
   height?: number
 }
 
-export function LiveStatusMap({ liveStatus, addressLabel, height = 220 }: LiveStatusMapProps) {
+export function LiveStatusMap({ liveStatus, addressLabel, height = 300 }: LiveStatusMapProps) {
   const isMoving = liveStatus.is_moving ?? false
   const lat = Number(liveStatus.lat)
   const lng = Number(liveStatus.lng)
