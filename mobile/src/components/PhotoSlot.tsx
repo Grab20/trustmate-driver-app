@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { View, Image, StyleSheet, Pressable, Modal, Animated } from 'react-native'
 import { Text, IconButton, Button } from 'react-native-paper'
-import { InspectionShotGuide, type InspectionShotKey } from './InspectionShotGuide'
+import { InspectionShotGuide, INSTRUCTIONS, type InspectionShotKey } from './InspectionShotGuide'
+import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
 import { brandColors } from '../theme/theme'
 
 type PhotoSlotProps = {
@@ -9,9 +10,10 @@ type PhotoSlotProps = {
   shotKey: InspectionShotKey
   uri: string | null
   onCapture: () => void
+  referencePhotoPath?: string | null
 }
 
-export function PhotoSlot({ label, shotKey, uri, onCapture }: PhotoSlotProps) {
+export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }: PhotoSlotProps) {
   const [showGuide, setShowGuide] = useState(false)
   const scaleAnim = useRef(new Animated.Value(uri ? 1 : 0.85)).current
 
@@ -53,7 +55,21 @@ export function PhotoSlot({ label, shotKey, uri, onCapture }: PhotoSlotProps) {
             <Text variant="titleMedium" style={styles.guideTitle}>
               {label} Example
             </Text>
-            <InspectionShotGuide shotKey={shotKey} />
+            {referencePhotoPath ? (
+              <View style={styles.ownerExample}>
+                <Text variant="labelMedium" style={styles.ownerExampleLabel}>
+                  Your owner's example photo for this angle
+                </Text>
+                <View style={styles.ownerExamplePhotoWrap}>
+                  <InspectionPhotoThumbnail path={referencePhotoPath} bucket="car-reference-photos" />
+                </View>
+                <Text variant="bodySmall" style={styles.ownerExampleInstruction}>
+                  {INSTRUCTIONS[shotKey]}
+                </Text>
+              </View>
+            ) : (
+              <InspectionShotGuide shotKey={shotKey} />
+            )}
             <Button mode="contained" onPress={() => setShowGuide(false)}>
               Got It
             </Button>
@@ -143,5 +159,23 @@ const styles = StyleSheet.create({
   guideTitle: {
     textAlign: 'center',
     marginBottom: 8,
+  },
+  ownerExample: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  ownerExampleLabel: {
+    color: brandColors.green,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  ownerExamplePhotoWrap: {
+    alignItems: 'center',
+  },
+  ownerExampleInstruction: {
+    marginTop: 12,
+    textAlign: 'center',
+    opacity: 0.8,
   },
 })

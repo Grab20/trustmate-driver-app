@@ -18,6 +18,8 @@ const TYPE_LABELS: Record<string, string> = {
 const REVIEW_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
   approved: { label: 'Approved by owner', icon: 'check-circle', color: brandColors.green },
   declined: { label: 'Declined by owner', icon: 'close-circle', color: brandColors.errorRed },
+  reinspection_requested: { label: 'Owner requested a re-inspection', icon: 'refresh-circle', color: '#8A6D00' },
+  flagged: { label: 'Owner flagged possible damage', icon: 'flag', color: brandColors.errorRed },
 }
 
 function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspections'> }) {

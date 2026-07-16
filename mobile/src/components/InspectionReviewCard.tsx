@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { View, StyleSheet } from 'react-native'
-import { Text, Card, Button, TextInput } from 'react-native-paper'
+import { View, StyleSheet, Pressable } from 'react-native'
+import { Text, Card, Button, TextInput, Icon } from 'react-native-paper'
+import { useRouter } from 'expo-router'
 import type { Tables } from '../types/database'
 import { useReviewInspection } from '../hooks/useInspections'
 import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
 import { AIAnalysisSummary } from './AIAnalysisSummary'
 import { IconBadge } from './IconBadge'
+import { isVehicleHealthReport } from '../types/inspectionReport'
 import { brandColors } from '../theme/theme'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -18,6 +20,8 @@ const STATUS_CONFIG: Record<string, { label: string; icon: string; color: string
   pending: { label: 'Awaiting Review', icon: 'clock-outline', color: '#8A6D00' },
   approved: { label: 'Approved', icon: 'check-circle', color: brandColors.green },
   declined: { label: 'Declined', icon: 'close-circle', color: brandColors.errorRed },
+  reinspection_requested: { label: 'Re-inspection Requested', icon: 'refresh-circle', color: '#8A6D00' },
+  flagged: { label: 'Flagged', icon: 'flag', color: brandColors.errorRed },
 }
 
 export function InspectionReviewCard({
@@ -27,12 +31,56 @@ export function InspectionReviewCard({
   inspection: Tables<'vehicle_inspections'>
   driverId: string | undefined
 }) {
+  const router = useRouter()
   const reviewInspection = useReviewInspection(driverId)
   const [comment, setComment] = useState(inspection.owner_review_comment ?? '')
 
   const reviewStatus = inspection.owner_review_status ?? 'pending'
   const statusConfig = STATUS_CONFIG[reviewStatus] ?? STATUS_CONFIG.pending
   const canReview = reviewStatus === 'pending'
+
+  if (inspection.inspection_type === 'weekly_checkin') {
+    const report = isVehicleHealthReport(inspection.ai_analysis) ? inspection.ai_analysis : null
+
+    return (
+      <Pressable
+        onPress={() =>
+          router.push(`/owner/driver/inspection/${inspection.id}?driverId=${driverId}&carId=${inspection.car_id}`)
+        }
+      >
+        <Card style={styles.card}>
+          <Card.Content>
+            <View style={styles.headerRow}>
+              <Text variant="bodyMedium" style={styles.typeLabel}>
+                Vehicle Health Report
+              </Text>
+              <View style={styles.statusRow}>
+                <IconBadge source={statusConfig.icon} size={12} backgroundColor={`${statusConfig.color}22`} color={statusConfig.color} />
+                <Text variant="labelSmall" style={[styles.statusText, { color: statusConfig.color }]}>
+                  {statusConfig.label}
+                </Text>
+              </View>
+            </View>
+            <Text variant="bodySmall" style={styles.date}>
+              {new Date(inspection.created_at ?? '').toLocaleDateString()}
+            </Text>
+            <View style={styles.summaryRow}>
+              {report ? (
+                <Text variant="titleMedium" style={styles.healthSummary}>
+                  Vehicle Health: {report.healthScore}/100 · {report.healthLabel}
+                </Text>
+              ) : (
+                <Text variant="bodyMedium" style={styles.pendingSummary}>
+                  {inspection.ai_analyzed_at ? 'AI review unavailable' : 'AI review in progress…'}
+                </Text>
+              )}
+              <Icon source="chevron-right" size={22} color="#B8B8AE" />
+            </View>
+          </Card.Content>
+        </Card>
+      </Pressable>
+    )
+  }
 
   return (
     <Card style={styles.card}>
@@ -141,6 +189,18 @@ const styles = StyleSheet.create({
   date: {
     opacity: 0.6,
     marginTop: 4,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  healthSummary: {
+    color: brandColors.darkGreen,
+  },
+  pendingSummary: {
+    opacity: 0.7,
   },
   photoRow: {
     flexDirection: 'row',

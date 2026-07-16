@@ -37,7 +37,7 @@ export const SHOT_LABELS: Record<InspectionShotKey, string> = {
   boot: 'Boot / Trunk',
 }
 
-const INSTRUCTIONS: Record<InspectionShotKey, string> = {
+export const INSTRUCTIONS: Record<InspectionShotKey, string> = {
   front: 'Stand back about 2m directly in front of the car, and include the full bumper and number plate.',
   front_corner: 'Stand at the front corner, angled so both the front and one side of the car are visible.',
   passenger_side: 'Stand to the passenger side, far enough back to fit the whole car from front to back.',

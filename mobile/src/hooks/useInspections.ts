@@ -103,11 +103,52 @@ export function useDriverInspectionsForOwner(driverId: string | undefined) {
   })
 }
 
+export function useInspectionReport(inspectionId: string | undefined) {
+  return useQuery({
+    queryKey: ['inspection-report', inspectionId],
+    queryFn: async (): Promise<Tables<'vehicle_inspections'>> => {
+      const { data, error } = await supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('id', inspectionId as string)
+        .single()
+
+      if (error) throw error
+      return data
+    },
+    enabled: !!inspectionId,
+    refetchInterval: 15000,
+  })
+}
+
+export function useWeeklyInspectionsForCar(carId: string | undefined, driverId: string | undefined) {
+  return useQuery({
+    queryKey: ['weekly-inspections-for-car', carId, driverId],
+    queryFn: async (): Promise<Tables<'vehicle_inspections'>[]> => {
+      const { data, error } = await supabase
+        .from('vehicle_inspections')
+        .select('*')
+        .eq('car_id', carId as string)
+        .eq('driver_id', driverId as string)
+        .eq('inspection_type', 'weekly_checkin')
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+      return data
+    },
+    enabled: !!carId && !!driverId,
+    refetchInterval: 15000,
+  })
+}
+
 type ReviewInspectionInput = {
   inspectionId: string
-  status: 'approved' | 'declined'
+  status: 'approved' | 'declined' | 'reinspection_requested' | 'flagged'
   comment: string
+  flagReason?: 'existing_damage' | 'false_detection' | null
 }
+
+const INSPECTION_APPROVAL_TRUST_POINTS = 2
 
 export function useReviewInspection(driverId: string | undefined) {
   const queryClient = useQueryClient()
@@ -119,14 +160,24 @@ export function useReviewInspection(driverId: string | undefined) {
         .update({
           owner_review_status: input.status,
           owner_review_comment: input.comment || null,
+          owner_flag_reason: input.status === 'flagged' ? (input.flagReason ?? null) : null,
           owner_reviewed_at: new Date().toISOString(),
         })
         .eq('id', input.inspectionId)
 
       if (error) throw error
+
+      if (input.status === 'approved') {
+        await supabase.rpc('award_inspection_trust_points', {
+          p_inspection_id: input.inspectionId,
+          p_points: INSPECTION_APPROVAL_TRUST_POINTS,
+          p_action_type: 'inspection_approved',
+        })
+      }
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['driver-inspections-for-owner', driverId] })
+      queryClient.invalidateQueries({ queryKey: ['inspection-report', variables.inspectionId] })
     },
   })
 }

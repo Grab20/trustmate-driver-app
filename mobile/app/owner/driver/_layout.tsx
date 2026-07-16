@@ -13,6 +13,7 @@ export default function OwnerDriverLayout() {
       <Stack.Screen name="[id]" options={{ title: 'Driver' }} />
       <Stack.Screen name="trip/[tripId]" options={{ title: 'Trip Details' }} />
       <Stack.Screen name="reference-photos" options={{ title: 'Reference Photos' }} />
+      <Stack.Screen name="inspection/[inspectionId]" options={{ title: 'Vehicle Health Report' }} />
     </Stack>
   )
 }

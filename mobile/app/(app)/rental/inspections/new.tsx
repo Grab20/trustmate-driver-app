@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../../../src/hooks/useActiveRental'
 import { useVehicleOdometer } from '../../../../src/hooks/useVehicleOdometer'
 import { useSubmitInspection } from '../../../../src/hooks/useInspections'
+import { useCarReferencePhotos } from '../../../../src/hooks/useCarReferencePhotos'
 import { PhotoSlot } from '../../../../src/components/PhotoSlot'
 import { InspectionProgress } from '../../../../src/components/InspectionProgress'
 import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
@@ -26,7 +27,12 @@ export default function NewInspectionScreen() {
   const router = useRouter()
   const { data: activeRental } = useActiveRental()
   const { data: odometer } = useVehicleOdometer(activeRental?.car_id ?? undefined)
+  const { data: referencePhotos } = useCarReferencePhotos(activeRental?.car_id ?? undefined)
   const submitInspection = useSubmitInspection()
+
+  const referencePhotoByShotKey = Object.fromEntries(
+    (referencePhotos ?? []).map((row) => [row.shot_key, row.photo_path]),
+  ) as Partial<Record<InspectionShotKey, string>>
 
   const [odometerKm, setOdometerKm] = useState(
     odometer?.current_km != null ? String(odometer.current_km) : '',
@@ -104,6 +110,7 @@ export default function NewInspectionScreen() {
             shotKey={key}
             uri={shots[key]}
             onCapture={() => handleCapture(key)}
+            referencePhotoPath={referencePhotoByShotKey[key] ?? null}
           />
         ))}
       </View>
@@ -117,6 +124,7 @@ export default function NewInspectionScreen() {
             shotKey={key}
             uri={shots[key]}
             onCapture={() => handleCapture(key)}
+            referencePhotoPath={referencePhotoByShotKey[key] ?? null}
           />
         ))}
       </View>

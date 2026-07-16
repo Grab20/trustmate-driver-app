@@ -101,15 +101,20 @@ export type Database = {
           car_id: string | null
           counter_price: number | null
           created_at: string | null
+          driver_agreed_terms: boolean
           driver_id: string | null
           id: string
           initiated_by: string | null
           matched_at: string | null
           message: string | null
+          owner_agreed_terms: boolean
           owner_id: string | null
           owner_notes: string | null
           owner_rated: boolean | null
           status: string | null
+          terms_agreed_at: string | null
+          terms_proposed: Json | null
+          terms_proposed_by: string | null
           unmatch_reason: string | null
           unmatched_at: string | null
           unmatched_by: string | null
@@ -119,15 +124,20 @@ export type Database = {
           car_id?: string | null
           counter_price?: number | null
           created_at?: string | null
+          driver_agreed_terms?: boolean
           driver_id?: string | null
           id?: string
           initiated_by?: string | null
           matched_at?: string | null
           message?: string | null
+          owner_agreed_terms?: boolean
           owner_id?: string | null
           owner_notes?: string | null
           owner_rated?: boolean | null
           status?: string | null
+          terms_agreed_at?: string | null
+          terms_proposed?: Json | null
+          terms_proposed_by?: string | null
           unmatch_reason?: string | null
           unmatched_at?: string | null
           unmatched_by?: string | null
@@ -137,15 +147,20 @@ export type Database = {
           car_id?: string | null
           counter_price?: number | null
           created_at?: string | null
+          driver_agreed_terms?: boolean
           driver_id?: string | null
           id?: string
           initiated_by?: string | null
           matched_at?: string | null
           message?: string | null
+          owner_agreed_terms?: boolean
           owner_id?: string | null
           owner_notes?: string | null
           owner_rated?: boolean | null
           status?: string | null
+          terms_agreed_at?: string | null
+          terms_proposed?: Json | null
+          terms_proposed_by?: string | null
           unmatch_reason?: string | null
           unmatched_at?: string | null
           unmatched_by?: string | null
@@ -739,6 +754,54 @@ export type Database = {
           },
         ]
       }
+      messages: {
+        Row: {
+          application_id: string
+          content: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          read_by_recipient: boolean
+          sender_id: string | null
+          type: string
+        }
+        Insert: {
+          application_id: string
+          content: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          read_by_recipient?: boolean
+          sender_id?: string | null
+          type?: string
+        }
+        Update: {
+          application_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          read_by_recipient?: boolean
+          sender_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "active_matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_views: {
         Row: {
           created_at: string | null
@@ -1288,6 +1351,7 @@ export type Database = {
           inspection_type: string
           notes: string | null
           odometer_km: number | null
+          owner_flag_reason: string | null
           owner_review_comment: string | null
           owner_review_status: string
           owner_reviewed_at: string | null
@@ -1308,6 +1372,7 @@ export type Database = {
           inspection_type?: string
           notes?: string | null
           odometer_km?: number | null
+          owner_flag_reason?: string | null
           owner_review_comment?: string | null
           owner_review_status?: string
           owner_reviewed_at?: string | null
@@ -1328,6 +1393,7 @@ export type Database = {
           inspection_type?: string
           notes?: string | null
           odometer_km?: number | null
+          owner_flag_reason?: string | null
           owner_review_comment?: string | null
           owner_review_status?: string
           owner_reviewed_at?: string | null
@@ -1627,6 +1693,14 @@ export type Database = {
       }
     }
     Functions: {
+      award_inspection_trust_points: {
+        Args: {
+          p_action_type: string
+          p_inspection_id: string
+          p_points: number
+        }
+        Returns: undefined
+      }
       calculate_trust_score: { Args: { dp_id: string }; Returns: number }
       complete_driver_registration: {
         Args: { payload: Json }

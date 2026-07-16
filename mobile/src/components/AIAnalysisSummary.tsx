@@ -3,28 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native'
 import { Text, ActivityIndicator } from 'react-native-paper'
 import { IconBadge } from './IconBadge'
 import { brandColors } from '../theme/theme'
-import { SHOT_LABELS } from './InspectionShotGuide'
-
-type AIShotResult = {
-  shot: string
-  carMatch: boolean | null
-  issues: string[]
-  quality: string
-}
-
-type AIAnalysisData = {
-  results?: AIShotResult[]
-  error?: string
-}
-
-const QUALITY_LABELS: Record<string, string> = {
-  good: 'Good',
-  blurry: 'Blurry',
-  too_dark: 'Too dark',
-  too_far: 'Too far away',
-  too_close: 'Too close',
-  obstructed: 'Obstructed view',
-}
+import { isVehicleHealthReport } from '../types/inspectionReport'
 
 export function AIAnalysisSummary({
   inspectionType,
@@ -50,8 +29,7 @@ export function AIAnalysisSummary({
     )
   }
 
-  const data = aiAnalysis as AIAnalysisData | null
-  if (!data || data.error || !data.results || data.results.length === 0) {
+  if (!isVehicleHealthReport(aiAnalysis)) {
     return (
       <View style={styles.pendingBanner}>
         <IconBadge source="robot-confused-outline" size={14} backgroundColor="#B8B8AE" />
@@ -62,10 +40,8 @@ export function AIAnalysisSummary({
     )
   }
 
-  const mismatches = data.results.filter((r) => r.carMatch === false)
-  const withIssues = data.results.filter((r) => r.issues.length > 0)
-  const withQualityIssues = data.results.filter((r) => r.quality && r.quality !== 'good')
-  const hasFlags = mismatches.length > 0 || withIssues.length > 0 || withQualityIssues.length > 0
+  const report = aiAnalysis
+  const hasFlags = report.healthScore < 90
 
   return (
     <View>
@@ -79,38 +55,24 @@ export function AIAnalysisSummary({
           backgroundColor={hasFlags ? '#B5651D' : brandColors.green}
         />
         <Text variant="bodySmall" style={styles.summaryText}>
-          {hasFlags ? 'AI Review: possible issues found' : 'AI Review: no issues found'}
+          Vehicle Health: {report.healthScore}/100 · {report.healthLabel}
         </Text>
         <IconBadge source={expanded ? 'chevron-up' : 'chevron-down'} size={12} backgroundColor="transparent" color="#8A8A8A" />
       </Pressable>
 
       {expanded && (
         <View style={styles.detailsBox}>
-          {data.results.map((result) => (
-            <View key={result.shot} style={styles.detailRow}>
-              <Text variant="bodySmall" style={styles.detailShotLabel}>
-                {(SHOT_LABELS as Record<string, string>)[result.shot] ?? result.shot}
+          {report.summary.map((bullet, index) => (
+            <View key={index} style={styles.detailRow}>
+              <IconBadge
+                source={bullet.ok ? 'check' : 'alert'}
+                size={12}
+                backgroundColor="transparent"
+                color={bullet.ok ? brandColors.green : '#B5651D'}
+              />
+              <Text variant="bodySmall" style={[styles.detailText, !bullet.ok && styles.detailAlert]}>
+                {bullet.text}
               </Text>
-              {result.carMatch === false && (
-                <Text variant="bodySmall" style={styles.detailAlert}>
-                  Possible different vehicle
-                </Text>
-              )}
-              {result.issues.length > 0 && (
-                <Text variant="bodySmall" style={styles.detailAlert}>
-                  {result.issues.join(', ')}
-                </Text>
-              )}
-              {result.quality && result.quality !== 'good' && (
-                <Text variant="bodySmall" style={styles.detailWarn}>
-                  {QUALITY_LABELS[result.quality] ?? result.quality}
-                </Text>
-              )}
-              {result.carMatch !== false && result.issues.length === 0 && (!result.quality || result.quality === 'good') && (
-                <Text variant="bodySmall" style={styles.detailOk}>
-                  Looks good
-                </Text>
-              )}
             </View>
           ))}
         </View>
@@ -156,20 +118,14 @@ const styles = StyleSheet.create({
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 6,
   },
-  detailShotLabel: {
-    fontWeight: '700',
-    width: 80,
+  detailText: {
+    flex: 1,
+    opacity: 0.8,
   },
   detailAlert: {
     color: '#B5651D',
-  },
-  detailWarn: {
-    color: '#8A6D00',
-  },
-  detailOk: {
-    opacity: 0.6,
+    opacity: 1,
   },
 })
