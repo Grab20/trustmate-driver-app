@@ -22,10 +22,10 @@ export default function OwnerActivityScreen() {
       {trips && trips.length > 0 ? (
         <Card style={styles.tripsCard}>
           <Card.Content>
-            {trips.map((trip) => (
+            {trips.map((trip, index) => (
               <TripRouteRow
                 key={trip.id}
-                driverName={trip.driver?.full_name ?? 'Driver'}
+                tripNumber={index + 1}
                 startLabel={trip.start_location ?? 'Unknown location'}
                 endLabel={trip.end_location ?? 'Unknown location'}
                 startTime={trip.started_at}

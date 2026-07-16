@@ -9,19 +9,18 @@ import { useSubmitInspection } from '../../../../src/hooks/useInspections'
 import { PhotoSlot } from '../../../../src/components/PhotoSlot'
 import { InspectionProgress } from '../../../../src/components/InspectionProgress'
 import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
+import { SectionLabel } from '../../../../src/components/SectionLabel'
+import {
+  EXTERIOR_SHOT_KEYS,
+  INTERIOR_SHOT_KEYS,
+  SHOT_LABELS,
+  type InspectionShotKey,
+} from '../../../../src/components/InspectionShotGuide'
 
-// Order matters: photo_urls is a plain array, and this order is the convention
+// Order matters: photo_urls is a plain array, and this order (exterior then
+// interior, in the order defined in InspectionShotGuide) is the convention
 // used to interpret which shot is which when displaying an inspection later.
-const REQUIRED_SHOTS = [
-  { key: 'front', label: 'Front' },
-  { key: 'back', label: 'Back' },
-  { key: 'left', label: 'Left Side' },
-  { key: 'right', label: 'Right Side' },
-  { key: 'interior', label: 'Interior' },
-  { key: 'dashboard', label: 'Dashboard' },
-] as const
-
-type ShotKey = (typeof REQUIRED_SHOTS)[number]['key']
+const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_KEYS]
 
 export default function NewInspectionScreen() {
   const router = useRouter()
@@ -33,20 +32,15 @@ export default function NewInspectionScreen() {
     odometer?.current_km != null ? String(odometer.current_km) : '',
   )
   const [notes, setNotes] = useState('')
-  const [shots, setShots] = useState<Record<ShotKey, string | null>>({
-    front: null,
-    back: null,
-    left: null,
-    right: null,
-    interior: null,
-    dashboard: null,
-  })
-  const [pendingReview, setPendingReview] = useState<{ key: ShotKey; uri: string } | null>(null)
+  const [shots, setShots] = useState<Record<InspectionShotKey, string | null>>(
+    Object.fromEntries(ALL_SHOTS.map((key) => [key, null])) as Record<InspectionShotKey, string | null>,
+  )
+  const [pendingReview, setPendingReview] = useState<{ key: InspectionShotKey; uri: string } | null>(null)
 
-  const capturedCount = REQUIRED_SHOTS.filter((shot) => shots[shot.key] !== null).length
-  const allShotsCaptured = capturedCount === REQUIRED_SHOTS.length
+  const capturedCount = ALL_SHOTS.filter((key) => shots[key] !== null).length
+  const allShotsCaptured = capturedCount === ALL_SHOTS.length
 
-  async function handleCapture(key: ShotKey) {
+  async function handleCapture(key: InspectionShotKey) {
     const { status } = await ImagePicker.requestCameraPermissionsAsync()
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
@@ -66,7 +60,7 @@ export default function NewInspectionScreen() {
         applicationId: activeRental.id,
         odometerKm: odometerKm.trim() ? Number(odometerKm) : null,
         notes,
-        photoUris: REQUIRED_SHOTS.map((shot) => shots[shot.key] as string),
+        photoUris: ALL_SHOTS.map((key) => shots[key] as string),
       })
       router.back()
     } catch (err) {
@@ -80,10 +74,10 @@ export default function NewInspectionScreen() {
         Vehicle Inspection
       </Text>
       <Text variant="bodyMedium" style={styles.subheading}>
-        Take all 6 photos using your camera so your vehicle owner can review the car's condition.
+        Take all {ALL_SHOTS.length} photos using your camera so your vehicle owner can review the car's condition.
       </Text>
 
-      <InspectionProgress completed={capturedCount} total={REQUIRED_SHOTS.length} />
+      <InspectionProgress completed={capturedCount} total={ALL_SHOTS.length} />
 
       <TextInput
         label="Odometer (km)"
@@ -101,14 +95,28 @@ export default function NewInspectionScreen() {
         style={styles.input}
       />
 
+      <SectionLabel icon="car" label="EXTERIOR" />
       <View style={styles.shotsGrid}>
-        {REQUIRED_SHOTS.map((shot) => (
+        {EXTERIOR_SHOT_KEYS.map((key) => (
           <PhotoSlot
-            key={shot.key}
-            label={shot.label}
-            shotKey={shot.key}
-            uri={shots[shot.key]}
-            onCapture={() => handleCapture(shot.key)}
+            key={key}
+            label={SHOT_LABELS[key]}
+            shotKey={key}
+            uri={shots[key]}
+            onCapture={() => handleCapture(key)}
+          />
+        ))}
+      </View>
+
+      <SectionLabel icon="seat-recline-normal" label="INTERIOR" />
+      <View style={styles.shotsGrid}>
+        {INTERIOR_SHOT_KEYS.map((key) => (
+          <PhotoSlot
+            key={key}
+            label={SHOT_LABELS[key]}
+            shotKey={key}
+            uri={shots[key]}
+            onCapture={() => handleCapture(key)}
           />
         ))}
       </View>
@@ -120,14 +128,14 @@ export default function NewInspectionScreen() {
         disabled={submitInspection.isPending || !activeRental?.car_id || !allShotsCaptured}
         style={styles.submitButton}
       >
-        {allShotsCaptured ? 'Submit Inspection' : 'Take All 6 Photos to Continue'}
+        {allShotsCaptured ? 'Submit Inspection' : `Take All ${ALL_SHOTS.length} Photos to Continue`}
       </Button>
 
       <PhotoReviewModal
         visible={!!pendingReview}
         photoUri={pendingReview?.uri ?? null}
         shotKey={pendingReview?.key ?? 'front'}
-        label={REQUIRED_SHOTS.find((shot) => shot.key === pendingReview?.key)?.label ?? ''}
+        label={pendingReview ? SHOT_LABELS[pendingReview.key] : ''}
         onRetake={() => {
           const key = pendingReview?.key
           setPendingReview(null)
@@ -162,7 +170,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 16,
   },
   submitButton: {
     marginTop: 8,

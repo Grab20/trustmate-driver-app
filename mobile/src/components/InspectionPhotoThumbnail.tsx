@@ -4,8 +4,8 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper'
 import { useSignedPhotoUrl } from '../hooks/useSignedPhotoUrl'
 import { brandColors } from '../theme/theme'
 
-export function InspectionPhotoThumbnail({ path }: { path: string }) {
-  const { data: url, isLoading, isError, refetch } = useSignedPhotoUrl(path)
+export function InspectionPhotoThumbnail({ path, bucket }: { path: string; bucket?: string }) {
+  const { data: url, isLoading, isError, refetch } = useSignedPhotoUrl(path, bucket)
   const [showFullscreen, setShowFullscreen] = useState(false)
   const isPdf = path.toLowerCase().endsWith('.pdf')
 

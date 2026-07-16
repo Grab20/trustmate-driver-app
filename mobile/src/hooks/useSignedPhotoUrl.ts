@@ -3,12 +3,12 @@ import { supabase } from '../lib/supabase'
 
 const SIGNED_URL_TTL_SECONDS = 60 * 10
 
-export function useSignedPhotoUrl(path: string | undefined) {
+export function useSignedPhotoUrl(path: string | undefined, bucket: string = 'inspection-photos') {
   return useQuery({
-    queryKey: ['inspection-photo-url', path],
+    queryKey: ['signed-photo-url', bucket, path],
     queryFn: async () => {
       const { data, error } = await supabase.storage
-        .from('inspection-photos')
+        .from(bucket)
         .createSignedUrl(path as string, SIGNED_URL_TTL_SECONDS)
 
       if (error) throw error

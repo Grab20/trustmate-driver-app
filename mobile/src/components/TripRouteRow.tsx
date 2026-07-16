@@ -1,5 +1,6 @@
 import { View, StyleSheet, Pressable } from 'react-native'
 import { Text, Icon } from 'react-native-paper'
+import { IconBadge } from './IconBadge'
 import { brandColors } from '../theme/theme'
 
 type TripRouteRowProps = {
@@ -10,7 +11,7 @@ type TripRouteRowProps = {
   durationSeconds: number
   maxSpeedKmh: number
   onPress?: () => void
-  driverName?: string
+  tripNumber?: number
 }
 
 function formatTime(iso: string): string {
@@ -30,23 +31,26 @@ export function TripRouteRow({
   durationSeconds,
   maxSpeedKmh,
   onPress,
-  driverName,
+  tripNumber,
 }: TripRouteRowProps) {
   const Wrapper = onPress ? Pressable : View
 
   return (
     <Wrapper style={styles.container} onPress={onPress} {...(onPress ? { android_ripple: { color: '#E3E3DD' } } : {})}>
-      <View style={styles.dots}>
-        <View style={styles.outlineDot} />
-        <View style={styles.line} />
-        <View style={styles.filledDot} />
-      </View>
-      <View style={styles.content}>
-        {driverName && (
-          <Text variant="labelSmall" style={styles.driverName}>
-            {driverName}
+      {tripNumber != null ? (
+        <View style={styles.numberBadge}>
+          <Text variant="labelMedium" style={styles.numberBadgeText}>
+            {tripNumber}
           </Text>
-        )}
+        </View>
+      ) : (
+        <View style={styles.dots}>
+          <View style={styles.outlineDot} />
+          <View style={styles.line} />
+          <View style={styles.filledDot} />
+        </View>
+      )}
+      <View style={styles.content}>
         <View style={styles.topRow}>
           <Text variant="bodyMedium" style={styles.location}>
             {startLabel}
@@ -58,9 +62,26 @@ export function TripRouteRow({
         <Text variant="titleSmall" style={styles.endLocation}>
           {endLabel}
         </Text>
-        <Text variant="bodySmall" style={styles.stats}>
-          {distanceKm.toFixed(1)} km · {formatDurationShort(durationSeconds)} · Max {Math.round(maxSpeedKmh)} km/h
-        </Text>
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <IconBadge source="map-marker-distance" size={11} backgroundColor={brandColors.green} />
+            <Text variant="bodySmall" style={styles.statText}>
+              {distanceKm.toFixed(1)} km
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <IconBadge source="timer-outline" size={11} backgroundColor={brandColors.darkGreen} />
+            <Text variant="bodySmall" style={styles.statText}>
+              {formatDurationShort(durationSeconds)}
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <IconBadge source="speedometer" size={11} backgroundColor="#B5651D" />
+            <Text variant="bodySmall" style={styles.statText}>
+              Max {Math.round(maxSpeedKmh)} km/h
+            </Text>
+          </View>
+        </View>
       </View>
       {onPress && (
         <View style={styles.chevron}>
@@ -103,13 +124,22 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: brandColors.darkGreen,
   },
+  numberBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: brandColors.darkGreen,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    marginTop: 2,
+  },
+  numberBadgeText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
   content: {
     flex: 1,
-  },
-  driverName: {
-    color: brandColors.green,
-    fontWeight: '700',
-    marginBottom: 2,
   },
   chevron: {
     alignSelf: 'center',
@@ -128,8 +158,18 @@ const styles = StyleSheet.create({
   endLocation: {
     marginTop: 4,
   },
-  stats: {
-    opacity: 0.6,
-    marginTop: 4,
+  statsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 6,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statText: {
+    opacity: 0.7,
   },
 })

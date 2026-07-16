@@ -68,9 +68,10 @@ export default function ActivityScreen() {
       {todayTrips && todayTrips.length > 0 ? (
         <Card style={styles.tripsCard}>
           <Card.Content>
-            {todayTrips.map((trip) => (
+            {todayTrips.map((trip, index) => (
               <TripRouteRow
                 key={trip.id}
+                tripNumber={index + 1}
                 startLabel={trip.start_location ?? 'Unknown location'}
                 endLabel={trip.end_location ?? 'Unknown location'}
                 startTime={trip.started_at}

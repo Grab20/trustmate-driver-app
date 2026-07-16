@@ -174,6 +174,48 @@ export type Database = {
           },
         ]
       }
+      car_reference_photos: {
+        Row: {
+          car_id: string
+          created_at: string
+          id: string
+          photo_path: string
+          shot_key: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          car_id: string
+          created_at?: string
+          id?: string
+          photo_path: string
+          shot_key: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          car_id?: string
+          created_at?: string
+          id?: string
+          photo_path?: string
+          shot_key?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "car_reference_photos_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "car_reference_photos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cars: {
         Row: {
           admin_note: string | null

@@ -211,6 +211,14 @@ export default function OwnerDriverDetailScreen() {
           >
             Save
           </Button>
+          <Button
+            mode="outlined"
+            icon="camera-plus-outline"
+            style={styles.referencePhotosButton}
+            onPress={() => router.push(`/owner/driver/reference-photos?carId=${carId}`)}
+          >
+            Manage Reference Photos
+          </Button>
         </Card.Content>
       </Card>
 
@@ -218,9 +226,10 @@ export default function OwnerDriverDetailScreen() {
       {trips && trips.length > 0 ? (
         <Card style={styles.card}>
           <Card.Content>
-            {trips.map((trip) => (
+            {trips.map((trip, index) => (
               <TripRouteRow
                 key={trip.id}
+                tripNumber={index + 1}
                 startLabel={trip.start_location ?? 'Unknown location'}
                 endLabel={trip.end_location ?? 'Unknown location'}
                 startTime={trip.started_at}
@@ -332,6 +341,9 @@ const styles = StyleSheet.create({
   dateInput: {
     marginTop: 12,
     marginBottom: 12,
+  },
+  referencePhotosButton: {
+    marginTop: 12,
   },
   empty: {
     opacity: 0.6,

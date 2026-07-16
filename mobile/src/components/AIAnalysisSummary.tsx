@@ -3,6 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native'
 import { Text, ActivityIndicator } from 'react-native-paper'
 import { IconBadge } from './IconBadge'
 import { brandColors } from '../theme/theme'
+import { SHOT_LABELS } from './InspectionShotGuide'
 
 type AIShotResult = {
   shot: string
@@ -14,15 +15,6 @@ type AIShotResult = {
 type AIAnalysisData = {
   results?: AIShotResult[]
   error?: string
-}
-
-const SHOT_LABELS: Record<string, string> = {
-  front: 'Front',
-  back: 'Back',
-  left: 'Left Side',
-  right: 'Right Side',
-  interior: 'Interior',
-  dashboard: 'Dashboard',
 }
 
 const QUALITY_LABELS: Record<string, string> = {
@@ -97,7 +89,7 @@ export function AIAnalysisSummary({
           {data.results.map((result) => (
             <View key={result.shot} style={styles.detailRow}>
               <Text variant="bodySmall" style={styles.detailShotLabel}>
-                {SHOT_LABELS[result.shot] ?? result.shot}
+                {(SHOT_LABELS as Record<string, string>)[result.shot] ?? result.shot}
               </Text>
               {result.carMatch === false && (
                 <Text variant="bodySmall" style={styles.detailAlert}>
