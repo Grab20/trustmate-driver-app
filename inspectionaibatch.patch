@@ -1,0 +1,989 @@
+From 4f045fa9fa010ba2980bf8713174860a4fe2c718 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 15 Jul 2026 21:31:33 +0000
+Subject: [PATCH] Fix inspection photo bug, redesign to 9-shot AI comparison,
+ renumber trips
+
+Drivers' inspection updates were silently blocked by RLS (no driver UPDATE
+policy on vehicle_inspections), so photos never reached the owner. Adds the
+missing policy and backfills affected historical rows.
+
+Redesigns inspection capture to 6 exterior + 3 interior shots matching the
+requested layout, lets owners attach per-car reference photos before a
+rental starts, and updates the Gemini analysis edge function to compare
+each inspection shot against the owner's own reference photo for that car
+(falling back to listing photos when none exists) instead of generic
+car-match logic.
+
+Trip lists now show sequential numbers instead of driver names, with
+icons on distance/duration/top-speed stats.
+---
+ mobile/app/(app)/activity/index.tsx           |   3 +-
+ mobile/app/(app)/rental/inspections/new.tsx   |  78 +++++-----
+ mobile/app/owner/activity/index.tsx           |   4 +-
+ mobile/app/owner/driver/[id].tsx              |  14 +-
+ mobile/app/owner/driver/_layout.tsx           |   1 +
+ mobile/app/owner/driver/reference-photos.tsx  | 139 ++++++++++++++++++
+ mobile/src/components/AIAnalysisSummary.tsx   |  12 +-
+ .../components/InspectionPhotoThumbnail.tsx   |   4 +-
+ mobile/src/components/InspectionShotGuide.tsx |  87 +++++++++--
+ mobile/src/components/ReferencePhotoSlot.tsx  |  84 +++++++++++
+ mobile/src/components/TripRouteRow.tsx        |  86 ++++++++---
+ mobile/src/hooks/useCarReferencePhotos.ts     |  56 +++++++
+ mobile/src/hooks/useSignedPhotoUrl.ts         |   6 +-
+ mobile/src/lib/uploadReferencePhoto.ts        |  30 ++++
+ mobile/src/types/database.ts                  |  42 ++++++
+ 15 files changed, 559 insertions(+), 87 deletions(-)
+ create mode 100644 mobile/app/owner/driver/reference-photos.tsx
+ create mode 100644 mobile/src/components/ReferencePhotoSlot.tsx
+ create mode 100644 mobile/src/hooks/useCarReferencePhotos.ts
+ create mode 100644 mobile/src/lib/uploadReferencePhoto.ts
+
+diff --git a/mobile/app/(app)/activity/index.tsx b/mobile/app/(app)/activity/index.tsx
+index c1da18fb..cdfbf764 100644
+--- a/mobile/app/(app)/activity/index.tsx
++++ b/mobile/app/(app)/activity/index.tsx
+@@ -68,9 +68,10 @@ export default function ActivityScreen() {
+       {todayTrips && todayTrips.length > 0 ? (
+         <Card style={styles.tripsCard}>
+           <Card.Content>
+-            {todayTrips.map((trip) => (
++            {todayTrips.map((trip, index) => (
+               <TripRouteRow
+                 key={trip.id}
++                tripNumber={index + 1}
+                 startLabel={trip.start_location ?? 'Unknown location'}
+                 endLabel={trip.end_location ?? 'Unknown location'}
+                 startTime={trip.started_at}
+diff --git a/mobile/app/(app)/rental/inspections/new.tsx b/mobile/app/(app)/rental/inspections/new.tsx
+index 576f89dd..94d71851 100644
+--- a/mobile/app/(app)/rental/inspections/new.tsx
++++ b/mobile/app/(app)/rental/inspections/new.tsx
+@@ -9,19 +9,18 @@ import { useSubmitInspection } from '../../../../src/hooks/useInspections'
+ import { PhotoSlot } from '../../../../src/components/PhotoSlot'
+ import { InspectionProgress } from '../../../../src/components/InspectionProgress'
+ import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
++import { SectionLabel } from '../../../../src/components/SectionLabel'
++import {
++  EXTERIOR_SHOT_KEYS,
++  INTERIOR_SHOT_KEYS,
++  SHOT_LABELS,
++  type InspectionShotKey,
++} from '../../../../src/components/InspectionShotGuide'
+ 
+-// Order matters: photo_urls is a plain array, and this order is the convention
++// Order matters: photo_urls is a plain array, and this order (exterior then
++// interior, in the order defined in InspectionShotGuide) is the convention
+ // used to interpret which shot is which when displaying an inspection later.
+-const REQUIRED_SHOTS = [
+-  { key: 'front', label: 'Front' },
+-  { key: 'back', label: 'Back' },
+-  { key: 'left', label: 'Left Side' },
+-  { key: 'right', label: 'Right Side' },
+-  { key: 'interior', label: 'Interior' },
+-  { key: 'dashboard', label: 'Dashboard' },
+-] as const
+-
+-type ShotKey = (typeof REQUIRED_SHOTS)[number]['key']
++const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_KEYS]
+ 
+ export default function NewInspectionScreen() {
+   const router = useRouter()
+@@ -33,20 +32,15 @@ export default function NewInspectionScreen() {
+     odometer?.current_km != null ? String(odometer.current_km) : '',
+   )
+   const [notes, setNotes] = useState('')
+-  const [shots, setShots] = useState<Record<ShotKey, string | null>>({
+-    front: null,
+-    back: null,
+-    left: null,
+-    right: null,
+-    interior: null,
+-    dashboard: null,
+-  })
+-  const [pendingReview, setPendingReview] = useState<{ key: ShotKey; uri: string } | null>(null)
++  const [shots, setShots] = useState<Record<InspectionShotKey, string | null>>(
++    Object.fromEntries(ALL_SHOTS.map((key) => [key, null])) as Record<InspectionShotKey, string | null>,
++  )
++  const [pendingReview, setPendingReview] = useState<{ key: InspectionShotKey; uri: string } | null>(null)
+ 
+-  const capturedCount = REQUIRED_SHOTS.filter((shot) => shots[shot.key] !== null).length
+-  const allShotsCaptured = capturedCount === REQUIRED_SHOTS.length
++  const capturedCount = ALL_SHOTS.filter((key) => shots[key] !== null).length
++  const allShotsCaptured = capturedCount === ALL_SHOTS.length
+ 
+-  async function handleCapture(key: ShotKey) {
++  async function handleCapture(key: InspectionShotKey) {
+     const { status } = await ImagePicker.requestCameraPermissionsAsync()
+     if (status !== 'granted') {
+       Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
+@@ -66,7 +60,7 @@ export default function NewInspectionScreen() {
+         applicationId: activeRental.id,
+         odometerKm: odometerKm.trim() ? Number(odometerKm) : null,
+         notes,
+-        photoUris: REQUIRED_SHOTS.map((shot) => shots[shot.key] as string),
++        photoUris: ALL_SHOTS.map((key) => shots[key] as string),
+       })
+       router.back()
+     } catch (err) {
+@@ -80,10 +74,10 @@ export default function NewInspectionScreen() {
+         Vehicle Inspection
+       </Text>
+       <Text variant="bodyMedium" style={styles.subheading}>
+-        Take all 6 photos using your camera so your vehicle owner can review the car's condition.
++        Take all {ALL_SHOTS.length} photos using your camera so your vehicle owner can review the car's condition.
+       </Text>
+ 
+-      <InspectionProgress completed={capturedCount} total={REQUIRED_SHOTS.length} />
++      <InspectionProgress completed={capturedCount} total={ALL_SHOTS.length} />
+ 
+       <TextInput
+         label="Odometer (km)"
+@@ -101,14 +95,28 @@ export default function NewInspectionScreen() {
+         style={styles.input}
+       />
+ 
++      <SectionLabel icon="car" label="EXTERIOR" />
+       <View style={styles.shotsGrid}>
+-        {REQUIRED_SHOTS.map((shot) => (
++        {EXTERIOR_SHOT_KEYS.map((key) => (
+           <PhotoSlot
+-            key={shot.key}
+-            label={shot.label}
+-            shotKey={shot.key}
+-            uri={shots[shot.key]}
+-            onCapture={() => handleCapture(shot.key)}
++            key={key}
++            label={SHOT_LABELS[key]}
++            shotKey={key}
++            uri={shots[key]}
++            onCapture={() => handleCapture(key)}
++          />
++        ))}
++      </View>
++
++      <SectionLabel icon="seat-recline-normal" label="INTERIOR" />
++      <View style={styles.shotsGrid}>
++        {INTERIOR_SHOT_KEYS.map((key) => (
++          <PhotoSlot
++            key={key}
++            label={SHOT_LABELS[key]}
++            shotKey={key}
++            uri={shots[key]}
++            onCapture={() => handleCapture(key)}
+           />
+         ))}
+       </View>
+@@ -120,14 +128,14 @@ export default function NewInspectionScreen() {
+         disabled={submitInspection.isPending || !activeRental?.car_id || !allShotsCaptured}
+         style={styles.submitButton}
+       >
+-        {allShotsCaptured ? 'Submit Inspection' : 'Take All 6 Photos to Continue'}
++        {allShotsCaptured ? 'Submit Inspection' : `Take All ${ALL_SHOTS.length} Photos to Continue`}
+       </Button>
+ 
+       <PhotoReviewModal
+         visible={!!pendingReview}
+         photoUri={pendingReview?.uri ?? null}
+         shotKey={pendingReview?.key ?? 'front'}
+-        label={REQUIRED_SHOTS.find((shot) => shot.key === pendingReview?.key)?.label ?? ''}
++        label={pendingReview ? SHOT_LABELS[pendingReview.key] : ''}
+         onRetake={() => {
+           const key = pendingReview?.key
+           setPendingReview(null)
+@@ -162,7 +170,7 @@ const styles = StyleSheet.create({
+     flexDirection: 'row',
+     flexWrap: 'wrap',
+     justifyContent: 'space-between',
+-    marginBottom: 8,
++    marginBottom: 16,
+   },
+   submitButton: {
+     marginTop: 8,
+diff --git a/mobile/app/owner/activity/index.tsx b/mobile/app/owner/activity/index.tsx
+index 6a967b22..996e2e9e 100644
+--- a/mobile/app/owner/activity/index.tsx
++++ b/mobile/app/owner/activity/index.tsx
+@@ -22,10 +22,10 @@ export default function OwnerActivityScreen() {
+       {trips && trips.length > 0 ? (
+         <Card style={styles.tripsCard}>
+           <Card.Content>
+-            {trips.map((trip) => (
++            {trips.map((trip, index) => (
+               <TripRouteRow
+                 key={trip.id}
+-                driverName={trip.driver?.full_name ?? 'Driver'}
++                tripNumber={index + 1}
+                 startLabel={trip.start_location ?? 'Unknown location'}
+                 endLabel={trip.end_location ?? 'Unknown location'}
+                 startTime={trip.started_at}
+diff --git a/mobile/app/owner/driver/[id].tsx b/mobile/app/owner/driver/[id].tsx
+index 05d12dff..cb22b02f 100644
+--- a/mobile/app/owner/driver/[id].tsx
++++ b/mobile/app/owner/driver/[id].tsx
+@@ -211,6 +211,14 @@ export default function OwnerDriverDetailScreen() {
+           >
+             Save
+           </Button>
++          <Button
++            mode="outlined"
++            icon="camera-plus-outline"
++            style={styles.referencePhotosButton}
++            onPress={() => router.push(`/owner/driver/reference-photos?carId=${carId}`)}
++          >
++            Manage Reference Photos
++          </Button>
+         </Card.Content>
+       </Card>
+ 
+@@ -218,9 +226,10 @@ export default function OwnerDriverDetailScreen() {
+       {trips && trips.length > 0 ? (
+         <Card style={styles.card}>
+           <Card.Content>
+-            {trips.map((trip) => (
++            {trips.map((trip, index) => (
+               <TripRouteRow
+                 key={trip.id}
++                tripNumber={index + 1}
+                 startLabel={trip.start_location ?? 'Unknown location'}
+                 endLabel={trip.end_location ?? 'Unknown location'}
+                 startTime={trip.started_at}
+@@ -333,6 +342,9 @@ const styles = StyleSheet.create({
+     marginTop: 12,
+     marginBottom: 12,
+   },
++  referencePhotosButton: {
++    marginTop: 12,
++  },
+   empty: {
+     opacity: 0.6,
+     marginBottom: 24,
+diff --git a/mobile/app/owner/driver/_layout.tsx b/mobile/app/owner/driver/_layout.tsx
+index e3061815..cd61e6f5 100644
+--- a/mobile/app/owner/driver/_layout.tsx
++++ b/mobile/app/owner/driver/_layout.tsx
+@@ -12,6 +12,7 @@ export default function OwnerDriverLayout() {
+     >
+       <Stack.Screen name="[id]" options={{ title: 'Driver' }} />
+       <Stack.Screen name="trip/[tripId]" options={{ title: 'Trip Details' }} />
++      <Stack.Screen name="reference-photos" options={{ title: 'Reference Photos' }} />
+     </Stack>
+   )
+ }
+diff --git a/mobile/app/owner/driver/reference-photos.tsx b/mobile/app/owner/driver/reference-photos.tsx
+new file mode 100644
+index 00000000..3c794c69
+--- /dev/null
++++ b/mobile/app/owner/driver/reference-photos.tsx
+@@ -0,0 +1,139 @@
++import { useMemo, useState } from 'react'
++import { View, StyleSheet, ScrollView, Alert } from 'react-native'
++import { Text, Button } from 'react-native-paper'
++import * as ImagePicker from 'expo-image-picker'
++import { useLocalSearchParams, useRouter } from 'expo-router'
++import { useCar } from '../../../src/hooks/useCar'
++import { useCarReferencePhotos, useSubmitReferencePhotos } from '../../../src/hooks/useCarReferencePhotos'
++import { ReferencePhotoSlot } from '../../../src/components/ReferencePhotoSlot'
++import { InspectionProgress } from '../../../src/components/InspectionProgress'
++import { SectionLabel } from '../../../src/components/SectionLabel'
++import {
++  EXTERIOR_SHOT_KEYS,
++  INTERIOR_SHOT_KEYS,
++  SHOT_LABELS,
++  type InspectionShotKey,
++} from '../../../src/components/InspectionShotGuide'
++import { LoadingScreen } from '../../../src/components/LoadingScreen'
++
++const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_KEYS]
++
++export default function ReferencePhotosScreen() {
++  const router = useRouter()
++  const { carId } = useLocalSearchParams<{ carId: string }>()
++  const { data: car, isLoading: isCarLoading } = useCar(carId || undefined)
++  const { data: existingPhotos, isLoading: isPhotosLoading } = useCarReferencePhotos(carId || undefined)
++  const submitReferencePhotos = useSubmitReferencePhotos()
++
++  const [localUris, setLocalUris] = useState<Partial<Record<InspectionShotKey, string>>>({})
++
++  const existingByShotKey = useMemo(() => {
++    const map: Partial<Record<InspectionShotKey, string>> = {}
++    for (const row of existingPhotos ?? []) {
++      map[row.shot_key as InspectionShotKey] = row.photo_path
++    }
++    return map
++  }, [existingPhotos])
++
++  const capturedCount = ALL_SHOTS.filter((key) => localUris[key] || existingByShotKey[key]).length
++  const allShotsCaptured = capturedCount === ALL_SHOTS.length
++
++  async function handleCapture(key: InspectionShotKey) {
++    const { status } = await ImagePicker.requestCameraPermissionsAsync()
++    if (status !== 'granted') {
++      Alert.alert('Permission needed', 'Camera access is required to take reference photos.')
++      return
++    }
++    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
++    if (!result.canceled) {
++      setLocalUris((prev) => ({ ...prev, [key]: result.assets[0].uri }))
++    }
++  }
++
++  async function handleSave() {
++    if (!carId || Object.keys(localUris).length === 0) return
++    try {
++      await submitReferencePhotos.mutateAsync({ carId, photos: localUris })
++      setLocalUris({})
++      Alert.alert('Saved', 'Reference photos saved. The AI will compare future inspections against these.')
++      router.back()
++    } catch (err) {
++      Alert.alert('Save failed', err instanceof Error ? err.message : 'Unknown error')
++    }
++  }
++
++  if (isCarLoading || isPhotosLoading) return <LoadingScreen />
++
++  return (
++    <ScrollView contentContainerStyle={styles.container}>
++      <Text variant="headlineSmall" style={styles.heading}>
++        Reference Photos
++      </Text>
++      <Text variant="bodyMedium" style={styles.subheading}>
++        {car ? `${car.make} ${car.model}` : 'Vehicle'} — take {ALL_SHOTS.length} photos of the car's current condition
++        before handing it to a driver. The AI will compare each weekly inspection against these photos.
++      </Text>
++
++      <InspectionProgress completed={capturedCount} total={ALL_SHOTS.length} />
++
++      <SectionLabel icon="car" label="EXTERIOR" />
++      <View style={styles.shotsGrid}>
++        {EXTERIOR_SHOT_KEYS.map((key) => (
++          <ReferencePhotoSlot
++            key={key}
++            label={SHOT_LABELS[key]}
++            localUri={localUris[key] ?? null}
++            existingPath={existingByShotKey[key] ?? null}
++            onCapture={() => handleCapture(key)}
++          />
++        ))}
++      </View>
++
++      <SectionLabel icon="seat-recline-normal" label="INTERIOR" />
++      <View style={styles.shotsGrid}>
++        {INTERIOR_SHOT_KEYS.map((key) => (
++          <ReferencePhotoSlot
++            key={key}
++            label={SHOT_LABELS[key]}
++            localUri={localUris[key] ?? null}
++            existingPath={existingByShotKey[key] ?? null}
++            onCapture={() => handleCapture(key)}
++          />
++        ))}
++      </View>
++
++      <Button
++        mode="contained"
++        onPress={handleSave}
++        loading={submitReferencePhotos.isPending}
++        disabled={submitReferencePhotos.isPending || Object.keys(localUris).length === 0}
++        style={styles.saveButton}
++      >
++        {allShotsCaptured ? 'Save Reference Photos' : `Save (${capturedCount}/${ALL_SHOTS.length} captured)`}
++      </Button>
++    </ScrollView>
++  )
++}
++
++const styles = StyleSheet.create({
++  container: {
++    padding: 24,
++    paddingBottom: 40,
++  },
++  heading: {
++    marginBottom: 4,
++  },
++  subheading: {
++    opacity: 0.7,
++    marginBottom: 24,
++  },
++  shotsGrid: {
++    flexDirection: 'row',
++    flexWrap: 'wrap',
++    justifyContent: 'space-between',
++    marginBottom: 16,
++  },
++  saveButton: {
++    marginTop: 8,
++  },
++})
+diff --git a/mobile/src/components/AIAnalysisSummary.tsx b/mobile/src/components/AIAnalysisSummary.tsx
+index 92549cc5..3e17aea4 100644
+--- a/mobile/src/components/AIAnalysisSummary.tsx
++++ b/mobile/src/components/AIAnalysisSummary.tsx
+@@ -3,6 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native'
+ import { Text, ActivityIndicator } from 'react-native-paper'
+ import { IconBadge } from './IconBadge'
+ import { brandColors } from '../theme/theme'
++import { SHOT_LABELS } from './InspectionShotGuide'
+ 
+ type AIShotResult = {
+   shot: string
+@@ -16,15 +17,6 @@ type AIAnalysisData = {
+   error?: string
+ }
+ 
+-const SHOT_LABELS: Record<string, string> = {
+-  front: 'Front',
+-  back: 'Back',
+-  left: 'Left Side',
+-  right: 'Right Side',
+-  interior: 'Interior',
+-  dashboard: 'Dashboard',
+-}
+-
+ const QUALITY_LABELS: Record<string, string> = {
+   good: 'Good',
+   blurry: 'Blurry',
+@@ -97,7 +89,7 @@ export function AIAnalysisSummary({
+           {data.results.map((result) => (
+             <View key={result.shot} style={styles.detailRow}>
+               <Text variant="bodySmall" style={styles.detailShotLabel}>
+-                {SHOT_LABELS[result.shot] ?? result.shot}
++                {(SHOT_LABELS as Record<string, string>)[result.shot] ?? result.shot}
+               </Text>
+               {result.carMatch === false && (
+                 <Text variant="bodySmall" style={styles.detailAlert}>
+diff --git a/mobile/src/components/InspectionPhotoThumbnail.tsx b/mobile/src/components/InspectionPhotoThumbnail.tsx
+index f09c2525..37375788 100644
+--- a/mobile/src/components/InspectionPhotoThumbnail.tsx
++++ b/mobile/src/components/InspectionPhotoThumbnail.tsx
+@@ -4,8 +4,8 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper'
+ import { useSignedPhotoUrl } from '../hooks/useSignedPhotoUrl'
+ import { brandColors } from '../theme/theme'
+ 
+-export function InspectionPhotoThumbnail({ path }: { path: string }) {
+-  const { data: url, isLoading, isError, refetch } = useSignedPhotoUrl(path)
++export function InspectionPhotoThumbnail({ path, bucket }: { path: string; bucket?: string }) {
++  const { data: url, isLoading, isError, refetch } = useSignedPhotoUrl(path, bucket)
+   const [showFullscreen, setShowFullscreen] = useState(false)
+   const isPdf = path.toLowerCase().endsWith('.pdf')
+ 
+diff --git a/mobile/src/components/InspectionShotGuide.tsx b/mobile/src/components/InspectionShotGuide.tsx
+index e7746422..a2ce3d16 100644
+--- a/mobile/src/components/InspectionShotGuide.tsx
++++ b/mobile/src/components/InspectionShotGuide.tsx
+@@ -3,15 +3,50 @@ import Svg, { Rect, Circle, Path, Ellipse, Line } from 'react-native-svg'
+ import { Text } from 'react-native-paper'
+ import { brandColors } from '../theme/theme'
+ 
+-export type InspectionShotKey = 'front' | 'back' | 'left' | 'right' | 'interior' | 'dashboard'
++export type InspectionShotKey =
++  | 'front'
++  | 'front_corner'
++  | 'passenger_side'
++  | 'rear'
++  | 'driver_corner'
++  | 'driver_side'
++  | 'dashboard'
++  | 'front_seats'
++  | 'boot'
++
++export const EXTERIOR_SHOT_KEYS: InspectionShotKey[] = [
++  'front',
++  'front_corner',
++  'passenger_side',
++  'rear',
++  'driver_corner',
++  'driver_side',
++]
++
++export const INTERIOR_SHOT_KEYS: InspectionShotKey[] = ['dashboard', 'front_seats', 'boot']
++
++export const SHOT_LABELS: Record<InspectionShotKey, string> = {
++  front: 'Front',
++  front_corner: 'Front Corner',
++  passenger_side: 'Passenger Side',
++  rear: 'Rear',
++  driver_corner: 'Driver Corner',
++  driver_side: 'Driver Side',
++  dashboard: 'Dashboard',
++  front_seats: 'Front Seats',
++  boot: 'Boot / Trunk',
++}
+ 
+ const INSTRUCTIONS: Record<InspectionShotKey, string> = {
+-  front: 'Stand back about 2m. Center the car and include the full front bumper and number plate.',
+-  back: 'Stand back about 2m. Center the car and include the full rear bumper and number plate.',
+-  left: 'Stand to the side, far enough back to fit the whole car from front to back in frame.',
+-  right: 'Stand to the side, far enough back to fit the whole car from front to back in frame.',
+-  interior: 'Open the driver door and photograph the seats and floor area.',
++  front: 'Stand back about 2m directly in front of the car, and include the full bumper and number plate.',
++  front_corner: 'Stand at the front corner, angled so both the front and one side of the car are visible.',
++  passenger_side: 'Stand to the passenger side, far enough back to fit the whole car from front to back.',
++  rear: 'Stand back about 2m directly behind the car, and include the full bumper and number plate.',
++  driver_corner: 'Stand at the rear corner on the driver side, angled so both the rear and side are visible.',
++  driver_side: 'Stand to the driver side, far enough back to fit the whole car from front to back.',
+   dashboard: 'Sit in the driver seat and photograph the dashboard, steering wheel, and odometer.',
++  front_seats: 'Open the driver door and photograph the front seats and floor area.',
++  boot: 'Open the boot/trunk and photograph the inside, empty and clearly lit.',
+ }
+ 
+ function FrontBackDiagram() {
+@@ -48,6 +83,25 @@ function SideDiagram() {
+   )
+ }
+ 
++function CornerDiagram() {
++  return (
++    <Svg width={140} height={110} viewBox="0 0 140 110">
++      <Ellipse cx="72" cy="92" rx="55" ry="7" fill="#00000012" />
++      <Path
++        d="M20 80 Q18 55 42 50 L54 32 L88 30 L112 44 Q124 50 122 80 Z"
++        fill={brandColors.mintGreen}
++        stroke={brandColors.darkGreen}
++        strokeWidth={2.5}
++      />
++      <Path d="M58 35 L50 50 L86 48 L84 33 Z" fill="#fff" opacity={0.85} />
++      <Circle cx="46" cy="82" r={10} fill={brandColors.darkGreen} />
++      <Circle cx="104" cy="82" r={10} fill={brandColors.darkGreen} />
++      <Circle cx="46" cy="82" r={4} fill="#EAEAE5" />
++      <Circle cx="104" cy="82" r={4} fill="#EAEAE5" />
++    </Svg>
++  )
++}
++
+ function InteriorDiagram() {
+   return (
+     <Svg width={140} height={110} viewBox="0 0 140 110">
+@@ -73,13 +127,26 @@ function DashboardDiagram() {
+   )
+ }
+ 
++function BootDiagram() {
++  return (
++    <Svg width={140} height={110} viewBox="0 0 140 110">
++      <Rect x="20" y="34" width="100" height="60" rx="10" fill="#F4F7F5" stroke={brandColors.darkGreen} strokeWidth={2.5} />
++      <Path d="M20 34 L38 12 L122 12 L120 34 Z" fill={brandColors.mintGreen} stroke={brandColors.darkGreen} strokeWidth={2} />
++      <Rect x="36" y="52" width="68" height="30" rx="6" fill={brandColors.green} opacity={0.7} />
++    </Svg>
++  )
++}
++
+ const DIAGRAMS: Record<InspectionShotKey, () => React.JSX.Element> = {
+   front: FrontBackDiagram,
+-  back: FrontBackDiagram,
+-  left: SideDiagram,
+-  right: SideDiagram,
+-  interior: InteriorDiagram,
++  rear: FrontBackDiagram,
++  passenger_side: SideDiagram,
++  driver_side: SideDiagram,
++  front_corner: CornerDiagram,
++  driver_corner: CornerDiagram,
++  front_seats: InteriorDiagram,
+   dashboard: DashboardDiagram,
++  boot: BootDiagram,
+ }
+ 
+ export function InspectionShotGuide({ shotKey, compact }: { shotKey: InspectionShotKey; compact?: boolean }) {
+diff --git a/mobile/src/components/ReferencePhotoSlot.tsx b/mobile/src/components/ReferencePhotoSlot.tsx
+new file mode 100644
+index 00000000..20f78f4d
+--- /dev/null
++++ b/mobile/src/components/ReferencePhotoSlot.tsx
+@@ -0,0 +1,84 @@
++import { View, Image, StyleSheet, Pressable } from 'react-native'
++import { IconButton, Text } from 'react-native-paper'
++import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
++import { brandColors } from '../theme/theme'
++
++type ReferencePhotoSlotProps = {
++  label: string
++  localUri: string | null
++  existingPath: string | null
++  onCapture: () => void
++}
++
++export function ReferencePhotoSlot({ label, localUri, existingPath, onCapture }: ReferencePhotoSlotProps) {
++  return (
++    <View style={styles.container}>
++      {localUri ? (
++        <Pressable onPress={onCapture}>
++          <Image source={{ uri: localUri }} style={styles.localPhoto} />
++        </Pressable>
++      ) : existingPath ? (
++        <View style={styles.existingWrap}>
++          <InspectionPhotoThumbnail path={existingPath} bucket="car-reference-photos" />
++          <Pressable onPress={onCapture} style={styles.retakeBadge}>
++            <IconButton icon="camera-retake" size={16} iconColor="#fff" style={styles.retakeIcon} />
++          </Pressable>
++        </View>
++      ) : (
++        <Pressable onPress={onCapture} style={styles.placeholder}>
++          <IconButton icon="camera-plus" size={28} iconColor={brandColors.green} />
++        </Pressable>
++      )}
++      <Text variant="labelMedium" style={[styles.label, (localUri || existingPath) && styles.labelCaptured]}>
++        {label}
++      </Text>
++    </View>
++  )
++}
++
++const styles = StyleSheet.create({
++  container: {
++    width: '30%',
++    marginBottom: 16,
++    alignItems: 'center',
++  },
++  placeholder: {
++    width: 96,
++    height: 96,
++    borderRadius: 8,
++    borderWidth: 2,
++    borderColor: '#DCE4DE',
++    borderStyle: 'dashed',
++    backgroundColor: '#F4F7F5',
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  localPhoto: {
++    width: 96,
++    height: 96,
++    borderRadius: 8,
++    borderWidth: 2,
++    borderColor: brandColors.green,
++  },
++  existingWrap: {
++    position: 'relative',
++  },
++  retakeBadge: {
++    position: 'absolute',
++    top: 4,
++    right: 4,
++    backgroundColor: 'rgba(0,0,0,0.5)',
++    borderRadius: 12,
++  },
++  retakeIcon: {
++    margin: 0,
++  },
++  label: {
++    marginTop: 4,
++    textAlign: 'center',
++  },
++  labelCaptured: {
++    color: brandColors.green,
++    fontWeight: '700',
++  },
++})
+diff --git a/mobile/src/components/TripRouteRow.tsx b/mobile/src/components/TripRouteRow.tsx
+index 044eb7d8..111e0ea3 100644
+--- a/mobile/src/components/TripRouteRow.tsx
++++ b/mobile/src/components/TripRouteRow.tsx
+@@ -1,5 +1,6 @@
+ import { View, StyleSheet, Pressable } from 'react-native'
+ import { Text, Icon } from 'react-native-paper'
++import { IconBadge } from './IconBadge'
+ import { brandColors } from '../theme/theme'
+ 
+ type TripRouteRowProps = {
+@@ -10,7 +11,7 @@ type TripRouteRowProps = {
+   durationSeconds: number
+   maxSpeedKmh: number
+   onPress?: () => void
+-  driverName?: string
++  tripNumber?: number
+ }
+ 
+ function formatTime(iso: string): string {
+@@ -30,23 +31,26 @@ export function TripRouteRow({
+   durationSeconds,
+   maxSpeedKmh,
+   onPress,
+-  driverName,
++  tripNumber,
+ }: TripRouteRowProps) {
+   const Wrapper = onPress ? Pressable : View
+ 
+   return (
+     <Wrapper style={styles.container} onPress={onPress} {...(onPress ? { android_ripple: { color: '#E3E3DD' } } : {})}>
+-      <View style={styles.dots}>
+-        <View style={styles.outlineDot} />
+-        <View style={styles.line} />
+-        <View style={styles.filledDot} />
+-      </View>
+-      <View style={styles.content}>
+-        {driverName && (
+-          <Text variant="labelSmall" style={styles.driverName}>
+-            {driverName}
++      {tripNumber != null ? (
++        <View style={styles.numberBadge}>
++          <Text variant="labelMedium" style={styles.numberBadgeText}>
++            {tripNumber}
+           </Text>
+-        )}
++        </View>
++      ) : (
++        <View style={styles.dots}>
++          <View style={styles.outlineDot} />
++          <View style={styles.line} />
++          <View style={styles.filledDot} />
++        </View>
++      )}
++      <View style={styles.content}>
+         <View style={styles.topRow}>
+           <Text variant="bodyMedium" style={styles.location}>
+             {startLabel}
+@@ -58,9 +62,26 @@ export function TripRouteRow({
+         <Text variant="titleSmall" style={styles.endLocation}>
+           {endLabel}
+         </Text>
+-        <Text variant="bodySmall" style={styles.stats}>
+-          {distanceKm.toFixed(1)} km · {formatDurationShort(durationSeconds)} · Max {Math.round(maxSpeedKmh)} km/h
+-        </Text>
++        <View style={styles.statsRow}>
++          <View style={styles.statItem}>
++            <IconBadge source="map-marker-distance" size={11} backgroundColor={brandColors.green} />
++            <Text variant="bodySmall" style={styles.statText}>
++              {distanceKm.toFixed(1)} km
++            </Text>
++          </View>
++          <View style={styles.statItem}>
++            <IconBadge source="timer-outline" size={11} backgroundColor={brandColors.darkGreen} />
++            <Text variant="bodySmall" style={styles.statText}>
++              {formatDurationShort(durationSeconds)}
++            </Text>
++          </View>
++          <View style={styles.statItem}>
++            <IconBadge source="speedometer" size={11} backgroundColor="#B5651D" />
++            <Text variant="bodySmall" style={styles.statText}>
++              Max {Math.round(maxSpeedKmh)} km/h
++            </Text>
++          </View>
++        </View>
+       </View>
+       {onPress && (
+         <View style={styles.chevron}>
+@@ -103,13 +124,22 @@ const styles = StyleSheet.create({
+     borderRadius: 5,
+     backgroundColor: brandColors.darkGreen,
+   },
+-  content: {
+-    flex: 1,
++  numberBadge: {
++    width: 24,
++    height: 24,
++    borderRadius: 12,
++    backgroundColor: brandColors.darkGreen,
++    alignItems: 'center',
++    justifyContent: 'center',
++    marginRight: 12,
++    marginTop: 2,
+   },
+-  driverName: {
+-    color: brandColors.green,
++  numberBadgeText: {
++    color: '#fff',
+     fontWeight: '700',
+-    marginBottom: 2,
++  },
++  content: {
++    flex: 1,
+   },
+   chevron: {
+     alignSelf: 'center',
+@@ -128,8 +158,18 @@ const styles = StyleSheet.create({
+   endLocation: {
+     marginTop: 4,
+   },
+-  stats: {
+-    opacity: 0.6,
+-    marginTop: 4,
++  statsRow: {
++    flexDirection: 'row',
++    flexWrap: 'wrap',
++    gap: 12,
++    marginTop: 6,
++  },
++  statItem: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 4,
++  },
++  statText: {
++    opacity: 0.7,
+   },
+ })
+diff --git a/mobile/src/hooks/useCarReferencePhotos.ts b/mobile/src/hooks/useCarReferencePhotos.ts
+new file mode 100644
+index 00000000..85c7e880
+--- /dev/null
++++ b/mobile/src/hooks/useCarReferencePhotos.ts
+@@ -0,0 +1,56 @@
++import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import { uploadReferencePhoto } from '../lib/uploadReferencePhoto'
++import type { Tables } from '../types/database'
++import type { InspectionShotKey } from '../components/InspectionShotGuide'
++
++export function useCarReferencePhotos(carId: string | undefined) {
++  return useQuery({
++    queryKey: ['car-reference-photos', carId],
++    queryFn: async (): Promise<Tables<'car_reference_photos'>[]> => {
++      const { data, error } = await supabase
++        .from('car_reference_photos')
++        .select('*')
++        .eq('car_id', carId as string)
++
++      if (error) throw error
++      return data
++    },
++    enabled: !!carId,
++  })
++}
++
++type SubmitReferencePhotosInput = {
++  carId: string
++  photos: Partial<Record<InspectionShotKey, string>>
++}
++
++export function useSubmitReferencePhotos() {
++  const queryClient = useQueryClient()
++
++  return useMutation({
++    mutationFn: async (input: SubmitReferencePhotosInput) => {
++      const {
++        data: { user },
++      } = await supabase.auth.getUser()
++
++      for (const [shotKey, uri] of Object.entries(input.photos)) {
++        if (!uri) continue
++        const path = await uploadReferencePhoto(input.carId, shotKey, uri)
++        const { error } = await supabase.from('car_reference_photos').upsert(
++          {
++            car_id: input.carId,
++            shot_key: shotKey,
++            photo_path: path,
++            uploaded_by: user?.id,
++          },
++          { onConflict: 'car_id,shot_key' },
++        )
++        if (error) throw error
++      }
++    },
++    onSuccess: (_data, variables) => {
++      queryClient.invalidateQueries({ queryKey: ['car-reference-photos', variables.carId] })
++    },
++  })
++}
+diff --git a/mobile/src/hooks/useSignedPhotoUrl.ts b/mobile/src/hooks/useSignedPhotoUrl.ts
+index 48e4deed..0d05439e 100644
+--- a/mobile/src/hooks/useSignedPhotoUrl.ts
++++ b/mobile/src/hooks/useSignedPhotoUrl.ts
+@@ -3,12 +3,12 @@ import { supabase } from '../lib/supabase'
+ 
+ const SIGNED_URL_TTL_SECONDS = 60 * 10
+ 
+-export function useSignedPhotoUrl(path: string | undefined) {
++export function useSignedPhotoUrl(path: string | undefined, bucket: string = 'inspection-photos') {
+   return useQuery({
+-    queryKey: ['inspection-photo-url', path],
++    queryKey: ['signed-photo-url', bucket, path],
+     queryFn: async () => {
+       const { data, error } = await supabase.storage
+-        .from('inspection-photos')
++        .from(bucket)
+         .createSignedUrl(path as string, SIGNED_URL_TTL_SECONDS)
+ 
+       if (error) throw error
+diff --git a/mobile/src/lib/uploadReferencePhoto.ts b/mobile/src/lib/uploadReferencePhoto.ts
+new file mode 100644
+index 00000000..71c0a086
+--- /dev/null
++++ b/mobile/src/lib/uploadReferencePhoto.ts
+@@ -0,0 +1,30 @@
++import { supabase } from './supabase'
++
++const MIME_TYPES: Record<string, string> = {
++  jpg: 'image/jpeg',
++  jpeg: 'image/jpeg',
++  png: 'image/png',
++  heic: 'image/heic',
++}
++
++export async function uploadReferencePhoto(carId: string, shotKey: string, localUri: string): Promise<string> {
++  const extensionMatch = localUri.match(/\.(\w+)$/)
++  const extension = (extensionMatch ? extensionMatch[1] : 'jpg').toLowerCase()
++  const path = `${carId}/${shotKey}.${extension}`
++
++  const response = await fetch(localUri)
++  const arrayBuffer = await response.arrayBuffer()
++  const headerContentType = response.headers.get('content-type')
++  const contentType =
++    headerContentType && headerContentType !== 'application/octet-stream'
++      ? headerContentType
++      : (MIME_TYPES[extension] ?? 'application/octet-stream')
++
++  const { error } = await supabase.storage.from('car-reference-photos').upload(path, arrayBuffer, {
++    contentType,
++    upsert: true,
++  })
++
++  if (error) throw error
++  return path
++}
+diff --git a/mobile/src/types/database.ts b/mobile/src/types/database.ts
+index d0656339..fbdd4f44 100644
+--- a/mobile/src/types/database.ts
++++ b/mobile/src/types/database.ts
+@@ -174,6 +174,48 @@ export type Database = {
+           },
+         ]
+       }
++      car_reference_photos: {
++        Row: {
++          car_id: string
++          created_at: string
++          id: string
++          photo_path: string
++          shot_key: string
++          uploaded_by: string | null
++        }
++        Insert: {
++          car_id: string
++          created_at?: string
++          id?: string
++          photo_path: string
++          shot_key: string
++          uploaded_by?: string | null
++        }
++        Update: {
++          car_id?: string
++          created_at?: string
++          id?: string
++          photo_path?: string
++          shot_key?: string
++          uploaded_by?: string | null
++        }
++        Relationships: [
++          {
++            foreignKeyName: "car_reference_photos_car_id_fkey"
++            columns: ["car_id"]
++            isOneToOne: false
++            referencedRelation: "cars"
++            referencedColumns: ["id"]
++          },
++          {
++            foreignKeyName: "car_reference_photos_uploaded_by_fkey"
++            columns: ["uploaded_by"]
++            isOneToOne: false
++            referencedRelation: "profiles"
++            referencedColumns: ["id"]
++          },
++        ]
++      }
+       cars: {
+         Row: {
+           admin_note: string | null
+-- 
+2.43.0
+
