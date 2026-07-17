@@ -11,6 +11,7 @@ export default function OwnerRentalLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Rental' }} />
+      <Stack.Screen name="[driverId]" options={{ title: 'Driver Profile' }} />
     </Stack>
   )
 }
