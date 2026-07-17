@@ -183,8 +183,8 @@ export default function RentalScreen() {
               Next inspection: {formatShortDate(nextInspection)}
             </Text>
           )}
-          <Button mode="contained" onPress={() => router.push('/rental/inspections/new')} style={styles.actionButton}>
-            Complete Inspection
+          <Button mode="contained" onPress={() => router.push('/inspection')} style={styles.actionButton}>
+            Go to Inspection
           </Button>
         </Card.Content>
       </Card>

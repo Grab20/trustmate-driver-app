@@ -1,12 +1,12 @@
 import { ScrollView, StyleSheet } from 'react-native'
 import { Text } from 'react-native-paper'
 import { useRouter } from 'expo-router'
-import { useOwnerFleet } from '../../../src/hooks/useOwnerFleet'
-import { LoadingScreen } from '../../../src/components/LoadingScreen'
-import { OwnerDriverRentalRow } from '../../../src/components/OwnerDriverRentalRow'
-import { brandColors } from '../../../src/theme/theme'
+import { useOwnerFleet } from '../../src/hooks/useOwnerFleet'
+import { LoadingScreen } from '../../src/components/LoadingScreen'
+import { InspectionFleetRow } from '../../src/components/InspectionFleetRow'
+import { brandColors } from '../../src/theme/theme'
 
-export default function OwnerRentalScreen() {
+export default function OwnerInspectionScreen() {
   const router = useRouter()
   const { data: fleet, isLoading } = useOwnerFleet()
 
@@ -14,13 +14,9 @@ export default function OwnerRentalScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      <Text variant="bodyMedium" style={styles.subheading}>
-        Profile, TrustScore, and payment progress for each driver.
-      </Text>
-
       {fleet && fleet.length > 0 ? (
         fleet.map((entry) => (
-          <OwnerDriverRentalRow
+          <InspectionFleetRow
             key={entry.id}
             entry={entry}
             onPress={() =>
@@ -46,10 +42,6 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 24,
-  },
-  subheading: {
-    color: brandColors.charcoalSoft,
-    marginBottom: 20,
   },
   empty: {
     opacity: 0.6,

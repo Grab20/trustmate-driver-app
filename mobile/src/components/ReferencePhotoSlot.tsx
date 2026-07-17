@@ -1,5 +1,5 @@
 import { View, Image, StyleSheet, Pressable } from 'react-native'
-import { IconButton, Text } from 'react-native-paper'
+import { IconButton, Text, ActivityIndicator } from 'react-native-paper'
 import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
 import { brandColors } from '../theme/theme'
 
@@ -7,15 +7,21 @@ type ReferencePhotoSlotProps = {
   label: string
   localUri: string | null
   existingPath: string | null
+  uploading?: boolean
   onCapture: () => void
 }
 
-export function ReferencePhotoSlot({ label, localUri, existingPath, onCapture }: ReferencePhotoSlotProps) {
+export function ReferencePhotoSlot({ label, localUri, existingPath, uploading, onCapture }: ReferencePhotoSlotProps) {
   return (
     <View style={styles.container}>
       {localUri ? (
-        <Pressable onPress={onCapture}>
+        <Pressable onPress={onCapture} disabled={uploading}>
           <Image source={{ uri: localUri }} style={styles.localPhoto} />
+          {uploading && (
+            <View style={styles.uploadingOverlay}>
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+          )}
         </Pressable>
       ) : existingPath ? (
         <View style={styles.existingWrap}>
@@ -59,6 +65,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 2,
     borderColor: brandColors.green,
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   existingWrap: {
     position: 'relative',

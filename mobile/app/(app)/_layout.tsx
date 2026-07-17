@@ -6,6 +6,7 @@ import { usePushNotifications } from '../../src/hooks/usePushNotifications'
 import { useAutoTripTracking } from '../../src/hooks/useAutoTripTracking'
 import { CrashAlertModal } from '../../src/components/CrashAlertModal'
 import { TabIcon } from '../../src/components/TabIcon'
+import { HeaderAvatar } from '../../src/components/HeaderAvatar'
 import { brandColors } from '../../src/theme/theme'
 
 export default function AppLayout() {
@@ -49,8 +50,19 @@ export default function AppLayout() {
           name="index"
           options={{
             title: 'Home',
+            headerRight: () => <HeaderAvatar />,
             tabBarIcon: ({ color, size, focused }) => (
               <TabIcon source="home-variant" size={size} color={color as string} focused={focused} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="inspection"
+          options={{
+            title: 'Inspection',
+            headerRight: () => <HeaderAvatar />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <TabIcon source="clipboard-check-outline" size={size} color={color as string} focused={focused} />
             ),
           }}
         />
@@ -75,12 +87,10 @@ export default function AppLayout() {
           }}
         />
         <Tabs.Screen
-          name="profile"
+          name="account"
           options={{
-            title: 'Profile',
-            tabBarIcon: ({ color, size, focused }) => (
-              <TabIcon source="account" size={size} color={color as string} focused={focused} />
-            ),
+            href: null,
+            headerShown: false,
           }}
         />
       </Tabs>

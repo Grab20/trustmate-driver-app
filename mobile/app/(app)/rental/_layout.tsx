@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router'
+import { HeaderAvatar } from '../../../src/components/HeaderAvatar'
 import { brandColors } from '../../../src/theme/theme'
 
 export default function RentalLayout() {
@@ -10,7 +11,7 @@ export default function RentalLayout() {
         headerTitleStyle: { color: '#fff' },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Rental' }} />
+      <Stack.Screen name="index" options={{ title: 'Rental', headerRight: () => <HeaderAvatar /> }} />
       <Stack.Screen name="inspections/index" options={{ title: 'Inspection History' }} />
       <Stack.Screen name="inspections/new" options={{ title: 'Vehicle Inspection' }} />
       <Stack.Screen name="inspections/payment" options={{ title: 'Proof of Payment' }} />

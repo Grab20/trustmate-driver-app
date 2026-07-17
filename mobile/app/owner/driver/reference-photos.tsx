@@ -35,30 +35,33 @@ export default function ReferencePhotosScreen() {
     return map
   }, [existingPhotos])
 
+  const [uploadingKey, setUploadingKey] = useState<InspectionShotKey | null>(null)
   const capturedCount = ALL_SHOTS.filter((key) => localUris[key] || existingByShotKey[key]).length
   const allShotsCaptured = capturedCount === ALL_SHOTS.length
 
   async function handleCapture(key: InspectionShotKey) {
+    if (!carId) return
     const { status } = await ImagePicker.requestCameraPermissionsAsync()
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Camera access is required to take reference photos.')
       return
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
-    if (!result.canceled) {
-      setLocalUris((prev) => ({ ...prev, [key]: result.assets[0].uri }))
-    }
-  }
+    if (result.canceled) return
 
-  async function handleSave() {
-    if (!carId || Object.keys(localUris).length === 0) return
+    const uri = result.assets[0].uri
+    setLocalUris((prev) => ({ ...prev, [key]: uri }))
+    setUploadingKey(key)
     try {
-      await submitReferencePhotos.mutateAsync({ carId, photos: localUris })
-      setLocalUris({})
-      Alert.alert('Saved', 'Reference photos saved. The AI will compare future inspections against these.')
-      router.back()
+      // Upload immediately rather than waiting for a final "Save" — the native
+      // camera can force Android to reclaim the app's memory while it's open,
+      // which restarts the app and would otherwise lose every shot taken
+      // before the last one that got saved.
+      await submitReferencePhotos.mutateAsync({ carId, photos: { [key]: uri } })
     } catch (err) {
-      Alert.alert('Save failed', err instanceof Error ? err.message : 'Unknown error')
+      Alert.alert('Upload failed', err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setUploadingKey(null)
     }
   }
 
@@ -84,6 +87,7 @@ export default function ReferencePhotosScreen() {
             label={SHOT_LABELS[key]}
             localUri={localUris[key] ?? null}
             existingPath={existingByShotKey[key] ?? null}
+            uploading={uploadingKey === key}
             onCapture={() => handleCapture(key)}
           />
         ))}
@@ -97,19 +101,14 @@ export default function ReferencePhotosScreen() {
             label={SHOT_LABELS[key]}
             localUri={localUris[key] ?? null}
             existingPath={existingByShotKey[key] ?? null}
+            uploading={uploadingKey === key}
             onCapture={() => handleCapture(key)}
           />
         ))}
       </View>
 
-      <Button
-        mode="contained"
-        onPress={handleSave}
-        loading={submitReferencePhotos.isPending}
-        disabled={submitReferencePhotos.isPending || Object.keys(localUris).length === 0}
-        style={styles.saveButton}
-      >
-        {allShotsCaptured ? 'Save Reference Photos' : `Save (${capturedCount}/${ALL_SHOTS.length} captured)`}
+      <Button mode="contained" onPress={() => router.back()} style={styles.saveButton}>
+        {allShotsCaptured ? 'Done' : `Done (${capturedCount}/${ALL_SHOTS.length} captured)`}
       </Button>
     </ScrollView>
   )

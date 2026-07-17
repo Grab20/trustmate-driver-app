@@ -1,25 +1,19 @@
-import { useEffect, useState } from 'react'
-import { View, StyleSheet, ScrollView } from 'react-native'
-import { Text, Card, Button, Chip } from 'react-native-paper'
+import { View, StyleSheet, ScrollView, Pressable } from 'react-native'
+import { Text, Button } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../src/hooks/useActiveRental'
-import { useActiveTrip } from '../../src/hooks/useActiveTrip'
-import { useDistanceTotals } from '../../src/hooks/useDistanceTotals'
 import { useDriverProfile } from '../../src/hooks/useDriverProfile'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { useMyLiveStatus } from '../../src/hooks/useMyLiveStatus'
 import { useTrustScoreTrend } from '../../src/hooks/useTrustScoreTrend'
+import { useRecentActivity } from '../../src/hooks/useRecentActivity'
 import { useAuthStore } from '../../src/stores/authStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
-import { StatTile } from '../../src/components/StatTile'
-import { AlertBanner } from '../../src/components/AlertBanner'
 import { TrustScoreRing } from '../../src/components/TrustScoreRing'
 import { IconBadge } from '../../src/components/IconBadge'
-import { LiveStatusMap } from '../../src/components/LiveStatusMap'
-import { reverseGeocodeLabel } from '../../src/lib/reverseGeocode'
 import { getNextOccurrence, formatShortDate } from '../../src/utils/schedule'
 import { computePaymentRecord } from '../../src/utils/paymentRecord'
-import { brandColors } from '../../src/theme/theme'
+import { brandColors, radius, cardShadow } from '../../src/theme/theme'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -30,36 +24,28 @@ function getGreeting(): string {
 
 function trustScoreLabel(score: number | null | undefined): string {
   if (score == null) return 'Not Rated'
-  if (score >= 80) return 'Good Standing'
+  if (score >= 80) return 'Excellent'
   if (score >= 50) return 'Fair Standing'
   return 'Needs Improvement'
+}
+
+type AttentionItem = {
+  key: string
+  title: string
+  subtitle: string
+  urgent: boolean
+  onPress: () => void
 }
 
 export default function HomeScreen() {
   const router = useRouter()
   const { data: activeRental, isLoading } = useActiveRental()
-  const { data: activeTrip } = useActiveTrip()
-  const { data: distanceTotals } = useDistanceTotals()
   const { data: driverProfile } = useDriverProfile()
   const { data: myProfile } = useMyProfile()
   const { data: liveStatus } = useMyLiveStatus()
   const { data: trendPoints } = useTrustScoreTrend()
+  const { data: recentActivity } = useRecentActivity()
   const signOut = useAuthStore((s) => s.signOut)
-  const [addressLabel, setAddressLabel] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!liveStatus) {
-      setAddressLabel(null)
-      return
-    }
-    let cancelled = false
-    reverseGeocodeLabel(Number(liveStatus.lat), Number(liveStatus.lng)).then((label) => {
-      if (!cancelled) setAddressLabel(label)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [liveStatus?.lat, liveStatus?.lng])
 
   if (isLoading) return <LoadingScreen />
 
@@ -89,24 +75,39 @@ export default function HomeScreen() {
   const car = activeRental.cars
   const firstName = myProfile?.full_name?.split(' ')[0] ?? 'Driver'
   const isMoving = liveStatus?.is_moving ?? false
-  const todaysDistanceKm = distanceTotals?.today ?? 0
 
   const nextInspection = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
   const nextPayment = getNextOccurrence(car?.weekly_checkin_day ?? null, car?.checkin_time ?? null)
   const paymentRecord = computePaymentRecord(activeRental.matched_at, driverProfile?.ontime_payments ?? null)
 
+  const attentionItems: AttentionItem[] = []
+  if (nextPayment) {
+    attentionItems.push({
+      key: 'payment',
+      title: 'Payment due',
+      subtitle: formatShortDate(nextPayment),
+      urgent: true,
+      onPress: () => router.push('/rental'),
+    })
+  }
+  if (nextInspection) {
+    attentionItems.push({
+      key: 'inspection',
+      title: 'Weekly inspection due',
+      subtitle: `${formatShortDate(nextInspection)} · 9 photos, ~3 min`,
+      urgent: false,
+      onPress: () => router.push('/inspection'),
+    })
+  }
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.greetingRow}>
-        <View>
-          <Text variant="bodyMedium" style={styles.dateText}>
-            {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
-          </Text>
-          <Text variant="headlineMedium" style={styles.greeting}>
-            {getGreeting()}, {firstName}
-          </Text>
-        </View>
-      </View>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+      <Text variant="bodyMedium" style={styles.dateText}>
+        {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+      </Text>
+      <Text variant="headlineMedium" style={styles.greeting}>
+        {getGreeting()}, {firstName}
+      </Text>
 
       {myProfile?.role === 'both' && (
         <Button mode="outlined" onPress={() => router.push('/owner')} style={styles.switchButton}>
@@ -114,254 +115,315 @@ export default function HomeScreen() {
         </Button>
       )}
 
-      <Card style={styles.rentalCard}>
-        <Card.Content>
-          <View style={styles.rentalCardHeader}>
-            <Text variant="labelMedium" style={styles.rentalCardLabel}>
-              ACTIVE RENTAL
-            </Text>
-            <Chip
-              compact
-              style={isMoving ? styles.drivingChip : styles.parkedChip}
-              textStyle={styles.chipText}
-            >
-              {isMoving ? 'Driving' : 'Parked'}
-            </Chip>
-          </View>
-          <View style={styles.rentalCardTitleRow}>
+      <View style={styles.card}>
+        <View style={styles.rentalHeader}>
+          <View style={styles.rentalTitleRow}>
             <IconBadge source="car" backgroundColor="rgba(255,255,255,0.15)" />
-            <Text variant="titleLarge" style={styles.rentalCardTitle}>
+            <Text variant="titleLarge" style={styles.rentalTitle}>
               {car ? `${car.make} ${car.model}` : 'Vehicle details unavailable'}
             </Text>
           </View>
-        </Card.Content>
-      </Card>
-
-      {liveStatus && (
-        <LiveStatusMap
-          liveStatus={liveStatus}
-          addressLabel={addressLabel}
-          height={300}
-          photoUrl={myProfile?.photo_url}
-          initials={myProfile?.full_name ?? undefined}
-        />
-      )}
-
-      <View style={styles.statsGrid}>
-        <StatTile label="Today" value={`${todaysDistanceKm.toFixed(1)} km`} icon="map-marker-distance" />
-        <StatTile label="Status" value={activeTrip ? 'Driving' : 'Parked'} icon={activeTrip ? 'navigation' : 'parking'} />
+          <View style={styles.pill}>
+            <Text style={styles.pillText}>{isMoving ? 'Driving' : 'Active'}</Text>
+          </View>
+        </View>
+        <View style={styles.rentalMeta}>
+          {nextPayment && (
+            <View style={styles.metaItem}>
+              <Text style={styles.metaLabel}>Next payment</Text>
+              <Text style={styles.metaValue}>{formatShortDate(nextPayment)}</Text>
+            </View>
+          )}
+          {nextInspection && (
+            <View style={styles.metaItem}>
+              <Text style={styles.metaLabel}>Next inspection</Text>
+              <Text style={styles.metaValue}>{formatShortDate(nextInspection)}</Text>
+            </View>
+          )}
+        </View>
       </View>
 
-      <Text variant="labelMedium" style={styles.sectionLabel}>
-        NEEDS YOUR ATTENTION
-      </Text>
-      {nextPayment && (
-        <AlertBanner
-          title="Payment due"
-          subtitle={formatShortDate(nextPayment)}
-          buttonLabel="View"
-          icon="credit-card-clock-outline"
-          onPress={() => router.push('/rental')}
-        />
-      )}
-      {nextInspection && (
-        <AlertBanner
-          title="Vehicle inspection"
-          subtitle={formatShortDate(nextInspection)}
-          buttonLabel="Complete"
-          variant="dark"
-          icon="clipboard-check-outline"
-          onPress={() => router.push('/rental/inspections/new')}
-        />
+      {attentionItems.length > 0 && (
+        <>
+          <Text variant="labelMedium" style={styles.sectionLabel}>
+            NEEDS YOUR ATTENTION
+          </Text>
+          <View style={styles.card}>
+            {attentionItems.map((item, index) => (
+              <Pressable
+                key={item.key}
+                onPress={item.onPress}
+                style={[styles.attnRow, index === attentionItems.length - 1 && styles.attnRowLast]}
+              >
+                <View style={[styles.attnDot, item.urgent && styles.attnDotUrgent]} />
+                <View style={styles.attnText}>
+                  <Text style={styles.attnTitle}>{item.title}</Text>
+                  <Text style={styles.attnSubtitle}>{item.subtitle}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </>
       )}
 
-      <Card style={styles.trustCard}>
-        <Card.Content style={styles.trustCardContent}>
-          <View style={styles.trustCardTextColumn}>
-            <View style={styles.trustCardLabelRow}>
-              <IconBadge source="shield-star" backgroundColor="rgba(255,255,255,0.15)" size={14} />
-              <Text variant="labelMedium" style={styles.trustCardLabel}>
-                TRUSTSCORE
-              </Text>
-            </View>
-            <Text variant="bodyMedium" style={styles.trustCardStanding}>
-              {trustScoreLabel(driverProfile?.trust_score)}
+      <Text variant="labelMedium" style={styles.sectionLabel}>
+        TRUSTSCORE
+      </Text>
+      <View style={[styles.card, styles.trustCard]}>
+        <View style={styles.trustCopy}>
+          <Text style={styles.trustLabel}>{trustScoreLabel(driverProfile?.trust_score)}</Text>
+          {trendPoints != null && trendPoints !== 0 && (
+            <Text style={styles.trendText}>
+              <Text style={styles.trendValue}>
+                {trendPoints > 0 ? '+' : ''}
+                {trendPoints}
+              </Text>{' '}
+              this month
+              {trendPoints > 0 ? ' — on-time payments are your biggest driver.' : ''}
             </Text>
-            {trendPoints != null && trendPoints !== 0 && (
-              <View style={styles.trendRow}>
-                <IconBadge
-                  source={trendPoints > 0 ? 'trending-up' : 'trending-down'}
-                  size={12}
-                  backgroundColor={trendPoints > 0 ? brandColors.mintGreen : brandColors.errorRed}
-                  color={brandColors.darkGreen}
-                />
-                <Text variant="bodySmall" style={styles.trendText}>
-                  {trendPoints > 0 ? '+' : ''}
-                  {trendPoints} points this month
-                </Text>
-              </View>
-            )}
-          </View>
-          <TrustScoreRing score={driverProfile?.trust_score ?? 0} />
-        </Card.Content>
-      </Card>
+          )}
+        </View>
+        <TrustScoreRing score={driverProfile?.trust_score ?? 0} />
+      </View>
 
       {paymentRecord && (
-        <Card style={styles.card}>
-          <Card.Content>
-            <View style={styles.recordHeadingRow}>
-              <IconBadge source="calendar-check" backgroundColor={brandColors.green} size={14} />
-              <Text variant="labelMedium" style={styles.recordHeading}>
-                DRIVER RECORD
-              </Text>
-            </View>
-            <Text variant="titleMedium" style={styles.recordValue}>
-              {paymentRecord.weeksOnTime} of {paymentRecord.weeksElapsed} weeks paid on time
-            </Text>
-            <View style={styles.recordTrack}>
-              <View
-                style={[
-                  styles.recordFill,
-                  { width: `${Math.min(100, (paymentRecord.weeksOnTime / paymentRecord.weeksElapsed) * 100)}%` },
-                ]}
-              />
-            </View>
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Text variant="labelMedium" style={styles.cardHeading}>
+            DRIVER RECORD
+          </Text>
+          <Text style={styles.recordValue}>
+            {paymentRecord.weeksOnTime} of {paymentRecord.weeksElapsed} weeks paid on time
+          </Text>
+          <View style={styles.recordTrack}>
+            <View
+              style={[
+                styles.recordFill,
+                { width: `${Math.min(100, (paymentRecord.weeksOnTime / paymentRecord.weeksElapsed) * 100)}%` },
+              ]}
+            />
+          </View>
+        </View>
       )}
 
-      <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
-        Sign Out
-      </Button>
+      {recentActivity && recentActivity.length > 0 && (
+        <>
+          <Text variant="labelMedium" style={styles.sectionLabel}>
+            RECENT ACTIVITY
+          </Text>
+          <View style={styles.card}>
+            {recentActivity.slice(0, 2).map((item, index) => (
+              <Pressable
+                key={`${item.type}-${item.id}`}
+                disabled={item.type !== 'trip'}
+                onPress={item.type === 'trip' ? () => router.push(`/activity/${item.trip.id}`) : undefined}
+                style={[styles.activityRow, index === 0 && recentActivity.length > 1 && styles.activityRowBorder]}
+              >
+                <IconBadge
+                  source={item.type === 'trip' ? 'map-marker' : 'clipboard-check-outline'}
+                  backgroundColor="rgba(255,255,255,0.15)"
+                  size={14}
+                />
+                <View style={styles.activityText}>
+                  {item.type === 'trip' ? (
+                    <>
+                      <Text style={styles.activityTitle}>
+                        {item.trip.start_location ?? 'Unknown'} → {item.trip.end_location ?? 'Unknown'}
+                      </Text>
+                      <Text style={styles.activitySub}>
+                        {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ·{' '}
+                        {(item.trip.distance_km ?? 0).toFixed(1)} km
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.activityTitle}>Inspection {item.inspection.status}</Text>
+                      <Text style={styles.activitySub}>
+                        {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      )}
     </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     padding: 24,
   },
-  greetingRow: {
-    marginBottom: 16,
-  },
   dateText: {
-    opacity: 0.6,
+    color: brandColors.charcoalSoft,
   },
   greeting: {
+    color: brandColors.charcoal,
     marginTop: 2,
+    marginBottom: 16,
   },
   switchButton: {
     marginBottom: 16,
   },
-  rentalCard: {
-    backgroundColor: brandColors.darkGreen,
-    marginBottom: 16,
-  },
-  rentalCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  rentalCardLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    letterSpacing: 0.5,
-  },
-  drivingChip: {
-    backgroundColor: brandColors.mintGreen,
-  },
-  parkedChip: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  chipText: {
-    color: '#fff',
-  },
-  rentalCardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 10,
-  },
-  rentalCardTitle: {
-    color: '#fff',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
   sectionLabel: {
-    opacity: 0.6,
+    color: brandColors.charcoalSoft,
     letterSpacing: 0.5,
     marginTop: 8,
+    marginBottom: 12,
+  },
+  card: {
+    backgroundColor: brandColors.cardGreen,
+    borderRadius: radius.lg,
+    padding: 20,
     marginBottom: 8,
+    ...cardShadow,
+  },
+  cardHeading: {
+    color: brandColors.inkOnCardSoft,
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  rentalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rentalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  rentalTitle: {
+    color: brandColors.inkOnCard,
+    flexShrink: 1,
+  },
+  pill: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  pillText: {
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  rentalMeta: {
+    flexDirection: 'row',
+    gap: 24,
+    marginTop: 16,
+  },
+  metaItem: {},
+  metaLabel: {
+    color: brandColors.inkOnCardSoft,
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  metaValue: {
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
+  },
+  attnRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingBottom: 16,
+    marginBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.15)',
+  },
+  attnRowLast: {
+    paddingBottom: 0,
+    marginBottom: 0,
+    borderBottomWidth: 0,
+  },
+  attnDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: brandColors.gold,
+    marginTop: 5,
+  },
+  attnDotUrgent: {
+    backgroundColor: brandColors.alert,
+  },
+  attnText: {
+    flex: 1,
+  },
+  attnTitle: {
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
+  },
+  attnSubtitle: {
+    color: brandColors.inkOnCardSoft,
+    marginTop: 2,
   },
   trustCard: {
-    backgroundColor: brandColors.darkGreen,
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  trustCardContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  trustCardTextColumn: {
+  trustCopy: {
     flex: 1,
     marginRight: 12,
   },
-  trustCardLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  trustCardLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    letterSpacing: 0.5,
-  },
-  trustCardStanding: {
-    color: brandColors.mintGreen,
-    marginTop: 4,
-  },
-  trendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
+  trustLabel: {
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
+    fontSize: 16,
   },
   trendText: {
-    color: 'rgba(255,255,255,0.8)',
+    color: brandColors.inkOnCardSoft,
+    marginTop: 8,
   },
-  card: {
-    marginBottom: 24,
-  },
-  recordHeadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  recordHeading: {
-    opacity: 0.6,
-    letterSpacing: 0.5,
+  trendValue: {
+    color: brandColors.gold,
+    fontWeight: '700',
   },
   recordValue: {
-    color: brandColors.darkGreen,
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
     marginBottom: 10,
   },
   recordTrack: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#EAEAE5',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     overflow: 'hidden',
   },
   recordFill: {
     height: '100%',
     borderRadius: 4,
-    backgroundColor: brandColors.green,
+    backgroundColor: brandColors.gold,
   },
-  signOutButton: {
-    marginTop: 16,
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  activityRowBorder: {
+    paddingBottom: 16,
+    marginBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.15)',
+  },
+  activityText: {
+    flex: 1,
+  },
+  activityTitle: {
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
+  },
+  activitySub: {
+    color: brandColors.inkOnCardSoft,
+    marginTop: 2,
   },
   emptyContainer: {
     flex: 1,
@@ -376,5 +438,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.7,
     marginBottom: 32,
+  },
+  signOutButton: {
+    marginTop: 16,
   },
 })

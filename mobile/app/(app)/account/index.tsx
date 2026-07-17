@@ -1,13 +1,13 @@
 import { View, StyleSheet, ScrollView } from 'react-native'
 import { Text, Card, Button } from 'react-native-paper'
-import { useMyProfile } from '../../src/hooks/useMyProfile'
-import { useDriverProfile } from '../../src/hooks/useDriverProfile'
-import { useDriverRentalStats } from '../../src/hooks/useDriverRentalStats'
-import { useAuthStore } from '../../src/stores/authStore'
-import { LoadingScreen } from '../../src/components/LoadingScreen'
-import { TrustScoreRing } from '../../src/components/TrustScoreRing'
-import { ReliabilityBar } from '../../src/components/ReliabilityBar'
-import { brandColors } from '../../src/theme/theme'
+import { useMyProfile } from '../../../src/hooks/useMyProfile'
+import { useDriverProfile } from '../../../src/hooks/useDriverProfile'
+import { useDriverRentalStats } from '../../../src/hooks/useDriverRentalStats'
+import { useAuthStore } from '../../../src/stores/authStore'
+import { LoadingScreen } from '../../../src/components/LoadingScreen'
+import { TrustScoreRing } from '../../../src/components/TrustScoreRing'
+import { ReliabilityBar } from '../../../src/components/ReliabilityBar'
+import { brandColors, radius, cardShadow } from '../../../src/theme/theme'
 
 function trustScoreLabel(score: number | null | undefined): string {
   if (score == null) return 'Not Rated'
@@ -25,7 +25,7 @@ function getInitials(name: string | null | undefined): string {
     .join('')
 }
 
-export default function ProfileScreen() {
+export default function AccountScreen() {
   const { data: myProfile, isLoading: isProfileLoading } = useMyProfile()
   const { data: driverProfile, isLoading: isDriverLoading } = useDriverProfile()
   const { data: rentalStats } = useDriverRentalStats()
@@ -47,7 +47,7 @@ export default function ProfileScreen() {
   const vehicleCare = careTotal > 0 ? (excellentCare / careTotal) * 100 : null
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Card style={styles.headerCard}>
         <Card.Content>
           <View style={styles.headerTop}>
@@ -68,11 +68,11 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View style={styles.trustDivider} />
+          <View style={styles.divider} />
 
           <View style={styles.trustRow}>
             <View>
-              <Text variant="labelMedium" style={styles.trustLabel}>
+              <Text variant="labelMedium" style={styles.label}>
                 TRUSTSCORE
               </Text>
               <Text variant="bodyMedium" style={styles.trustStanding}>
@@ -87,7 +87,7 @@ export default function ProfileScreen() {
       {(paymentReliability != null || vehicleCare != null) && (
         <Card style={styles.card}>
           <Card.Content>
-            <Text variant="labelMedium" style={styles.sectionLabel}>
+            <Text variant="labelMedium" style={styles.label}>
               RELIABILITY SCORES
             </Text>
             {paymentReliability != null && (
@@ -100,7 +100,7 @@ export default function ProfileScreen() {
 
       <Card style={styles.card}>
         <Card.Content>
-          <Text variant="labelMedium" style={styles.sectionLabel}>
+          <Text variant="labelMedium" style={styles.label}>
             VERIFIED DRIVER RECORD
           </Text>
           <View style={styles.statsGrid}>
@@ -132,7 +132,7 @@ export default function ProfileScreen() {
         </Card.Content>
       </Card>
 
-      <Button mode="outlined" onPress={signOut} style={styles.signOutButton}>
+      <Button mode="outlined" onPress={signOut} style={styles.signOutButton} textColor={brandColors.charcoal}>
         Sign Out
       </Button>
     </ScrollView>
@@ -140,12 +140,17 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     padding: 24,
   },
   headerCard: {
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.cardGreen,
+    borderRadius: radius.lg,
     marginBottom: 16,
+    ...cardShadow,
   },
   headerTop: {
     flexDirection: 'row',
@@ -154,26 +159,27 @@ const styles = StyleSheet.create({
   avatar: {
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
   },
   avatarText: {
-    color: '#fff',
+    color: brandColors.inkOnCard,
   },
   headerInfo: {
     flex: 1,
   },
   name: {
-    color: '#fff',
+    color: brandColors.inkOnCard,
   },
   verifiedBadge: {
-    color: brandColors.mintGreen,
+    color: brandColors.gold,
+    fontWeight: '700',
     marginTop: 4,
   },
-  trustDivider: {
+  divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(255,255,255,0.2)',
     marginVertical: 16,
@@ -183,21 +189,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  trustLabel: {
-    color: 'rgba(255,255,255,0.6)',
+  label: {
+    color: brandColors.inkOnCardSoft,
     letterSpacing: 0.5,
+    marginBottom: 12,
   },
   trustStanding: {
-    color: brandColors.mintGreen,
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
     marginTop: 4,
   },
   card: {
+    backgroundColor: brandColors.cardGreen,
+    borderRadius: radius.lg,
     marginBottom: 16,
-  },
-  sectionLabel: {
-    opacity: 0.6,
-    letterSpacing: 0.5,
-    marginBottom: 12,
+    ...cardShadow,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -208,15 +214,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statValue: {
-    color: brandColors.darkGreen,
+    color: brandColors.inkOnCard,
   },
   statLabel: {
-    opacity: 0.6,
+    color: brandColors.inkOnCardSoft,
     marginTop: 4,
     textAlign: 'center',
   },
   signOutButton: {
     marginTop: 8,
     marginBottom: 24,
+    borderColor: brandColors.charcoalSoft,
   },
 })

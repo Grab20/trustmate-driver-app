@@ -29,7 +29,7 @@ export default function OwnerDashboardScreen() {
   const parkedCount = (fleet?.length ?? 0) - drivingCount
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text variant="headlineMedium" style={styles.greeting}>
         {getGreeting()}, {firstName}
       </Text>
@@ -94,6 +94,9 @@ export default function OwnerDashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     padding: 24,
   },

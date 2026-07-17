@@ -30,7 +30,7 @@ export function TrustScoreRing({ score, size = 72, strokeWidth = 7 }: TrustScore
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={brandColors.mintGreen}
+          stroke={brandColors.gold}
           strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={circumference}

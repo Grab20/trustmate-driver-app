@@ -19,6 +19,8 @@ import { TripRouteRow } from '../../../src/components/TripRouteRow'
 import { LiveStatusMap } from '../../../src/components/LiveStatusMap'
 import { SectionLabel } from '../../../src/components/SectionLabel'
 import { ChecklistRow } from '../../../src/components/ChecklistRow'
+import { TrustScoreRing } from '../../../src/components/TrustScoreRing'
+import { ReliabilityBar } from '../../../src/components/ReliabilityBar'
 import { formatShortDate, getNextOccurrence } from '../../../src/utils/schedule'
 import { reverseGeocodeLabel } from '../../../src/lib/reverseGeocode'
 import { brandColors } from '../../../src/theme/theme'
@@ -85,6 +87,16 @@ export default function OwnerDriverDetailScreen() {
   const paymentsUpToDate = missedPayments === 0
   const inspectionCompleted = lastInspection != null
 
+  const ontime = driverProfile?.ontime_payments ?? 0
+  const late = driverProfile?.late_payments ?? 0
+  const paymentTotal = ontime + missedPayments + late
+  const paymentReliability = paymentTotal > 0 ? (ontime / paymentTotal) * 100 : null
+
+  const excellentCare = driverProfile?.excellent_care ?? 0
+  const damageEvents = (driverProfile?.damage_incidents ?? 0) + (driverProfile?.accidents ?? 0)
+  const careTotal = excellentCare + damageEvents
+  const vehicleCare = careTotal > 0 ? (excellentCare / careTotal) * 100 : null
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Card style={styles.headerCard}>
@@ -101,6 +113,19 @@ export default function OwnerDriverDetailScreen() {
             <Text variant="bodySmall" style={styles.headerVehicle}>
               {car ? `${car.make} ${car.model}` : 'Vehicle unavailable'}
             </Text>
+          </View>
+        </Card.Content>
+      </Card>
+
+      <Card style={styles.card}>
+        <Card.Content>
+          <View style={styles.trustHeaderRow}>
+            <View style={styles.trustHeaderText}>
+              <SectionLabel icon="shield-star" label="TRUSTSCORE" />
+              {paymentReliability != null && <ReliabilityBar label="Payment Reliability" percent={paymentReliability} />}
+              {vehicleCare != null && <ReliabilityBar label="Vehicle Care" percent={vehicleCare} />}
+            </View>
+            <TrustScoreRing score={driverProfile?.trust_score ?? 0} />
           </View>
         </Card.Content>
       </Card>
@@ -315,6 +340,15 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: 16,
+  },
+  trustHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  trustHeaderText: {
+    flex: 1,
+    marginRight: 16,
   },
   goodStandingCard: {
     borderColor: brandColors.green,

@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router'
+import { HeaderAvatar } from '../../../src/components/HeaderAvatar'
 import { brandColors } from '../../../src/theme/theme'
 
 export default function ActivityLayout() {
@@ -10,7 +11,7 @@ export default function ActivityLayout() {
         headerTitleStyle: { color: '#fff' },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Activity' }} />
+      <Stack.Screen name="index" options={{ title: 'Activity', headerRight: () => <HeaderAvatar /> }} />
       <Stack.Screen name="[tripId]" options={{ title: 'Trip Details' }} />
     </Stack>
   )

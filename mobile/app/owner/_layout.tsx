@@ -61,6 +61,15 @@ export default function OwnerLayout() {
         }}
       />
       <Tabs.Screen
+        name="inspection"
+        options={{
+          title: 'Inspection',
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon source="clipboard-check-outline" size={size} color={color as string} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="rental"
         options={{
           title: 'Rental',
