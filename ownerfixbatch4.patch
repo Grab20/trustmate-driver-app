@@ -1,0 +1,1657 @@
+From 02cfdb879606eb8ce0edde365e3cea260f5221ee Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 17 Jul 2026 16:18:28 +0000
+Subject: [PATCH] Rebuild owner side to actually match the approved mockup
+ structure
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Previous batches recolored the existing owner components (FleetDriverCard,
+InspectionFleetRow) instead of restructuring them, so the information
+architecture stayed closer to the old fleet-management look even though the
+palette changed. This rebuilds the three owner screens to the mockup's
+actual layout:
+
+- Home: simple driver list (avatar, name, vehicle + driving/parked, trust
+  number) instead of the expandable-chip card, plus an aggregate
+  needs-attention card and a "this week" fleet distance/payments stat pair.
+- Inspection tab: an aggregate rental-health checklist across the fleet,
+  and a plain vehicle list with health-score pills, instead of one detailed
+  card per driver.
+- Rental tab: now just a driver list (name, vehicle, since-date) that drills
+  into a new dedicated profile screen — payment-term progress, TrustScore
+  ring, a "what affects this score" checklist, and a profile block (phone,
+  licence, rentals completed). This is also where "Manage Reference Photos"
+  now lives for the owner, since that action had no clear home before.
+
+New src/hooks/useOwnerFleetSummary.ts backs all three screens with a single
+bulk query instead of duplicating per-row fetches. FleetDriverCard and
+InspectionFleetRow are removed as dead code now that nothing renders them.
+---
+ mobile/app/owner/index.tsx                   | 288 +++++++++++++----
+ mobile/app/owner/inspection.tsx              | 229 ++++++++++++--
+ mobile/app/owner/rental/[driverId].tsx       | 309 +++++++++++++++++++
+ mobile/app/owner/rental/_layout.tsx          |   1 +
+ mobile/app/owner/rental/index.tsx            | 121 ++++++--
+ mobile/src/components/FleetDriverCard.tsx    | 266 ----------------
+ mobile/src/components/InspectionFleetRow.tsx | 126 --------
+ mobile/src/hooks/useOwnerFleetSummary.ts     | 108 +++++++
+ 8 files changed, 939 insertions(+), 509 deletions(-)
+ create mode 100644 mobile/app/owner/rental/[driverId].tsx
+ delete mode 100644 mobile/src/components/FleetDriverCard.tsx
+ delete mode 100644 mobile/src/components/InspectionFleetRow.tsx
+ create mode 100644 mobile/src/hooks/useOwnerFleetSummary.ts
+
+diff --git a/mobile/app/owner/index.tsx b/mobile/app/owner/index.tsx
+index 7adade39..83ff68e1 100644
+--- a/mobile/app/owner/index.tsx
++++ b/mobile/app/owner/index.tsx
+@@ -1,37 +1,55 @@
+-import { View, ScrollView, StyleSheet } from 'react-native'
++import { View, ScrollView, StyleSheet, Pressable } from 'react-native'
+ import { Text, Button } from 'react-native-paper'
+ import { useRouter } from 'expo-router'
+-import { useOwnerFleet } from '../../src/hooks/useOwnerFleet'
++import { useOwnerFleetSummary } from '../../src/hooks/useOwnerFleetSummary'
++import { useOwnerFleetDistanceTotals } from '../../src/hooks/useOwnerFleetDistanceTotals'
+ import { useMyProfile } from '../../src/hooks/useMyProfile'
+ import { useAuthStore } from '../../src/stores/authStore'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+-import { FleetDriverCard } from '../../src/components/FleetDriverCard'
+-import { IconBadge } from '../../src/components/IconBadge'
+ import { brandColors, radius, cardShadow } from '../../src/theme/theme'
+ 
+-function getGreeting(): string {
+-  const hour = new Date().getHours()
+-  if (hour < 12) return 'Good Morning'
+-  if (hour < 18) return 'Good Afternoon'
+-  return 'Good Evening'
++const REVIEW_LABELS: Record<string, string> = {
++  flagged: 'inspection flagged',
++  reinspection_requested: 're-inspection requested',
+ }
+ 
+ export default function OwnerDashboardScreen() {
+   const router = useRouter()
+-  const { data: fleet, isLoading } = useOwnerFleet()
++  const { data: fleet, isLoading } = useOwnerFleetSummary()
++  const { data: distanceTotals } = useOwnerFleetDistanceTotals()
+   const { data: profile } = useMyProfile()
+   const signOut = useAuthStore((s) => s.signOut)
+ 
+   if (isLoading) return <LoadingScreen />
+ 
+-  const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
+-  const drivingCount = fleet?.filter((entry) => entry.liveStatus?.is_moving).length ?? 0
+-  const parkedCount = (fleet?.length ?? 0) - drivingCount
++  const attentionItems = (fleet ?? []).flatMap((entry) => {
++    const items: { key: string; title: string; subtitle: string }[] = []
++    const reviewLabel = entry.lastInspection ? REVIEW_LABELS[entry.lastInspection.reviewStatus] : undefined
++    if (reviewLabel) {
++      items.push({
++        key: `${entry.driverId}-inspection`,
++        title: `${entry.driverName.split(' ')[0]} — ${reviewLabel}`,
++        subtitle: entry.carLabel,
++      })
++    }
++    if (entry.missedPayments > 0) {
++      items.push({
++        key: `${entry.driverId}-payment`,
++        title: `${entry.driverName.split(' ')[0]} — payment missed`,
++        subtitle: entry.carLabel,
++      })
++    }
++    return items
++  })
++
++  const fleetDistanceThisWeek = distanceTotals?.week ?? 0
++  const fleetPaymentsThisWeek = (fleet ?? []).reduce((sum, entry) => sum + entry.priceWeek, 0)
+ 
+   return (
+     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+-      <Text variant="headlineMedium" style={styles.greeting}>
+-        {getGreeting()}, {firstName}
++      <Text style={styles.greet}>Your fleet</Text>
++      <Text style={styles.name}>
++        {fleet?.length ?? 0} vehicle{(fleet?.length ?? 0) === 1 ? '' : 's'}
+       </Text>
+ 
+       {profile?.role === 'both' && (
+@@ -40,43 +58,81 @@ export default function OwnerDashboardScreen() {
+         </Button>
+       )}
+ 
+-      {fleet && fleet.length > 0 && (
+-        <View style={styles.summaryCard}>
+-          <View style={styles.summaryItem}>
+-            <IconBadge source="navigation" backgroundColor="rgba(255,255,255,0.15)" />
+-            <View style={styles.summaryText}>
+-              <Text style={styles.summaryValue}>{drivingCount}</Text>
+-              <Text style={styles.summaryLabel}>On the road</Text>
+-            </View>
++      {fleet && fleet.length > 0 ? (
++        <>
++          {attentionItems.length > 0 && (
++            <>
++              <Text style={styles.sectionLabel}>NEEDS YOUR ATTENTION</Text>
++              <View style={styles.card}>
++                {attentionItems.map((item, index) => (
++                  <View
++                    key={item.key}
++                    style={[styles.attnRow, index === attentionItems.length - 1 && styles.attnRowLast]}
++                  >
++                    <View style={styles.attnDot} />
++                    <View style={styles.attnText}>
++                      <Text style={styles.attnTitle}>{item.title}</Text>
++                      <Text style={styles.attnSubtitle}>{item.subtitle}</Text>
++                    </View>
++                  </View>
++                ))}
++              </View>
++            </>
++          )}
++
++          <Text style={styles.sectionLabel}>DRIVERS</Text>
++          <View style={styles.listCard}>
++            {fleet.map((entry, index) => (
++              <Pressable
++                key={entry.applicationId}
++                onPress={() =>
++                  router.push({
++                    pathname: '/owner/driver/[id]',
++                    params: { id: entry.driverId, carId: entry.carId ?? '' },
++                  })
++                }
++                style={[styles.driverRow, index === fleet.length - 1 && styles.driverRowLast]}
++              >
++                <View style={styles.avatar}>
++                  <Text style={styles.avatarText}>
++                    {entry.driverName
++                      .split(' ')
++                      .map((p) => p[0])
++                      .slice(0, 2)
++                      .join('')
++                      .toUpperCase()}
++                  </Text>
++                </View>
++                <View style={styles.driverInfo}>
++                  <Text style={styles.driverName}>{entry.driverName}</Text>
++                  <Text style={styles.driverSub}>
++                    {entry.carLabel} · {entry.isMoving ? 'Driving' : 'Parked'}
++                  </Text>
++                </View>
++                <View style={styles.driverFigure}>
++                  <Text style={styles.dfNum}>{entry.trustScore ?? '—'}</Text>
++                  <Text style={styles.dfLabel}>TRUST</Text>
++                </View>
++              </Pressable>
++            ))}
+           </View>
+-          <View style={styles.summaryDivider} />
+-          <View style={styles.summaryItem}>
+-            <IconBadge source="map-marker" backgroundColor="rgba(255,255,255,0.15)" />
+-            <View style={styles.summaryText}>
+-              <Text style={styles.summaryValue}>{parkedCount}</Text>
+-              <Text style={styles.summaryLabel}>Parked</Text>
++
++          <Text style={styles.sectionLabel}>THIS WEEK</Text>
++          <View style={styles.statsRow}>
++            <View style={[styles.statCard, styles.statCardFirst]}>
++              <Text style={styles.statLabel}>Fleet distance</Text>
++              <Text style={styles.statValue}>{fleetDistanceThisWeek.toFixed(0)} km</Text>
++            </View>
++            <View style={styles.statCard}>
++              <Text style={styles.statLabel}>Payments</Text>
++              <Text style={styles.statValue}>R{fleetPaymentsThisWeek.toLocaleString()}</Text>
+             </View>
+           </View>
+-        </View>
+-      )}
+-
+-      {fleet && fleet.length > 0 ? (
+-        fleet.map((entry) => (
+-          <FleetDriverCard
+-            key={entry.id}
+-            entry={entry}
+-            onPress={() =>
+-              router.push({
+-                pathname: '/owner/driver/[id]',
+-                params: { id: entry.driver_id ?? '', carId: entry.car_id ?? '' },
+-              })
+-            }
+-          />
+-        ))
++        </>
+       ) : (
+-        <Text variant="bodyMedium" style={styles.empty}>
+-          No matched drivers yet. Once a driver is matched to one of your vehicles on the
+-          TrustMate website, they'll appear here.
++        <Text style={styles.empty}>
++          No matched drivers yet. Once a driver is matched to one of your vehicles on the TrustMate
++          website, they'll appear here.
+         </Text>
+       )}
+ 
+@@ -94,46 +150,146 @@ const styles = StyleSheet.create({
+   container: {
+     padding: 24,
+   },
+-  greeting: {
++  greet: {
++    color: brandColors.charcoalSoft,
++    fontSize: 14,
++  },
++  name: {
++    color: brandColors.charcoal,
++    fontSize: 26,
++    fontWeight: '600',
++    marginTop: 2,
+     marginBottom: 16,
+   },
+   switchButton: {
+     marginBottom: 16,
+   },
+-  summaryCard: {
++  sectionLabel: {
++    color: brandColors.charcoalSoft,
++    letterSpacing: 0.5,
++    fontSize: 12,
++    marginTop: 8,
++    marginBottom: 12,
++  },
++  card: {
+     backgroundColor: brandColors.cardGreen,
+     borderRadius: radius.lg,
+     padding: 20,
++    marginBottom: 8,
++    ...cardShadow,
++  },
++  attnRow: {
++    flexDirection: 'row',
++    alignItems: 'flex-start',
++    gap: 12,
++    paddingBottom: 16,
+     marginBottom: 16,
++    borderBottomWidth: StyleSheet.hairlineWidth,
++    borderBottomColor: 'rgba(255,255,255,0.15)',
++  },
++  attnRowLast: {
++    paddingBottom: 0,
++    marginBottom: 0,
++    borderBottomWidth: 0,
++  },
++  attnDot: {
++    width: 8,
++    height: 8,
++    borderRadius: 4,
++    backgroundColor: brandColors.alert,
++    marginTop: 5,
++  },
++  attnText: {
++    flex: 1,
++  },
++  attnTitle: {
++    color: brandColors.inkOnCard,
++    fontWeight: '700',
++  },
++  attnSubtitle: {
++    color: brandColors.inkOnCardSoft,
++    marginTop: 2,
++  },
++  listCard: {
++    backgroundColor: brandColors.surface,
++    borderRadius: radius.lg,
++    marginBottom: 8,
++    overflow: 'hidden',
++  },
++  driverRow: {
+     flexDirection: 'row',
+     alignItems: 'center',
+-    ...cardShadow,
++    gap: 12,
++    padding: 16,
++    borderBottomWidth: StyleSheet.hairlineWidth,
++    borderBottomColor: brandColors.line,
+   },
+-  summaryItem: {
+-    flexDirection: 'row',
++  driverRowLast: {
++    borderBottomWidth: 0,
++  },
++  avatar: {
++    width: 44,
++    height: 44,
++    borderRadius: 14,
++    backgroundColor: brandColors.successSoft,
+     alignItems: 'center',
++    justifyContent: 'center',
++  },
++  avatarText: {
++    color: brandColors.deep,
++    fontWeight: '700',
++  },
++  driverInfo: {
+     flex: 1,
+   },
+-  summaryText: {
+-    marginLeft: 12,
++  driverName: {
++    color: brandColors.charcoal,
++    fontWeight: '700',
+   },
+-  summaryValue: {
+-    color: brandColors.inkOnCard,
+-    fontSize: 18,
++  driverSub: {
++    color: brandColors.charcoalSoft,
++    marginTop: 2,
++    fontSize: 13,
++  },
++  driverFigure: {
++    alignItems: 'center',
++  },
++  dfNum: {
++    color: brandColors.deep,
+     fontWeight: '700',
++    fontSize: 18,
+   },
+-  summaryLabel: {
+-    color: brandColors.inkOnCardSoft,
++  dfLabel: {
++    color: brandColors.charcoalSoft,
++    fontSize: 10,
++    letterSpacing: 0.5,
+     marginTop: 2,
+   },
+-  summaryDivider: {
+-    width: StyleSheet.hairlineWidth,
+-    height: 32,
+-    backgroundColor: 'rgba(255,255,255,0.2)',
+-    marginHorizontal: 12,
++  statsRow: {
++    flexDirection: 'row',
++    gap: 12,
++    marginBottom: 8,
++  },
++  statCard: {
++    flex: 1,
++    backgroundColor: brandColors.cardGreen,
++    borderRadius: radius.lg,
++    padding: 16,
++    ...cardShadow,
++  },
++  statCardFirst: {},
++  statLabel: {
++    color: brandColors.inkOnCardSoft,
++    fontSize: 12,
++    marginBottom: 6,
++  },
++  statValue: {
++    color: brandColors.inkOnCard,
++    fontSize: 20,
++    fontWeight: '700',
+   },
+   empty: {
+-    opacity: 0.6,
++    color: brandColors.charcoalSoft,
+     textAlign: 'center',
+     marginTop: 32,
+     marginBottom: 32,
+diff --git a/mobile/app/owner/inspection.tsx b/mobile/app/owner/inspection.tsx
+index 4dc4df07..68583be0 100644
+--- a/mobile/app/owner/inspection.tsx
++++ b/mobile/app/owner/inspection.tsx
+@@ -1,36 +1,105 @@
+-import { ScrollView, StyleSheet } from 'react-native'
++import { View, ScrollView, StyleSheet, Pressable } from 'react-native'
+ import { Text } from 'react-native-paper'
+ import { useRouter } from 'expo-router'
+-import { useOwnerFleet } from '../../src/hooks/useOwnerFleet'
++import { useOwnerFleetSummary } from '../../src/hooks/useOwnerFleetSummary'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+-import { InspectionFleetRow } from '../../src/components/InspectionFleetRow'
+-import { brandColors } from '../../src/theme/theme'
++import { brandColors, radius, cardShadow } from '../../src/theme/theme'
++
++function firstName(fullName: string): string {
++  return fullName.split(' ')[0]
++}
+ 
+ export default function OwnerInspectionScreen() {
+   const router = useRouter()
+-  const { data: fleet, isLoading } = useOwnerFleet()
++  const { data: fleet, isLoading } = useOwnerFleetSummary()
+ 
+   if (isLoading) return <LoadingScreen />
+ 
++  const checklistItems = (fleet ?? []).map((entry) => {
++    if (entry.missedPayments > 0) {
++      return { key: `${entry.driverId}-pay`, ok: false, text: `${firstName(entry.driverName)}'s payment is overdue` }
++    }
++    if (!entry.lastInspection) {
++      return { key: `${entry.driverId}-insp`, ok: false, text: `${firstName(entry.driverName)}'s inspection not submitted yet` }
++    }
++    if (entry.lastInspection.reviewStatus === 'flagged' || entry.lastInspection.reviewStatus === 'reinspection_requested') {
++      return { key: `${entry.driverId}-insp`, ok: false, text: `${firstName(entry.driverName)}'s inspection flagged — review needed` }
++    }
++    return { key: `${entry.driverId}-insp`, ok: true, text: `${firstName(entry.driverName)}'s inspection completed` }
++  })
++  const allPaymentsOk = (fleet ?? []).every((entry) => entry.missedPayments === 0)
++
+   return (
+     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+       {fleet && fleet.length > 0 ? (
+-        fleet.map((entry) => (
+-          <InspectionFleetRow
+-            key={entry.id}
+-            entry={entry}
+-            onPress={() =>
+-              router.push({
+-                pathname: '/owner/driver/[id]',
+-                params: { id: entry.driver_id ?? '', carId: entry.car_id ?? '' },
+-              })
+-            }
+-          />
+-        ))
++        <>
++          <Text style={styles.sectionLabel}>RENTAL HEALTH</Text>
++          <View style={styles.card}>
++            <View style={styles.checkRow}>
++              <View style={[styles.checkMark, allPaymentsOk ? styles.checkOk : styles.checkAlert]}>
++                <Text style={styles.checkMarkText}>{allPaymentsOk ? '✓' : '!'}</Text>
++              </View>
++              <Text style={styles.checkText}>
++                {allPaymentsOk ? 'All vehicles up to date on payment' : 'Some vehicles have a payment overdue'}
++              </Text>
++            </View>
++            {checklistItems.map((item, index) => (
++              <View
++                key={item.key}
++                style={[styles.checkRow, index === checklistItems.length - 1 && styles.checkRowLast]}
++              >
++                <View style={[styles.checkMark, item.ok ? styles.checkOk : styles.checkAlert]}>
++                  <Text style={styles.checkMarkText}>{item.ok ? '✓' : '!'}</Text>
++                </View>
++                <Text style={styles.checkText}>{item.text}</Text>
++              </View>
++            ))}
++          </View>
++
++          <Text style={styles.sectionLabel}>VEHICLE HEALTH REPORTS</Text>
++          <View style={styles.listCard}>
++            {fleet.map((entry, index) => (
++              <Pressable
++                key={entry.applicationId}
++                disabled={!entry.lastInspection}
++                onPress={() =>
++                  entry.lastInspection &&
++                  router.push({
++                    pathname: '/owner/driver/inspection/[inspectionId]',
++                    params: { inspectionId: entry.lastInspection.id, driverId: entry.driverId, carId: entry.carId ?? '' },
++                  })
++                }
++                style={[styles.reportRow, index === fleet.length - 1 && styles.reportRowLast]}
++              >
++                <View style={[styles.avatar, entry.lastInspection?.healthScore != null && entry.lastInspection.healthScore < 90 && styles.avatarAlert]}>
++                  <Text style={styles.avatarText}>{entry.carLabel.slice(0, 2).toUpperCase()}</Text>
++                </View>
++                <View style={styles.reportInfo}>
++                  <Text style={styles.reportName}>{entry.carLabel}</Text>
++                  <Text style={styles.reportSub}>
++                    {entry.lastInspection
++                      ? `Inspection #${entry.lastInspection.inspectionNumber} · ${new Date(entry.lastInspection.createdAt ?? '').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
++                      : 'No inspection yet'}
++                  </Text>
++                </View>
++                {entry.lastInspection?.healthScore != null && (
++                  <View style={[styles.scorePill, entry.lastInspection.healthScore < 90 ? styles.scorePillAlert : styles.scorePillGood]}>
++                    <Text
++                      style={[
++                        styles.scorePillText,
++                        entry.lastInspection.healthScore < 90 ? styles.scorePillTextAlert : styles.scorePillTextGood,
++                      ]}
++                    >
++                      {entry.lastInspection.healthScore}/100
++                    </Text>
++                  </View>
++                )}
++              </Pressable>
++            ))}
++          </View>
++        </>
+       ) : (
+-        <Text variant="bodyMedium" style={styles.empty}>
+-          No matched drivers yet.
+-        </Text>
++        <Text style={styles.empty}>No matched drivers yet.</Text>
+       )}
+     </ScrollView>
+   )
+@@ -43,9 +112,125 @@ const styles = StyleSheet.create({
+   container: {
+     padding: 24,
+   },
++  sectionLabel: {
++    color: brandColors.charcoalSoft,
++    letterSpacing: 0.5,
++    fontSize: 12,
++    marginTop: 8,
++    marginBottom: 12,
++  },
++  card: {
++    backgroundColor: brandColors.surface,
++    borderRadius: radius.lg,
++    padding: 20,
++    marginBottom: 8,
++    ...cardShadow,
++  },
++  checkRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 12,
++    paddingBottom: 12,
++    marginBottom: 12,
++    borderBottomWidth: StyleSheet.hairlineWidth,
++    borderBottomColor: brandColors.line,
++  },
++  checkRowLast: {
++    paddingBottom: 0,
++    marginBottom: 0,
++    borderBottomWidth: 0,
++  },
++  checkMark: {
++    width: 22,
++    height: 22,
++    borderRadius: 11,
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  checkOk: {
++    backgroundColor: brandColors.successSoft,
++  },
++  checkAlert: {
++    backgroundColor: brandColors.alertSoft,
++  },
++  checkMarkText: {
++    fontWeight: '700',
++    fontSize: 12,
++    color: brandColors.deep,
++  },
++  checkText: {
++    color: brandColors.charcoal,
++    flex: 1,
++  },
++  listCard: {
++    backgroundColor: brandColors.surface,
++    borderRadius: radius.lg,
++    marginBottom: 8,
++    overflow: 'hidden',
++  },
++  reportRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 12,
++    padding: 16,
++    borderBottomWidth: StyleSheet.hairlineWidth,
++    borderBottomColor: brandColors.line,
++  },
++  reportRowLast: {
++    borderBottomWidth: 0,
++  },
++  avatar: {
++    width: 44,
++    height: 44,
++    borderRadius: 14,
++    backgroundColor: brandColors.successSoft,
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  avatarAlert: {
++    backgroundColor: brandColors.alertSoft,
++  },
++  avatarText: {
++    color: brandColors.deep,
++    fontWeight: '700',
++    fontSize: 12,
++  },
++  reportInfo: {
++    flex: 1,
++  },
++  reportName: {
++    color: brandColors.charcoal,
++    fontWeight: '700',
++  },
++  reportSub: {
++    color: brandColors.charcoalSoft,
++    marginTop: 2,
++    fontSize: 13,
++  },
++  scorePill: {
++    borderRadius: 10,
++    paddingHorizontal: 10,
++    paddingVertical: 4,
++  },
++  scorePillGood: {
++    backgroundColor: brandColors.successSoft,
++  },
++  scorePillAlert: {
++    backgroundColor: brandColors.alertSoft,
++  },
++  scorePillText: {
++    fontWeight: '700',
++    fontSize: 12,
++  },
++  scorePillTextGood: {
++    color: brandColors.deep,
++  },
++  scorePillTextAlert: {
++    color: brandColors.alert,
++  },
+   empty: {
+-    opacity: 0.6,
+-    marginTop: 32,
++    color: brandColors.charcoalSoft,
+     textAlign: 'center',
++    marginTop: 32,
+   },
+ })
+diff --git a/mobile/app/owner/rental/[driverId].tsx b/mobile/app/owner/rental/[driverId].tsx
+new file mode 100644
+index 00000000..1d26daa2
+--- /dev/null
++++ b/mobile/app/owner/rental/[driverId].tsx
+@@ -0,0 +1,309 @@
++import { View, ScrollView, StyleSheet } from 'react-native'
++import { Text, Button } from 'react-native-paper'
++import { useLocalSearchParams, useRouter } from 'expo-router'
++import { useOwnerFleetSummary } from '../../../src/hooks/useOwnerFleetSummary'
++import { useDriverProfileForOwner } from '../../../src/hooks/useDriverProfileForOwner'
++import { useDriverInspectionsForOwner } from '../../../src/hooks/useInspections'
++import { useProfile } from '../../../src/hooks/useProfile'
++import { TrustScoreRing } from '../../../src/components/TrustScoreRing'
++import { LoadingScreen } from '../../../src/components/LoadingScreen'
++import { getRentalWeekNumber } from '../../../src/utils/schedule'
++import { brandColors, radius, cardShadow } from '../../../src/theme/theme'
++
++const RENTAL_TERM_WEEKS = 52
++
++function trustScoreLabel(score: number | null | undefined): string {
++  if (score == null) return 'Not Rated'
++  if (score >= 80) return 'Excellent'
++  if (score >= 50) return 'Fair Standing'
++  return 'Needs Improvement'
++}
++
++function getInitials(name: string): string {
++  return name
++    .split(' ')
++    .map((p) => p[0])
++    .slice(0, 2)
++    .join('')
++    .toUpperCase()
++}
++
++export default function OwnerDriverProfileScreen() {
++  const router = useRouter()
++  const { driverId, carId } = useLocalSearchParams<{ driverId: string; carId: string }>()
++  const { data: fleet, isLoading: isFleetLoading } = useOwnerFleetSummary()
++  const { data: driverProfile, isLoading: isProfileLoading } = useDriverProfileForOwner(driverId)
++  const { data: inspections, isLoading: isInspectionsLoading } = useDriverInspectionsForOwner(driverId)
++  const { data: profile } = useProfile(driverId)
++
++  if (isFleetLoading || isProfileLoading || isInspectionsLoading) return <LoadingScreen />
++
++  const entry = fleet?.find((e) => e.driverId === driverId)
++  if (!entry) {
++    return (
++      <View style={styles.emptyContainer}>
++        <Text variant="bodyMedium">Driver not found.</Text>
++      </View>
++    )
++  }
++
++  const weekNumber = getRentalWeekNumber(entry.matchedAt)
++  const weekPercent = weekNumber != null ? Math.min(100, (weekNumber / RENTAL_TERM_WEEKS) * 100) : 0
++
++  const ontime = driverProfile?.ontime_payments ?? 0
++  const missed = driverProfile?.missed_payments ?? 0
++  const late = driverProfile?.late_payments ?? 0
++  const paymentTotal = ontime + missed + late
++
++  const weeklyInspections = (inspections ?? []).filter((i) => i.inspection_type === 'weekly_checkin')
++  const completedInspections = weeklyInspections.length
++  const hasIncidents = (driverProfile?.accidents ?? 0) > 0 || (driverProfile?.damage_incidents ?? 0) > 0
++
++  return (
++    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
++      <View style={styles.profileHead}>
++        <View style={styles.avatarLg}>
++          <Text style={styles.avatarLgText}>{getInitials(entry.driverName)}</Text>
++        </View>
++        <View style={styles.profileHeadText}>
++          <Text style={styles.pdName}>{entry.driverName}</Text>
++          <Text style={styles.pdSub}>
++            {entry.carLabel}
++            {entry.matchedAt ? ` · Driver since ${new Date(entry.matchedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''}
++          </Text>
++        </View>
++      </View>
++
++      {weekNumber != null && (
++        <>
++          <Text style={styles.sectionLabel}>PAYMENT PROGRESS</Text>
++          <View style={styles.card}>
++            <View style={styles.progressLabelRow}>
++              <Text style={styles.progressLabel}>
++                Week {weekNumber} of {RENTAL_TERM_WEEKS} paid
++              </Text>
++              <Text style={styles.progressPercent}>{weekPercent.toFixed(1)}%</Text>
++            </View>
++            <View style={styles.progressTrack}>
++              <View style={[styles.progressFill, { width: `${weekPercent}%` }]} />
++            </View>
++          </View>
++        </>
++      )}
++
++      <Text style={styles.sectionLabel}>TRUSTSCORE</Text>
++      <View style={[styles.card, styles.trustCard]}>
++        <View style={styles.trustCopy}>
++          <Text style={styles.trustLabel}>{trustScoreLabel(entry.trustScore)}</Text>
++          {hasIncidents ? (
++            <Text style={styles.trustInsight}>Damage or accident on record this year.</Text>
++          ) : (
++            <Text style={styles.trustInsight}>No accidents or damage incidents.</Text>
++          )}
++        </View>
++        <TrustScoreRing score={entry.trustScore ?? 0} />
++      </View>
++
++      <Text style={styles.sectionLabel}>WHAT AFFECTS THIS SCORE</Text>
++      <View style={styles.card}>
++        <View style={styles.summaryItem}>
++          <Text style={[styles.summaryDot, missed === 0 ? styles.summaryDotOk : styles.summaryDotAlert]}>
++            {missed === 0 ? '✓' : '!'}
++          </Text>
++          <Text style={styles.summaryText}>
++            Paid weekly check-in — {ontime}/{paymentTotal || ontime} on time
++          </Text>
++        </View>
++        <View style={styles.summaryItem}>
++          <Text style={[styles.summaryDot, styles.summaryDotOk]}>✓</Text>
++          <Text style={styles.summaryText}>Weekly inspections completed — {completedInspections}</Text>
++        </View>
++        <View style={styles.summaryItem}>
++          <Text style={[styles.summaryDot, !hasIncidents ? styles.summaryDotOk : styles.summaryDotAlert]}>
++            {!hasIncidents ? '✓' : '!'}
++          </Text>
++          <Text style={styles.summaryText}>
++            {!hasIncidents ? 'No accidents or damage incidents' : 'Accident or damage on record'}
++          </Text>
++        </View>
++      </View>
++
++      <Text style={styles.sectionLabel}>PROFILE</Text>
++      <View style={styles.card}>
++        <View style={styles.kvRow}>
++          <Text style={styles.kvk}>Phone</Text>
++          <Text style={styles.kvv}>{profile?.phone ?? '—'}</Text>
++        </View>
++        <View style={styles.kvRow}>
++          <Text style={styles.kvk}>Licence</Text>
++          <Text style={styles.kvv}>{driverProfile?.license_verified ? 'Verified' : 'Not verified'}</Text>
++        </View>
++        <View style={[styles.kvRow, styles.kvRowLast]}>
++          <Text style={styles.kvk}>Rentals completed</Text>
++          <Text style={styles.kvv}>{driverProfile?.rentals_completed ?? 0}</Text>
++        </View>
++      </View>
++
++      <Button
++        mode="outlined"
++        icon="camera-plus-outline"
++        style={styles.actionButton}
++        onPress={() => router.push(`/owner/driver/reference-photos?carId=${entry.carId ?? carId}`)}
++      >
++        Manage Reference Photos
++      </Button>
++      <Button
++        mode="text"
++        style={styles.actionButton}
++        onPress={() =>
++          router.push({ pathname: '/owner/driver/[id]', params: { id: entry.driverId, carId: entry.carId ?? carId } })
++        }
++      >
++        View Full Details
++      </Button>
++    </ScrollView>
++  )
++}
++
++const styles = StyleSheet.create({
++  screen: {
++    backgroundColor: brandColors.paper,
++  },
++  container: {
++    padding: 24,
++    paddingBottom: 40,
++  },
++  profileHead: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 14,
++    marginBottom: 20,
++  },
++  avatarLg: {
++    width: 56,
++    height: 56,
++    borderRadius: 18,
++    backgroundColor: brandColors.successSoft,
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  avatarLgText: {
++    color: brandColors.deep,
++    fontWeight: '700',
++    fontSize: 17,
++  },
++  profileHeadText: {
++    flex: 1,
++  },
++  pdName: {
++    color: brandColors.charcoal,
++    fontSize: 18,
++    fontWeight: '700',
++  },
++  pdSub: {
++    color: brandColors.charcoalSoft,
++    marginTop: 2,
++  },
++  sectionLabel: {
++    color: brandColors.charcoalSoft,
++    letterSpacing: 0.5,
++    fontSize: 12,
++    marginTop: 8,
++    marginBottom: 12,
++  },
++  card: {
++    backgroundColor: brandColors.cardGreen,
++    borderRadius: radius.lg,
++    padding: 20,
++    marginBottom: 8,
++    ...cardShadow,
++  },
++  progressLabelRow: {
++    flexDirection: 'row',
++    justifyContent: 'space-between',
++    marginBottom: 8,
++  },
++  progressLabel: {
++    color: brandColors.inkOnCard,
++    fontWeight: '600',
++  },
++  progressPercent: {
++    color: brandColors.gold,
++    fontWeight: '700',
++  },
++  progressTrack: {
++    height: 8,
++    borderRadius: 4,
++    backgroundColor: 'rgba(255,255,255,0.2)',
++    overflow: 'hidden',
++  },
++  progressFill: {
++    height: '100%',
++    borderRadius: 4,
++    backgroundColor: brandColors.gold,
++  },
++  trustCard: {
++    flexDirection: 'row',
++    justifyContent: 'space-between',
++    alignItems: 'center',
++  },
++  trustCopy: {
++    flex: 1,
++    marginRight: 12,
++  },
++  trustLabel: {
++    color: brandColors.inkOnCard,
++    fontWeight: '700',
++    fontSize: 16,
++  },
++  trustInsight: {
++    color: brandColors.inkOnCardSoft,
++    marginTop: 8,
++  },
++  summaryItem: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 10,
++    paddingVertical: 6,
++  },
++  summaryDot: {
++    width: 20,
++    textAlign: 'center',
++    fontWeight: '700',
++  },
++  summaryDotOk: {
++    color: brandColors.emerald,
++  },
++  summaryDotAlert: {
++    color: brandColors.alert,
++  },
++  summaryText: {
++    color: brandColors.inkOnCard,
++    flex: 1,
++  },
++  kvRow: {
++    flexDirection: 'row',
++    justifyContent: 'space-between',
++    paddingVertical: 8,
++    borderBottomWidth: StyleSheet.hairlineWidth,
++    borderBottomColor: 'rgba(255,255,255,0.15)',
++  },
++  kvRowLast: {
++    borderBottomWidth: 0,
++  },
++  kvk: {
++    color: brandColors.inkOnCardSoft,
++  },
++  kvv: {
++    color: brandColors.inkOnCard,
++    fontWeight: '600',
++  },
++  actionButton: {
++    marginTop: 8,
++  },
++  emptyContainer: {
++    flex: 1,
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++})
+diff --git a/mobile/app/owner/rental/_layout.tsx b/mobile/app/owner/rental/_layout.tsx
+index 938baa96..9ad77857 100644
+--- a/mobile/app/owner/rental/_layout.tsx
++++ b/mobile/app/owner/rental/_layout.tsx
+@@ -11,6 +11,7 @@ export default function OwnerRentalLayout() {
+       }}
+     >
+       <Stack.Screen name="index" options={{ title: 'Rental' }} />
++      <Stack.Screen name="[driverId]" options={{ title: 'Driver Profile' }} />
+     </Stack>
+   )
+ }
+diff --git a/mobile/app/owner/rental/index.tsx b/mobile/app/owner/rental/index.tsx
+index 6c1a8512..c29d89dc 100644
+--- a/mobile/app/owner/rental/index.tsx
++++ b/mobile/app/owner/rental/index.tsx
+@@ -1,40 +1,60 @@
+-import { ScrollView, StyleSheet } from 'react-native'
+-import { Text } from 'react-native-paper'
++import { View, ScrollView, StyleSheet, Pressable } from 'react-native'
++import { Text, Icon } from 'react-native-paper'
+ import { useRouter } from 'expo-router'
+-import { useOwnerFleet } from '../../../src/hooks/useOwnerFleet'
++import { useOwnerFleetSummary } from '../../../src/hooks/useOwnerFleetSummary'
+ import { LoadingScreen } from '../../../src/components/LoadingScreen'
+-import { OwnerDriverRentalRow } from '../../../src/components/OwnerDriverRentalRow'
+-import { brandColors } from '../../../src/theme/theme'
++import { brandColors, radius, cardShadow } from '../../../src/theme/theme'
++
++function formatSince(iso: string | null): string {
++  if (!iso) return ''
++  return new Date(iso).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
++}
+ 
+ export default function OwnerRentalScreen() {
+   const router = useRouter()
+-  const { data: fleet, isLoading } = useOwnerFleet()
++  const { data: fleet, isLoading } = useOwnerFleetSummary()
+ 
+   if (isLoading) return <LoadingScreen />
+ 
+   return (
+     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+-      <Text variant="bodyMedium" style={styles.subheading}>
+-        Profile, TrustScore, and payment progress for each driver.
+-      </Text>
+-
++      <Text style={styles.sectionLabel}>YOUR DRIVERS</Text>
+       {fleet && fleet.length > 0 ? (
+-        fleet.map((entry) => (
+-          <OwnerDriverRentalRow
+-            key={entry.id}
+-            entry={entry}
+-            onPress={() =>
+-              router.push({
+-                pathname: '/owner/driver/[id]',
+-                params: { id: entry.driver_id ?? '', carId: entry.car_id ?? '' },
+-              })
+-            }
+-          />
+-        ))
++        <View style={styles.listCard}>
++          {fleet.map((entry, index) => (
++            <Pressable
++              key={entry.applicationId}
++              onPress={() =>
++                router.push({
++                  pathname: '/owner/rental/[driverId]',
++                  params: { driverId: entry.driverId, carId: entry.carId ?? '' },
++                })
++              }
++              style={[styles.driverRow, index === fleet.length - 1 && styles.driverRowLast]}
++            >
++              <View style={styles.avatar}>
++                <Text style={styles.avatarText}>
++                  {entry.driverName
++                    .split(' ')
++                    .map((p) => p[0])
++                    .slice(0, 2)
++                    .join('')
++                    .toUpperCase()}
++                </Text>
++              </View>
++              <View style={styles.driverInfo}>
++                <Text style={styles.driverName}>{entry.driverName}</Text>
++                <Text style={styles.driverSub}>
++                  {entry.carLabel}
++                  {entry.matchedAt ? ` · since ${formatSince(entry.matchedAt)}` : ''}
++                </Text>
++              </View>
++              <Icon source="chevron-right" size={20} color={brandColors.charcoalSoft} />
++            </Pressable>
++          ))}
++        </View>
+       ) : (
+-        <Text variant="bodyMedium" style={styles.empty}>
+-          No matched drivers yet.
+-        </Text>
++        <Text style={styles.empty}>No matched drivers yet.</Text>
+       )}
+     </ScrollView>
+   )
+@@ -47,13 +67,56 @@ const styles = StyleSheet.create({
+   container: {
+     padding: 24,
+   },
+-  subheading: {
++  sectionLabel: {
+     color: brandColors.charcoalSoft,
+-    marginBottom: 20,
++    letterSpacing: 0.5,
++    fontSize: 12,
++    marginBottom: 12,
++  },
++  listCard: {
++    backgroundColor: brandColors.surface,
++    borderRadius: radius.lg,
++    overflow: 'hidden',
++    ...cardShadow,
++  },
++  driverRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 12,
++    padding: 16,
++    borderBottomWidth: StyleSheet.hairlineWidth,
++    borderBottomColor: brandColors.line,
++  },
++  driverRowLast: {
++    borderBottomWidth: 0,
++  },
++  avatar: {
++    width: 44,
++    height: 44,
++    borderRadius: 14,
++    backgroundColor: brandColors.successSoft,
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  avatarText: {
++    color: brandColors.deep,
++    fontWeight: '700',
++  },
++  driverInfo: {
++    flex: 1,
++  },
++  driverName: {
++    color: brandColors.charcoal,
++    fontWeight: '700',
++  },
++  driverSub: {
++    color: brandColors.charcoalSoft,
++    marginTop: 2,
++    fontSize: 13,
+   },
+   empty: {
+-    opacity: 0.6,
+-    marginTop: 32,
++    color: brandColors.charcoalSoft,
+     textAlign: 'center',
++    marginTop: 32,
+   },
+ })
+diff --git a/mobile/src/components/FleetDriverCard.tsx b/mobile/src/components/FleetDriverCard.tsx
+deleted file mode 100644
+index 0dd73175..00000000
+--- a/mobile/src/components/FleetDriverCard.tsx
++++ /dev/null
+@@ -1,266 +0,0 @@
+-import { useEffect, useState } from 'react'
+-import { View, StyleSheet, Pressable } from 'react-native'
+-import { Text, Avatar, Icon } from 'react-native-paper'
+-import type { OwnerFleetEntry } from '../hooks/useOwnerFleet'
+-import { useDriverDistanceTotals } from '../hooks/useDriverDistanceTotals'
+-import { useDriverInspectionsForOwner } from '../hooks/useInspections'
+-import { useDriverTrafficOffencesForOwner } from '../hooks/useTrafficOffences'
+-import { LiveStatusMap } from './LiveStatusMap'
+-import { reverseGeocodeLabel } from '../lib/reverseGeocode'
+-import { formatElapsedSince, formatShortDate } from '../utils/schedule'
+-import { brandColors, radius, cardShadow } from '../theme/theme'
+-
+-type InfoKey = 'location' | 'km' | 'inspection' | 'fines'
+-
+-const CHIPS: { key: InfoKey; label: string; icon: string }[] = [
+-  { key: 'location', label: 'Location', icon: 'map-marker' },
+-  { key: 'km', label: 'Weekly KM', icon: 'speedometer' },
+-  { key: 'inspection', label: 'Inspection', icon: 'clipboard-check-outline' },
+-  { key: 'fines', label: 'Fines', icon: 'alert-octagon-outline' },
+-]
+-
+-export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; onPress: () => void }) {
+-  const isMoving = entry.liveStatus?.is_moving ?? false
+-  const [selected, setSelected] = useState<InfoKey | null>(null)
+-  const [addressLabel, setAddressLabel] = useState<string | null>(null)
+-
+-  const distanceTotals = useDriverDistanceTotals(entry.driver_id ?? undefined)
+-  const inspections = useDriverInspectionsForOwner(entry.driver_id ?? undefined)
+-  const offences = useDriverTrafficOffencesForOwner(entry.driver_id ?? undefined)
+-
+-  const initials = (entry.driver?.full_name ?? '?')
+-    .split(' ')
+-    .map((part) => part[0])
+-    .slice(0, 2)
+-    .join('')
+-    .toUpperCase()
+-
+-  useEffect(() => {
+-    if (selected !== 'location' || !entry.liveStatus) return
+-    let cancelled = false
+-    reverseGeocodeLabel(Number(entry.liveStatus.lat), Number(entry.liveStatus.lng)).then((label) => {
+-      if (!cancelled) setAddressLabel(label)
+-    })
+-    return () => {
+-      cancelled = true
+-    }
+-  }, [selected, entry.liveStatus?.lat, entry.liveStatus?.lng])
+-
+-  const lastInspection = inspections.data?.find((i) => i.inspection_type === 'weekly_checkin') ?? null
+-  const unpaidFines = offences.data?.filter((o) => o.status === 'unpaid').length ?? 0
+-
+-  return (
+-    <View style={styles.card}>
+-      <Pressable onPress={onPress}>
+-        <View style={styles.content}>
+-          <View style={[styles.avatarRing, isMoving && styles.avatarRingMoving]}>
+-            {entry.driver?.photo_url ? (
+-              <Avatar.Image size={52} source={{ uri: entry.driver.photo_url }} />
+-            ) : (
+-              <Avatar.Text size={52} label={initials} />
+-            )}
+-            <View style={[styles.statusDot, isMoving ? styles.statusDotMoving : styles.statusDotParked]} />
+-          </View>
+-          <View style={styles.info}>
+-            <Text style={styles.name}>{entry.driver?.full_name ?? 'Driver'}</Text>
+-            <View style={styles.vehicleRow}>
+-              <Icon source="car" size={14} color={brandColors.inkOnCardSoft} />
+-              <Text style={styles.vehicle}>
+-                {entry.cars ? `${entry.cars.make} ${entry.cars.model}` : 'Vehicle unavailable'}
+-              </Text>
+-            </View>
+-            {entry.liveStatus ? (
+-              <View style={styles.statusRow}>
+-                <Icon source={isMoving ? 'navigation' : 'map-marker'} size={14} color={isMoving ? brandColors.gold : brandColors.inkOnCardSoft} />
+-                <Text style={[styles.since, isMoving && styles.sinceMoving]}>
+-                  {isMoving
+-                    ? `Driving${entry.liveStatus.speed_kmh != null ? ` · ${Math.round(entry.liveStatus.speed_kmh)} km/h` : ''}`
+-                    : `Parked · here for ${formatElapsedSince(entry.liveStatus.state_since)}`}
+-                </Text>
+-              </View>
+-            ) : (
+-              <Text style={styles.since}>No location yet</Text>
+-            )}
+-          </View>
+-          <Icon source="chevron-right" size={22} color={brandColors.inkOnCardSoft} />
+-        </View>
+-      </Pressable>
+-
+-      <View style={styles.chipRow}>
+-        {CHIPS.map((chip) => {
+-          const isSelected = selected === chip.key
+-          return (
+-            <Pressable
+-              key={chip.key}
+-              onPress={() => setSelected(isSelected ? null : chip.key)}
+-              style={[styles.chip, isSelected && styles.chipSelected]}
+-            >
+-              <Icon source={chip.icon} size={14} color={isSelected ? brandColors.deep : brandColors.inkOnCard} />
+-              <Text style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}>{chip.label}</Text>
+-            </Pressable>
+-          )
+-        })}
+-      </View>
+-
+-      {selected && (
+-        <View style={styles.expandedPanel}>
+-          {selected === 'location' &&
+-            (entry.liveStatus ? (
+-              <LiveStatusMap
+-                liveStatus={entry.liveStatus}
+-                addressLabel={addressLabel}
+-                height={220}
+-                photoUrl={entry.driver?.photo_url}
+-                initials={entry.driver?.full_name ?? undefined}
+-              />
+-            ) : (
+-              <Text style={styles.expandedEmpty}>No location data yet.</Text>
+-            ))}
+-          {selected === 'km' && (
+-            <View style={styles.expandedRow}>
+-              <Text style={styles.expandedValue}>{(distanceTotals.data?.week ?? 0).toFixed(0)} km</Text>
+-              <Text style={styles.expandedLabel}>driven this week</Text>
+-            </View>
+-          )}
+-          {selected === 'inspection' && (
+-            <View style={styles.expandedRow}>
+-              <Text style={styles.expandedValue}>
+-                {lastInspection?.created_at ? formatShortDate(new Date(lastInspection.created_at)) : 'None yet'}
+-              </Text>
+-              <Text style={styles.expandedLabel}>last inspection</Text>
+-            </View>
+-          )}
+-          {selected === 'fines' && (
+-            <View style={styles.expandedRow}>
+-              <Text style={[styles.expandedValue, unpaidFines > 0 && styles.expandedValueAlert]}>
+-                {unpaidFines === 0 ? 'No unpaid fines' : `${unpaidFines} unpaid fine${unpaidFines === 1 ? '' : 's'}`}
+-              </Text>
+-            </View>
+-          )}
+-        </View>
+-      )}
+-    </View>
+-  )
+-}
+-
+-const styles = StyleSheet.create({
+-  card: {
+-    backgroundColor: brandColors.cardGreen,
+-    borderRadius: radius.lg,
+-    marginBottom: 16,
+-    padding: 20,
+-    ...cardShadow,
+-  },
+-  content: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-  },
+-  avatarRing: {
+-    borderRadius: 30,
+-    borderWidth: 2,
+-    borderColor: 'rgba(255,255,255,0.25)',
+-    padding: 2,
+-  },
+-  avatarRingMoving: {
+-    borderColor: brandColors.gold,
+-  },
+-  statusDot: {
+-    position: 'absolute',
+-    bottom: 0,
+-    right: 0,
+-    width: 14,
+-    height: 14,
+-    borderRadius: 7,
+-    borderWidth: 2,
+-    borderColor: brandColors.cardGreen,
+-  },
+-  statusDotMoving: {
+-    backgroundColor: brandColors.gold,
+-  },
+-  statusDotParked: {
+-    backgroundColor: 'rgba(255,255,255,0.4)',
+-  },
+-  info: {
+-    flex: 1,
+-    marginLeft: 14,
+-  },
+-  name: {
+-    color: brandColors.inkOnCard,
+-    fontSize: 17,
+-    fontWeight: '700',
+-  },
+-  vehicleRow: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    marginTop: 3,
+-    gap: 4,
+-  },
+-  vehicle: {
+-    color: brandColors.inkOnCardSoft,
+-  },
+-  statusRow: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    marginTop: 4,
+-    gap: 4,
+-  },
+-  since: {
+-    color: brandColors.inkOnCardSoft,
+-  },
+-  sinceMoving: {
+-    color: brandColors.gold,
+-    fontWeight: '600',
+-  },
+-  chipRow: {
+-    flexDirection: 'row',
+-    flexWrap: 'wrap',
+-    marginTop: 16,
+-    gap: 8,
+-  },
+-  chip: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    gap: 6,
+-    paddingHorizontal: 12,
+-    paddingVertical: 6,
+-    borderRadius: 14,
+-    backgroundColor: 'rgba(255,255,255,0.15)',
+-  },
+-  chipSelected: {
+-    backgroundColor: brandColors.gold,
+-  },
+-  chipLabel: {
+-    color: brandColors.inkOnCard,
+-    fontWeight: '600',
+-    fontSize: 12,
+-  },
+-  chipLabelSelected: {
+-    color: brandColors.deep,
+-  },
+-  expandedPanel: {
+-    marginTop: 4,
+-  },
+-  expandedRow: {
+-    backgroundColor: 'rgba(255,255,255,0.12)',
+-    borderRadius: 12,
+-    padding: 16,
+-    alignItems: 'center',
+-  },
+-  expandedValue: {
+-    color: brandColors.inkOnCard,
+-    fontWeight: '700',
+-    fontSize: 16,
+-  },
+-  expandedValueAlert: {
+-    color: brandColors.gold,
+-  },
+-  expandedLabel: {
+-    color: brandColors.inkOnCardSoft,
+-    marginTop: 2,
+-  },
+-  expandedEmpty: {
+-    color: brandColors.inkOnCardSoft,
+-    textAlign: 'center',
+-    paddingVertical: 12,
+-  },
+-})
+diff --git a/mobile/src/components/InspectionFleetRow.tsx b/mobile/src/components/InspectionFleetRow.tsx
+deleted file mode 100644
+index 07966ff0..00000000
+--- a/mobile/src/components/InspectionFleetRow.tsx
++++ /dev/null
+@@ -1,126 +0,0 @@
+-import { View, StyleSheet, Pressable } from 'react-native'
+-import { Text } from 'react-native-paper'
+-import type { OwnerFleetEntry } from '../hooks/useOwnerFleet'
+-import { useDriverProfileForOwner } from '../hooks/useDriverProfileForOwner'
+-import { useDriverInspectionsForOwner } from '../hooks/useInspections'
+-import { useDriverTrafficOffencesForOwner } from '../hooks/useTrafficOffences'
+-import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+-import { isVehicleHealthReport } from '../types/inspectionReport'
+-import { brandColors, radius, cardShadow } from '../theme/theme'
+-
+-export function InspectionFleetRow({
+-  entry,
+-  onPress,
+-}: {
+-  entry: OwnerFleetEntry
+-  onPress: () => void
+-}) {
+-  const { data: driverProfile } = useDriverProfileForOwner(entry.driver_id ?? undefined)
+-  const { data: inspections } = useDriverInspectionsForOwner(entry.driver_id ?? undefined)
+-  const { data: offences } = useDriverTrafficOffencesForOwner(entry.driver_id ?? undefined)
+-
+-  const lastInspection = inspections?.find((i) => i.inspection_type === 'weekly_checkin') ?? null
+-  const report = lastInspection && isVehicleHealthReport(lastInspection.ai_analysis) ? lastInspection.ai_analysis : null
+-
+-  const missedPayments = driverProfile?.missed_payments ?? 0
+-  const hasIncidents = (driverProfile?.accidents ?? 0) > 0 || (driverProfile?.damage_incidents ?? 0) > 0
+-  const unpaidOffences = offences?.filter((o) => o.status === 'unpaid').length ?? 0
+-  const isGoodStanding = missedPayments === 0 && lastInspection != null && !hasIncidents && unpaidOffences === 0
+-
+-  return (
+-    <Pressable onPress={onPress} style={styles.card}>
+-      <View style={styles.headerRow}>
+-        <Text style={styles.name}>{entry.driver?.full_name ?? 'Driver'}</Text>
+-        <View style={[styles.pill, isGoodStanding ? styles.pillGood : styles.pillAttention]}>
+-          <Text style={styles.pillText}>{isGoodStanding ? 'Good Standing' : 'Needs Attention'}</Text>
+-        </View>
+-      </View>
+-      <Text style={styles.vehicle}>{entry.cars ? `${entry.cars.make} ${entry.cars.model}` : 'Vehicle unavailable'}</Text>
+-
+-      {lastInspection ? (
+-        <>
+-          <View style={styles.reportRow}>
+-            <Text style={styles.reportDate}>
+-              {new Date(lastInspection.created_at ?? '').toLocaleDateString(undefined, {
+-                day: 'numeric',
+-                month: 'short',
+-              })}
+-            </Text>
+-            {report && <Text style={styles.reportScore}>{report.healthScore}/100</Text>}
+-          </View>
+-          {lastInspection.photo_urls && lastInspection.photo_urls.length > 0 && (
+-            <View style={styles.thumbRow}>
+-              {lastInspection.photo_urls.slice(0, 4).map((path) => (
+-                <InspectionPhotoThumbnail key={path} path={path} />
+-              ))}
+-            </View>
+-          )}
+-        </>
+-      ) : (
+-        <Text style={styles.noInspection}>No inspection submitted yet.</Text>
+-      )}
+-    </Pressable>
+-  )
+-}
+-
+-const styles = StyleSheet.create({
+-  card: {
+-    backgroundColor: brandColors.cardGreen,
+-    borderRadius: radius.lg,
+-    padding: 20,
+-    marginBottom: 16,
+-    ...cardShadow,
+-  },
+-  headerRow: {
+-    flexDirection: 'row',
+-    justifyContent: 'space-between',
+-    alignItems: 'center',
+-  },
+-  name: {
+-    color: brandColors.inkOnCard,
+-    fontSize: 17,
+-    fontWeight: '700',
+-  },
+-  pill: {
+-    borderRadius: 10,
+-    paddingHorizontal: 10,
+-    paddingVertical: 4,
+-  },
+-  pillGood: {
+-    backgroundColor: 'rgba(255,255,255,0.18)',
+-  },
+-  pillAttention: {
+-    backgroundColor: brandColors.alert,
+-  },
+-  pillText: {
+-    color: brandColors.inkOnCard,
+-    fontWeight: '700',
+-    fontSize: 11,
+-  },
+-  vehicle: {
+-    color: brandColors.inkOnCardSoft,
+-    marginTop: 2,
+-  },
+-  reportRow: {
+-    flexDirection: 'row',
+-    justifyContent: 'space-between',
+-    marginTop: 16,
+-  },
+-  reportDate: {
+-    color: brandColors.inkOnCard,
+-    fontWeight: '600',
+-  },
+-  reportScore: {
+-    color: brandColors.gold,
+-    fontWeight: '700',
+-  },
+-  thumbRow: {
+-    flexDirection: 'row',
+-    flexWrap: 'wrap',
+-    marginTop: 12,
+-  },
+-  noInspection: {
+-    color: brandColors.inkOnCardSoft,
+-    marginTop: 16,
+-  },
+-})
+diff --git a/mobile/src/hooks/useOwnerFleetSummary.ts b/mobile/src/hooks/useOwnerFleetSummary.ts
+new file mode 100644
+index 00000000..b52a0f91
+--- /dev/null
++++ b/mobile/src/hooks/useOwnerFleetSummary.ts
+@@ -0,0 +1,108 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import { useAuthStore } from '../stores/authStore'
++import { isVehicleHealthReport } from '../types/inspectionReport'
++import type { Tables } from '../types/database'
++
++export type OwnerFleetSummaryEntry = {
++  applicationId: string
++  driverId: string
++  carId: string | null
++  driverName: string
++  photoUrl: string | null
++  carLabel: string
++  matchedAt: string | null
++  priceWeek: number
++  isMoving: boolean
++  trustScore: number | null
++  missedPayments: number
++  lastInspection: {
++    id: string
++    createdAt: string | null
++    reviewStatus: string
++    healthScore: number | null
++    inspectionNumber: number
++  } | null
++}
++
++async function fetchOwnerFleetSummary(ownerId: string): Promise<OwnerFleetSummaryEntry[]> {
++  const { data: applications, error } = await supabase
++    .from('applications')
++    .select('*, cars(*), driver:profiles!applications_driver_id_fkey(id, full_name, photo_url)')
++    .eq('owner_id', ownerId)
++    .eq('status', 'approved')
++    .is('unmatched_at', null)
++
++  if (error) throw error
++  if (!applications || applications.length === 0) return []
++
++  const driverIds = applications.map((a) => a.driver_id).filter((id): id is string => !!id)
++
++  const [{ data: liveStatuses, error: liveError }, { data: driverProfiles, error: profilesError }, { data: inspections, error: inspectionsError }] =
++    await Promise.all([
++      supabase.from('driver_live_status').select('*').in('driver_id', driverIds),
++      supabase.from('driver_profiles').select('*').in('user_id', driverIds),
++      supabase
++        .from('vehicle_inspections')
++        .select('*')
++        .in('driver_id', driverIds)
++        .eq('inspection_type', 'weekly_checkin')
++        .order('created_at', { ascending: true }),
++    ])
++
++  if (liveError) throw liveError
++  if (profilesError) throw profilesError
++  if (inspectionsError) throw inspectionsError
++
++  const liveStatusByDriverId = new Map((liveStatuses ?? []).map((ls) => [ls.driver_id, ls]))
++  const profileByDriverId = new Map((driverProfiles ?? []).map((p) => [p.user_id, p]))
++
++  const inspectionsByDriverId = new Map<string, Tables<'vehicle_inspections'>[]>()
++  for (const inspection of inspections ?? []) {
++    const list = inspectionsByDriverId.get(inspection.driver_id) ?? []
++    list.push(inspection)
++    inspectionsByDriverId.set(inspection.driver_id, list)
++  }
++
++  return applications.map((application): OwnerFleetSummaryEntry => {
++    const driverId = application.driver_id as string
++    const profile = profileByDriverId.get(driverId)
++    const liveStatus = liveStatusByDriverId.get(driverId)
++    const driverInspections = inspectionsByDriverId.get(driverId) ?? []
++    const last = driverInspections[driverInspections.length - 1]
++
++    return {
++      applicationId: application.id,
++      driverId,
++      carId: application.car_id,
++      driverName: application.driver?.full_name ?? 'Driver',
++      photoUrl: application.driver?.photo_url ?? null,
++      carLabel: application.cars ? `${application.cars.make} ${application.cars.model}` : 'Vehicle unavailable',
++      matchedAt: application.matched_at,
++      priceWeek: application.cars?.price_per_week ?? 0,
++      isMoving: liveStatus?.is_moving ?? false,
++      trustScore: profile?.trust_score ?? null,
++      missedPayments: profile?.missed_payments ?? 0,
++      lastInspection: last
++        ? {
++            id: last.id,
++            createdAt: last.created_at,
++            reviewStatus: last.owner_review_status ?? 'pending',
++            healthScore: isVehicleHealthReport(last.ai_analysis) ? last.ai_analysis.healthScore : null,
++            inspectionNumber: driverInspections.length,
++          }
++        : null,
++    }
++  })
++}
++
++export function useOwnerFleetSummary() {
++  const ownerId = useAuthStore((s) => s.session?.user.id)
++
++  return useQuery({
++    queryKey: ['owner-fleet-summary', ownerId],
++    queryFn: () => fetchOwnerFleetSummary(ownerId as string),
++    enabled: !!ownerId,
++    refetchInterval: 20000,
++  })
++}
+-- 
+2.43.0
+
