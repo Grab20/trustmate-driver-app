@@ -1,0 +1,1692 @@
+From d71c1b824ec1eef11f90e23aa27329327dda86bd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 17 Jul 2026 06:16:53 +0000
+Subject: [PATCH] Finish redesign rollout: remaining screens, global palette
+ unification
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Restyle the remaining screens still on the old look: driver Activity
+  (fleet-style stat cards), Trip Detail (shared by driver and owner, teal
+  route/markers per the map colour spec), driver inspection capture,
+  owner reference-photos capture, owner driver detail, and the owner
+  Vehicle Health Report screen — all now sit on the nude background with
+  cardGreen/gold accents instead of the old off-white/dark-green look.
+- Rebuild FleetDriverCard and the owner Home summary strip as cardGreen
+  surfaces so Owner Home matches the rest of the redesigned app.
+- Retire the old dark-forest-green palette everywhere else in one sweep:
+  brandColors.darkGreen/green/errorRed call sites across every remaining
+  screen and shared component now resolve to deep/emerald/alert, and the
+  shared Paper theme's primary/background/error follow the same tokens
+  (background is now the nude paper tone app-wide). mintGreen is left
+  alone — it's only used by the illustrative SVG shot-guide diagrams.
+---
+ mobile/app/(app)/_layout.tsx                  |   4 +-
+ mobile/app/(app)/activity/_layout.tsx         |   2 +-
+ mobile/app/(app)/activity/index.tsx           |  75 +++++-------
+ mobile/app/(app)/rental/_layout.tsx           |   2 +-
+ mobile/app/(app)/rental/index.tsx             |  10 +-
+ mobile/app/(app)/rental/inspections/index.tsx |   6 +-
+ mobile/app/(app)/rental/inspections/new.tsx   |   6 +-
+ mobile/app/(auth)/login.tsx                   |   6 +-
+ mobile/app/owner/_layout.tsx                  |   4 +-
+ mobile/app/owner/activity/_layout.tsx         |   2 +-
+ mobile/app/owner/driver/[id].tsx              |  13 ++-
+ mobile/app/owner/driver/_layout.tsx           |   2 +-
+ .../driver/inspection/[inspectionId].tsx      |  31 ++---
+ mobile/app/owner/driver/reference-photos.tsx  |   6 +-
+ mobile/app/owner/index.tsx                    |  55 ++++-----
+ mobile/app/owner/rental/_layout.tsx           |   2 +-
+ mobile/src/components/AIAnalysisSummary.tsx   |   6 +-
+ mobile/src/components/ActivityRow.tsx         |   4 +-
+ mobile/src/components/ChecklistRow.tsx        |   2 +-
+ mobile/src/components/CrashAlertModal.tsx     |   2 +-
+ mobile/src/components/DamageOverlayModal.tsx  |   4 +-
+ mobile/src/components/FleetDriverCard.tsx     | 109 +++++++++---------
+ mobile/src/components/IconBadge.tsx           |   2 +-
+ .../components/InspectionPhotoThumbnail.tsx   |   2 +-
+ mobile/src/components/InspectionProgress.tsx  |   8 +-
+ .../src/components/InspectionReviewCard.tsx   |  12 +-
+ mobile/src/components/LiveStatusMap.tsx       |  12 +-
+ mobile/src/components/PhotoComparisonRow.tsx  |   4 +-
+ mobile/src/components/PhotoReviewModal.tsx    |   4 +-
+ mobile/src/components/PhotoSlot.tsx           |  10 +-
+ mobile/src/components/ReferencePhotoSlot.tsx  |   6 +-
+ mobile/src/components/ReliabilityBar.tsx      |   2 +-
+ mobile/src/components/RentalTimeline.tsx      |   2 +-
+ mobile/src/components/SectionLabel.tsx        |   2 +-
+ mobile/src/components/StatTile.tsx            |   2 +-
+ mobile/src/components/TabIcon.tsx             |   2 +-
+ mobile/src/components/TripDetailView.tsx      |  78 +++++++------
+ mobile/src/components/TripRouteRow.tsx        |   8 +-
+ mobile/src/theme/theme.ts                     |  13 ++-
+ 39 files changed, 261 insertions(+), 261 deletions(-)
+
+diff --git a/mobile/app/(app)/_layout.tsx b/mobile/app/(app)/_layout.tsx
+index 7ab9e7b6..dd787250 100644
+--- a/mobile/app/(app)/_layout.tsx
++++ b/mobile/app/(app)/_layout.tsx
+@@ -24,10 +24,10 @@ export default function AppLayout() {
+     <>
+       <Tabs
+         screenOptions={{
+-          headerStyle: { backgroundColor: brandColors.darkGreen },
++          headerStyle: { backgroundColor: brandColors.deep },
+           headerTintColor: '#fff',
+           headerTitleStyle: { color: '#fff' },
+-          tabBarActiveTintColor: brandColors.green,
++          tabBarActiveTintColor: brandColors.emerald,
+           tabBarInactiveTintColor: '#8A8A8A',
+           tabBarStyle: {
+             height: 64,
+diff --git a/mobile/app/(app)/activity/_layout.tsx b/mobile/app/(app)/activity/_layout.tsx
+index d081fa24..d40f8553 100644
+--- a/mobile/app/(app)/activity/_layout.tsx
++++ b/mobile/app/(app)/activity/_layout.tsx
+@@ -6,7 +6,7 @@ export default function ActivityLayout() {
+   return (
+     <Stack
+       screenOptions={{
+-        headerStyle: { backgroundColor: brandColors.darkGreen },
++        headerStyle: { backgroundColor: brandColors.deep },
+         headerTintColor: '#fff',
+         headerTitleStyle: { color: '#fff' },
+       }}
+diff --git a/mobile/app/(app)/activity/index.tsx b/mobile/app/(app)/activity/index.tsx
+index cdfbf764..ff4079b2 100644
+--- a/mobile/app/(app)/activity/index.tsx
++++ b/mobile/app/(app)/activity/index.tsx
+@@ -7,8 +7,7 @@ import { useRecentActivity } from '../../../src/hooks/useRecentActivity'
+ import { LoadingScreen } from '../../../src/components/LoadingScreen'
+ import { TripRouteRow } from '../../../src/components/TripRouteRow'
+ import { ActivityRow } from '../../../src/components/ActivityRow'
+-import { IconBadge } from '../../../src/components/IconBadge'
+-import { brandColors } from '../../../src/theme/theme'
++import { brandColors, radius, cardShadow } from '../../../src/theme/theme'
+ 
+ function formatDrivingTime(seconds: number): string {
+   const hours = Math.floor(seconds / 3600)
+@@ -26,40 +25,18 @@ export default function ActivityScreen() {
+   if (isTotalsLoading || isTripsLoading || isRecentLoading) return <LoadingScreen />
+ 
+   return (
+-    <ScrollView contentContainerStyle={styles.container}>
+-      <Text variant="headlineMedium" style={styles.heading}>
+-        Activity
+-      </Text>
+-
++    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+       <View style={styles.statsRow}>
+-        <Card style={styles.statCard}>
+-          <Card.Content>
+-            <IconBadge source="map-marker-distance" backgroundColor={brandColors.green} />
+-            <Text variant="labelMedium" style={styles.statLabel}>
+-              TODAY
+-            </Text>
+-            <Text variant="titleLarge" style={styles.statValue}>
+-              {(distanceTotals?.today ?? 0).toFixed(0)} km
+-            </Text>
+-            <Text variant="bodySmall" style={styles.statSub}>
+-              {formatDrivingTime(distanceTotals?.durationTodaySeconds ?? 0)} driving
+-            </Text>
+-          </Card.Content>
+-        </Card>
+-        <Card style={styles.statCard}>
+-          <Card.Content>
+-            <IconBadge source="calendar-week" backgroundColor={brandColors.darkGreen} />
+-            <Text variant="labelMedium" style={styles.statLabel}>
+-              THIS WEEK
+-            </Text>
+-            <Text variant="titleLarge" style={styles.statValue}>
+-              {(distanceTotals?.week ?? 0).toFixed(0)} km
+-            </Text>
+-            <Text variant="bodySmall" style={styles.statSub}>
+-              {formatDrivingTime(distanceTotals?.durationWeekSeconds ?? 0)} driving
+-            </Text>
+-          </Card.Content>
+-        </Card>
++        <View style={[styles.card, styles.statCard]}>
++          <Text style={styles.statLabel}>TODAY</Text>
++          <Text style={styles.statValue}>{(distanceTotals?.today ?? 0).toFixed(0)} km</Text>
++          <Text style={styles.statSub}>{formatDrivingTime(distanceTotals?.durationTodaySeconds ?? 0)} driving</Text>
++        </View>
++        <View style={[styles.card, styles.statCard]}>
++          <Text style={styles.statLabel}>THIS WEEK</Text>
++          <Text style={styles.statValue}>{(distanceTotals?.week ?? 0).toFixed(0)} km</Text>
++          <Text style={styles.statSub}>{formatDrivingTime(distanceTotals?.durationWeekSeconds ?? 0)} driving</Text>
++        </View>
+       </View>
+ 
+       <Text variant="labelMedium" style={styles.sectionLabel}>
+@@ -114,35 +91,43 @@ export default function ActivityScreen() {
+ }
+ 
+ const styles = StyleSheet.create({
++  screen: {
++    backgroundColor: brandColors.paper,
++  },
+   container: {
+     padding: 24,
+   },
+-  heading: {
+-    marginBottom: 16,
+-  },
+   statsRow: {
+     flexDirection: 'row',
+     gap: 12,
+     marginBottom: 8,
+   },
++  card: {
++    backgroundColor: brandColors.cardGreen,
++    borderRadius: radius.lg,
++    padding: 16,
++    ...cardShadow,
++  },
+   statCard: {
+     flex: 1,
+   },
+   statLabel: {
+-    opacity: 0.6,
++    color: brandColors.inkOnCardSoft,
++    fontSize: 12,
+     letterSpacing: 0.5,
+-    marginTop: 8,
++    marginBottom: 6,
+   },
+   statValue: {
+-    marginTop: 4,
+-    color: brandColors.darkGreen,
++    color: brandColors.inkOnCard,
++    fontSize: 22,
++    fontWeight: '700',
+   },
+   statSub: {
+-    opacity: 0.6,
+-    marginTop: 2,
++    color: brandColors.inkOnCardSoft,
++    marginTop: 4,
+   },
+   sectionLabel: {
+-    opacity: 0.6,
++    color: brandColors.charcoalSoft,
+     letterSpacing: 0.5,
+     marginTop: 16,
+     marginBottom: 8,
+diff --git a/mobile/app/(app)/rental/_layout.tsx b/mobile/app/(app)/rental/_layout.tsx
+index dd0887c8..1f7ea58d 100644
+--- a/mobile/app/(app)/rental/_layout.tsx
++++ b/mobile/app/(app)/rental/_layout.tsx
+@@ -6,7 +6,7 @@ export default function RentalLayout() {
+   return (
+     <Stack
+       screenOptions={{
+-        headerStyle: { backgroundColor: brandColors.darkGreen },
++        headerStyle: { backgroundColor: brandColors.deep },
+         headerTintColor: '#fff',
+         headerTitleStyle: { color: '#fff' },
+       }}
+diff --git a/mobile/app/(app)/rental/index.tsx b/mobile/app/(app)/rental/index.tsx
+index f8adb114..5674785c 100644
+--- a/mobile/app/(app)/rental/index.tsx
++++ b/mobile/app/(app)/rental/index.tsx
+@@ -218,7 +218,7 @@ export default function RentalScreen() {
+         mode="outlined"
+         onPress={() => router.push('/rental/report-incident')}
+         style={styles.reportButton}
+-        textColor={brandColors.errorRed}
++        textColor={brandColors.alert}
+       >
+         Report Incident
+       </Button>
+@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
+     marginBottom: 16,
+   },
+   goodStandingCard: {
+-    borderColor: brandColors.green,
++    borderColor: brandColors.emerald,
+     borderWidth: 1,
+   },
+   ownerRow: {
+@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
+     marginTop: 4,
+   },
+   healthTitle: {
+-    color: brandColors.darkGreen,
++    color: brandColors.deep,
+     marginBottom: 12,
+   },
+   checklist: {
+@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
+   },
+   paymentAmount: {
+     marginTop: 4,
+-    color: brandColors.darkGreen,
++    color: brandColors.deep,
+   },
+   streak: {
+     marginTop: 8,
+@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
+   reportButton: {
+     marginTop: 8,
+     marginBottom: 24,
+-    borderColor: brandColors.errorRed,
++    borderColor: brandColors.alert,
+   },
+   emptyContainer: {
+     flex: 1,
+diff --git a/mobile/app/(app)/rental/inspections/index.tsx b/mobile/app/(app)/rental/inspections/index.tsx
+index dadd3b3b..3436c363 100644
+--- a/mobile/app/(app)/rental/inspections/index.tsx
++++ b/mobile/app/(app)/rental/inspections/index.tsx
+@@ -16,10 +16,10 @@ const TYPE_LABELS: Record<string, string> = {
+ }
+ 
+ const REVIEW_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+-  approved: { label: 'Approved by owner', icon: 'check-circle', color: brandColors.green },
+-  declined: { label: 'Declined by owner', icon: 'close-circle', color: brandColors.errorRed },
++  approved: { label: 'Approved by owner', icon: 'check-circle', color: brandColors.emerald },
++  declined: { label: 'Declined by owner', icon: 'close-circle', color: brandColors.alert },
+   reinspection_requested: { label: 'Owner requested a re-inspection', icon: 'refresh-circle', color: '#8A6D00' },
+-  flagged: { label: 'Owner flagged possible damage', icon: 'flag', color: brandColors.errorRed },
++  flagged: { label: 'Owner flagged possible damage', icon: 'flag', color: brandColors.alert },
+ }
+ 
+ function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspections'> }) {
+diff --git a/mobile/app/(app)/rental/inspections/new.tsx b/mobile/app/(app)/rental/inspections/new.tsx
+index bbb0b821..caf71a79 100644
+--- a/mobile/app/(app)/rental/inspections/new.tsx
++++ b/mobile/app/(app)/rental/inspections/new.tsx
+@@ -17,6 +17,7 @@ import {
+   SHOT_LABELS,
+   type InspectionShotKey,
+ } from '../../../../src/components/InspectionShotGuide'
++import { brandColors } from '../../../../src/theme/theme'
+ 
+ // Order matters: photo_urls is a plain array, and this order (exterior then
+ // interior, in the order defined in InspectionShotGuide) is the convention
+@@ -75,7 +76,7 @@ export default function NewInspectionScreen() {
+   }
+ 
+   return (
+-    <ScrollView contentContainerStyle={styles.container}>
++    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+       <Text variant="headlineSmall" style={styles.heading}>
+         Vehicle Inspection
+       </Text>
+@@ -161,6 +162,9 @@ export default function NewInspectionScreen() {
+ }
+ 
+ const styles = StyleSheet.create({
++  screen: {
++    backgroundColor: brandColors.paper,
++  },
+   container: {
+     padding: 24,
+   },
+diff --git a/mobile/app/(auth)/login.tsx b/mobile/app/(auth)/login.tsx
+index 617b4b23..85255fde 100644
+--- a/mobile/app/(auth)/login.tsx
++++ b/mobile/app/(auth)/login.tsx
+@@ -27,7 +27,7 @@ export default function LoginScreen() {
+     >
+       <View style={styles.container}>
+         <View style={styles.heroBadge}>
+-          <IconBadge source="shield-car" size={36} backgroundColor={brandColors.darkGreen} />
++          <IconBadge source="shield-car" size={36} backgroundColor={brandColors.deep} />
+         </View>
+         <Text variant="headlineMedium" style={styles.title}>
+           TrustMate Driver
+@@ -46,7 +46,7 @@ export default function LoginScreen() {
+           textContentType="emailAddress"
+           left={<TextInput.Icon icon="email-outline" />}
+           outlineColor="#DDE3DE"
+-          activeOutlineColor={brandColors.green}
++          activeOutlineColor={brandColors.emerald}
+           style={styles.input}
+         />
+         <TextInput
+@@ -58,7 +58,7 @@ export default function LoginScreen() {
+           textContentType="password"
+           left={<TextInput.Icon icon="lock-outline" />}
+           outlineColor="#DDE3DE"
+-          activeOutlineColor={brandColors.green}
++          activeOutlineColor={brandColors.emerald}
+           style={styles.input}
+         />
+ 
+diff --git a/mobile/app/owner/_layout.tsx b/mobile/app/owner/_layout.tsx
+index 452000ba..7beb7564 100644
+--- a/mobile/app/owner/_layout.tsx
++++ b/mobile/app/owner/_layout.tsx
+@@ -19,10 +19,10 @@ export default function OwnerLayout() {
+   return (
+     <Tabs
+       screenOptions={{
+-        headerStyle: { backgroundColor: brandColors.darkGreen },
++        headerStyle: { backgroundColor: brandColors.deep },
+         headerTintColor: '#fff',
+         headerTitleStyle: { color: '#fff' },
+-        tabBarActiveTintColor: brandColors.green,
++        tabBarActiveTintColor: brandColors.emerald,
+         tabBarInactiveTintColor: '#8A8A8A',
+         tabBarStyle: {
+           height: 64,
+diff --git a/mobile/app/owner/activity/_layout.tsx b/mobile/app/owner/activity/_layout.tsx
+index e4bc8f44..1d97e819 100644
+--- a/mobile/app/owner/activity/_layout.tsx
++++ b/mobile/app/owner/activity/_layout.tsx
+@@ -5,7 +5,7 @@ export default function OwnerActivityLayout() {
+   return (
+     <Stack
+       screenOptions={{
+-        headerStyle: { backgroundColor: brandColors.darkGreen },
++        headerStyle: { backgroundColor: brandColors.deep },
+         headerTintColor: '#fff',
+         headerTitleStyle: { color: '#fff' },
+       }}
+diff --git a/mobile/app/owner/driver/[id].tsx b/mobile/app/owner/driver/[id].tsx
+index d8b4a576..c9e72d36 100644
+--- a/mobile/app/owner/driver/[id].tsx
++++ b/mobile/app/owner/driver/[id].tsx
+@@ -98,7 +98,7 @@ export default function OwnerDriverDetailScreen() {
+   const vehicleCare = careTotal > 0 ? (excellentCare / careTotal) * 100 : null
+ 
+   return (
+-    <ScrollView contentContainerStyle={styles.container}>
++    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+       <Card style={styles.headerCard}>
+         <Card.Content style={styles.headerContent}>
+           {profile?.photo_url ? (
+@@ -302,12 +302,15 @@ export default function OwnerDriverDetailScreen() {
+ }
+ 
+ const styles = StyleSheet.create({
++  screen: {
++    backgroundColor: brandColors.paper,
++  },
+   container: {
+     padding: 24,
+     paddingBottom: 40,
+   },
+   headerCard: {
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.deep,
+     marginBottom: 16,
+   },
+   headerContent: {
+@@ -351,11 +354,11 @@ const styles = StyleSheet.create({
+     marginRight: 16,
+   },
+   goodStandingCard: {
+-    borderColor: brandColors.green,
++    borderColor: brandColors.emerald,
+     borderWidth: 1,
+   },
+   healthTitle: {
+-    color: brandColors.darkGreen,
++    color: brandColors.deep,
+     marginBottom: 12,
+   },
+   checklist: {
+@@ -367,7 +370,7 @@ const styles = StyleSheet.create({
+   },
+   paymentAmount: {
+     marginTop: 4,
+-    color: brandColors.darkGreen,
++    color: brandColors.deep,
+   },
+   streak: {
+     marginTop: 8,
+diff --git a/mobile/app/owner/driver/_layout.tsx b/mobile/app/owner/driver/_layout.tsx
+index 43f7eac4..eb58b612 100644
+--- a/mobile/app/owner/driver/_layout.tsx
++++ b/mobile/app/owner/driver/_layout.tsx
+@@ -5,7 +5,7 @@ export default function OwnerDriverLayout() {
+   return (
+     <Stack
+       screenOptions={{
+-        headerStyle: { backgroundColor: brandColors.darkGreen },
++        headerStyle: { backgroundColor: brandColors.deep },
+         headerTintColor: '#fff',
+         headerTitleStyle: { color: '#fff' },
+       }}
+diff --git a/mobile/app/owner/driver/inspection/[inspectionId].tsx b/mobile/app/owner/driver/inspection/[inspectionId].tsx
+index 5e54be89..bf830d70 100644
+--- a/mobile/app/owner/driver/inspection/[inspectionId].tsx
++++ b/mobile/app/owner/driver/inspection/[inspectionId].tsx
+@@ -29,10 +29,10 @@ const VERIFICATION_ROWS: { key: 'plateMatch' | 'colorMatch' | 'modelMatch' | 'in
+ ]
+ 
+ const STATUS_AFTER_DECISION: Record<string, { label: string; color: string; icon: string }> = {
+-  approved: { label: 'Inspection Approved', color: brandColors.green, icon: 'check-circle' },
++  approved: { label: 'Inspection Approved', color: brandColors.emerald, icon: 'check-circle' },
+   reinspection_requested: { label: 'Re-inspection Requested', color: '#B5651D', icon: 'refresh-circle' },
+-  flagged: { label: 'Damage Flagged', color: brandColors.errorRed, icon: 'flag' },
+-  declined: { label: 'Inspection Declined', color: brandColors.errorRed, icon: 'close-circle' },
++  flagged: { label: 'Damage Flagged', color: brandColors.alert, icon: 'flag' },
++  declined: { label: 'Inspection Declined', color: brandColors.alert, icon: 'close-circle' },
+ }
+ 
+ function computeDriverRecord(inspections: Tables<'vehicle_inspections'>[]) {
+@@ -133,7 +133,7 @@ export default function InspectionHealthReportScreen() {
+   }
+ 
+   return (
+-    <ScrollView contentContainerStyle={styles.container}>
++    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+       <Text variant="bodySmall" style={styles.vehicleName}>
+         {car ? `${car.make} ${car.model}` : 'Vehicle'}
+       </Text>
+@@ -174,7 +174,7 @@ export default function InspectionHealthReportScreen() {
+                     source={bullet.ok ? 'check' : 'alert'}
+                     size={12}
+                     backgroundColor="transparent"
+-                    color={bullet.ok ? brandColors.green : '#B5651D'}
++                    color={bullet.ok ? brandColors.emerald : '#B5651D'}
+                   />
+                   <Text variant="bodyMedium" style={[styles.summaryText, !bullet.ok && styles.summaryTextWarn]}>
+                     {bullet.text}
+@@ -248,7 +248,7 @@ export default function InspectionHealthReportScreen() {
+                         source={value === true ? 'check' : value === false ? 'close' : 'minus'}
+                         size={11}
+                         backgroundColor="transparent"
+-                        color={value === true ? brandColors.green : value === false ? brandColors.errorRed : '#8A8A8A'}
++                        color={value === true ? brandColors.emerald : value === false ? brandColors.alert : '#8A8A8A'}
+                       />
+                       <Text variant="bodySmall" style={styles.verificationText}>
+                         {value === true ? 'Match' : value === false ? 'Mismatch' : 'N/A'}
+@@ -324,7 +324,7 @@ export default function InspectionHealthReportScreen() {
+                   source={!itemReport ? 'clock-outline' : itemReport.damage.length > 0 ? 'alert' : 'check'}
+                   size={11}
+                   backgroundColor="transparent"
+-                  color={!itemReport ? '#8A8A8A' : itemReport.damage.length > 0 ? '#B5651D' : brandColors.green}
++                  color={!itemReport ? '#8A8A8A' : itemReport.damage.length > 0 ? '#B5651D' : brandColors.emerald}
+                 />
+                 <Text variant="bodyMedium" style={[styles.historyLabel, isCurrent && styles.historyLabelCurrent]}>
+                   Week {index + 1}: {label}
+@@ -401,7 +401,7 @@ export default function InspectionHealthReportScreen() {
+             </Button>
+             <Button
+               mode="outlined"
+-              textColor={brandColors.errorRed}
++              textColor={brandColors.alert}
+               onPress={() => setShowFlagOptions((prev) => !prev)}
+               disabled={reviewInspection.isPending}
+               style={[styles.decisionButton, styles.flagButton]}
+@@ -468,6 +468,9 @@ export default function InspectionHealthReportScreen() {
+ }
+ 
+ const styles = StyleSheet.create({
++  screen: {
++    backgroundColor: brandColors.paper,
++  },
+   container: {
+     padding: 24,
+     paddingBottom: 40,
+@@ -487,7 +490,7 @@ const styles = StyleSheet.create({
+     marginBottom: 16,
+   },
+   healthCard: {
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.deep,
+   },
+   healthCardContent: {
+     alignItems: 'center',
+@@ -497,7 +500,7 @@ const styles = StyleSheet.create({
+     marginTop: 8,
+   },
+   healthLabel: {
+-    color: brandColors.mintGreen,
++    color: brandColors.gold,
+     marginTop: 2,
+   },
+   healthLabelWarn: {
+@@ -522,11 +525,11 @@ const styles = StyleSheet.create({
+     fontWeight: '600',
+   },
+   damageCard: {
+-    borderColor: brandColors.errorRed,
++    borderColor: brandColors.alert,
+     borderWidth: 1,
+   },
+   damageTitle: {
+-    color: brandColors.errorRed,
++    color: brandColors.alert,
+     marginBottom: 8,
+   },
+   damageDescription: {
+@@ -565,7 +568,7 @@ const styles = StyleSheet.create({
+     marginBottom: 8,
+   },
+   qualityPercent: {
+-    color: brandColors.darkGreen,
++    color: brandColors.deep,
+   },
+   historyRow: {
+     flexDirection: 'row',
+@@ -596,7 +599,7 @@ const styles = StyleSheet.create({
+     marginBottom: 10,
+   },
+   flagButton: {
+-    borderColor: brandColors.errorRed,
++    borderColor: brandColors.alert,
+   },
+   flagOptionsRow: {
+     flexDirection: 'row',
+diff --git a/mobile/app/owner/driver/reference-photos.tsx b/mobile/app/owner/driver/reference-photos.tsx
+index f7336a99..a1238bbd 100644
+--- a/mobile/app/owner/driver/reference-photos.tsx
++++ b/mobile/app/owner/driver/reference-photos.tsx
+@@ -15,6 +15,7 @@ import {
+   type InspectionShotKey,
+ } from '../../../src/components/InspectionShotGuide'
+ import { LoadingScreen } from '../../../src/components/LoadingScreen'
++import { brandColors } from '../../../src/theme/theme'
+ 
+ const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_KEYS]
+ 
+@@ -68,7 +69,7 @@ export default function ReferencePhotosScreen() {
+   if (isCarLoading || isPhotosLoading) return <LoadingScreen />
+ 
+   return (
+-    <ScrollView contentContainerStyle={styles.container}>
++    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+       <Text variant="headlineSmall" style={styles.heading}>
+         Reference Photos
+       </Text>
+@@ -115,6 +116,9 @@ export default function ReferencePhotosScreen() {
+ }
+ 
+ const styles = StyleSheet.create({
++  screen: {
++    backgroundColor: brandColors.paper,
++  },
+   container: {
+     padding: 24,
+     paddingBottom: 40,
+diff --git a/mobile/app/owner/index.tsx b/mobile/app/owner/index.tsx
+index 274d6d1b..7adade39 100644
+--- a/mobile/app/owner/index.tsx
++++ b/mobile/app/owner/index.tsx
+@@ -1,5 +1,5 @@
+ import { View, ScrollView, StyleSheet } from 'react-native'
+-import { Text, Button, Card } from 'react-native-paper'
++import { Text, Button } from 'react-native-paper'
+ import { useRouter } from 'expo-router'
+ import { useOwnerFleet } from '../../src/hooks/useOwnerFleet'
+ import { useMyProfile } from '../../src/hooks/useMyProfile'
+@@ -7,7 +7,7 @@ import { useAuthStore } from '../../src/stores/authStore'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+ import { FleetDriverCard } from '../../src/components/FleetDriverCard'
+ import { IconBadge } from '../../src/components/IconBadge'
+-import { brandColors } from '../../src/theme/theme'
++import { brandColors, radius, cardShadow } from '../../src/theme/theme'
+ 
+ function getGreeting(): string {
+   const hour = new Date().getHours()
+@@ -41,29 +41,23 @@ export default function OwnerDashboardScreen() {
+       )}
+ 
+       {fleet && fleet.length > 0 && (
+-        <Card style={styles.summaryCard}>
+-          <Card.Content style={styles.summaryContent}>
+-            <View style={styles.summaryItem}>
+-              <IconBadge source="navigation" backgroundColor={brandColors.green} />
+-              <View style={styles.summaryText}>
+-                <Text variant="titleMedium">{drivingCount}</Text>
+-                <Text variant="bodySmall" style={styles.summaryLabel}>
+-                  On the road
+-                </Text>
+-              </View>
++        <View style={styles.summaryCard}>
++          <View style={styles.summaryItem}>
++            <IconBadge source="navigation" backgroundColor="rgba(255,255,255,0.15)" />
++            <View style={styles.summaryText}>
++              <Text style={styles.summaryValue}>{drivingCount}</Text>
++              <Text style={styles.summaryLabel}>On the road</Text>
+             </View>
+-            <View style={styles.summaryDivider} />
+-            <View style={styles.summaryItem}>
+-              <IconBadge source="map-marker" backgroundColor={brandColors.darkGreen} />
+-              <View style={styles.summaryText}>
+-                <Text variant="titleMedium">{parkedCount}</Text>
+-                <Text variant="bodySmall" style={styles.summaryLabel}>
+-                  Parked
+-                </Text>
+-              </View>
++          </View>
++          <View style={styles.summaryDivider} />
++          <View style={styles.summaryItem}>
++            <IconBadge source="map-marker" backgroundColor="rgba(255,255,255,0.15)" />
++            <View style={styles.summaryText}>
++              <Text style={styles.summaryValue}>{parkedCount}</Text>
++              <Text style={styles.summaryLabel}>Parked</Text>
+             </View>
+-          </Card.Content>
+-        </Card>
++          </View>
++        </View>
+       )}
+ 
+       {fleet && fleet.length > 0 ? (
+@@ -107,11 +101,13 @@ const styles = StyleSheet.create({
+     marginBottom: 16,
+   },
+   summaryCard: {
++    backgroundColor: brandColors.cardGreen,
++    borderRadius: radius.lg,
++    padding: 20,
+     marginBottom: 16,
+-  },
+-  summaryContent: {
+     flexDirection: 'row',
+     alignItems: 'center',
++    ...cardShadow,
+   },
+   summaryItem: {
+     flexDirection: 'row',
+@@ -121,14 +117,19 @@ const styles = StyleSheet.create({
+   summaryText: {
+     marginLeft: 12,
+   },
++  summaryValue: {
++    color: brandColors.inkOnCard,
++    fontSize: 18,
++    fontWeight: '700',
++  },
+   summaryLabel: {
+-    opacity: 0.6,
++    color: brandColors.inkOnCardSoft,
+     marginTop: 2,
+   },
+   summaryDivider: {
+     width: StyleSheet.hairlineWidth,
+     height: 32,
+-    backgroundColor: '#E3E3DD',
++    backgroundColor: 'rgba(255,255,255,0.2)',
+     marginHorizontal: 12,
+   },
+   empty: {
+diff --git a/mobile/app/owner/rental/_layout.tsx b/mobile/app/owner/rental/_layout.tsx
+index 1325c7e0..938baa96 100644
+--- a/mobile/app/owner/rental/_layout.tsx
++++ b/mobile/app/owner/rental/_layout.tsx
+@@ -5,7 +5,7 @@ export default function OwnerRentalLayout() {
+   return (
+     <Stack
+       screenOptions={{
+-        headerStyle: { backgroundColor: brandColors.darkGreen },
++        headerStyle: { backgroundColor: brandColors.deep },
+         headerTintColor: '#fff',
+         headerTitleStyle: { color: '#fff' },
+       }}
+diff --git a/mobile/src/components/AIAnalysisSummary.tsx b/mobile/src/components/AIAnalysisSummary.tsx
+index 15b68ce4..adc06f90 100644
+--- a/mobile/src/components/AIAnalysisSummary.tsx
++++ b/mobile/src/components/AIAnalysisSummary.tsx
+@@ -21,7 +21,7 @@ export function AIAnalysisSummary({
+   if (!aiAnalyzedAt) {
+     return (
+       <View style={styles.pendingBanner}>
+-        <ActivityIndicator size={16} color={brandColors.green} />
++        <ActivityIndicator size={16} color={brandColors.emerald} />
+         <Text variant="bodySmall" style={styles.pendingText}>
+           AI review in progress…
+         </Text>
+@@ -52,7 +52,7 @@ export function AIAnalysisSummary({
+         <IconBadge
+           source={hasFlags ? 'alert-circle' : 'check-circle'}
+           size={14}
+-          backgroundColor={hasFlags ? '#B5651D' : brandColors.green}
++          backgroundColor={hasFlags ? '#B5651D' : brandColors.emerald}
+         />
+         <Text variant="bodySmall" style={styles.summaryText}>
+           Vehicle Health: {report.healthScore}/100 · {report.healthLabel}
+@@ -68,7 +68,7 @@ export function AIAnalysisSummary({
+                 source={bullet.ok ? 'check' : 'alert'}
+                 size={12}
+                 backgroundColor="transparent"
+-                color={bullet.ok ? brandColors.green : '#B5651D'}
++                color={bullet.ok ? brandColors.emerald : '#B5651D'}
+               />
+               <Text variant="bodySmall" style={[styles.detailText, !bullet.ok && styles.detailAlert]}>
+                 {bullet.text}
+diff --git a/mobile/src/components/ActivityRow.tsx b/mobile/src/components/ActivityRow.tsx
+index a2f63bdc..db47fd66 100644
+--- a/mobile/src/components/ActivityRow.tsx
++++ b/mobile/src/components/ActivityRow.tsx
+@@ -21,7 +21,7 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
+     const { trip } = item
+     return (
+       <Wrapper style={styles.row} onPress={onPress}>
+-        <IconBadge source="car" backgroundColor={brandColors.darkGreen} />
++        <IconBadge source="car" backgroundColor={brandColors.deep} />
+         <View style={styles.rowText}>
+           <Text variant="bodyMedium">
+             {trip.start_location ?? 'Unknown'} → {trip.end_location ?? 'Unknown'}
+@@ -38,7 +38,7 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
+   const { inspection } = item
+   return (
+     <Wrapper style={styles.row} onPress={onPress}>
+-      <IconBadge source="clipboard-check-outline" backgroundColor={brandColors.green} />
++      <IconBadge source="clipboard-check-outline" backgroundColor={brandColors.emerald} />
+       <View style={styles.rowText}>
+         <Text variant="bodyMedium">
+           {INSPECTION_TYPE_LABELS[inspection.inspection_type] ?? inspection.inspection_type}
+diff --git a/mobile/src/components/ChecklistRow.tsx b/mobile/src/components/ChecklistRow.tsx
+index ac8d6e47..6a91cfd4 100644
+--- a/mobile/src/components/ChecklistRow.tsx
++++ b/mobile/src/components/ChecklistRow.tsx
+@@ -5,7 +5,7 @@ import { brandColors } from '../theme/theme'
+ export function ChecklistRow({ ok, label }: { ok: boolean; label: string }) {
+   return (
+     <View style={styles.row}>
+-      <Icon source={ok ? 'check-circle' : 'alert-circle'} size={18} color={ok ? brandColors.green : '#B5651D'} />
++      <Icon source={ok ? 'check-circle' : 'alert-circle'} size={18} color={ok ? brandColors.emerald : '#B5651D'} />
+       <Text variant="bodyMedium" style={styles.label}>
+         {label}
+       </Text>
+diff --git a/mobile/src/components/CrashAlertModal.tsx b/mobile/src/components/CrashAlertModal.tsx
+index cd0dc795..39075ab7 100644
+--- a/mobile/src/components/CrashAlertModal.tsx
++++ b/mobile/src/components/CrashAlertModal.tsx
+@@ -27,7 +27,7 @@ export function CrashAlertModal() {
+       <View style={styles.overlay}>
+         <View style={styles.card}>
+           <View style={styles.iconRow}>
+-            <IconBadge source="car-emergency" size={28} backgroundColor={brandColors.errorRed} />
++            <IconBadge source="car-emergency" size={28} backgroundColor={brandColors.alert} />
+           </View>
+           <Text variant="headlineSmall" style={styles.title}>
+             Possible Crash Detected
+diff --git a/mobile/src/components/DamageOverlayModal.tsx b/mobile/src/components/DamageOverlayModal.tsx
+index d3f40f16..aac0a2be 100644
+--- a/mobile/src/components/DamageOverlayModal.tsx
++++ b/mobile/src/components/DamageOverlayModal.tsx
+@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
+   marker: {
+     position: 'absolute',
+     borderWidth: 3,
+-    borderColor: brandColors.errorRed,
++    borderColor: brandColors.alert,
+     borderRadius: 6,
+     backgroundColor: 'rgba(199,67,58,0.15)',
+   },
+@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
+     padding: 20,
+   },
+   infoTitle: {
+-    color: brandColors.errorRed,
++    color: brandColors.alert,
+     marginBottom: 8,
+   },
+   infoRow: {
+diff --git a/mobile/src/components/FleetDriverCard.tsx b/mobile/src/components/FleetDriverCard.tsx
+index 890229e2..0dd73175 100644
+--- a/mobile/src/components/FleetDriverCard.tsx
++++ b/mobile/src/components/FleetDriverCard.tsx
+@@ -1,6 +1,6 @@
+ import { useEffect, useState } from 'react'
+ import { View, StyleSheet, Pressable } from 'react-native'
+-import { Text, Card, Avatar, Icon } from 'react-native-paper'
++import { Text, Avatar, Icon } from 'react-native-paper'
+ import type { OwnerFleetEntry } from '../hooks/useOwnerFleet'
+ import { useDriverDistanceTotals } from '../hooks/useDriverDistanceTotals'
+ import { useDriverInspectionsForOwner } from '../hooks/useInspections'
+@@ -8,7 +8,7 @@ import { useDriverTrafficOffencesForOwner } from '../hooks/useTrafficOffences'
+ import { LiveStatusMap } from './LiveStatusMap'
+ import { reverseGeocodeLabel } from '../lib/reverseGeocode'
+ import { formatElapsedSince, formatShortDate } from '../utils/schedule'
+-import { brandColors } from '../theme/theme'
++import { brandColors, radius, cardShadow } from '../theme/theme'
+ 
+ type InfoKey = 'location' | 'km' | 'inspection' | 'fines'
+ 
+@@ -50,9 +50,9 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
+   const unpaidFines = offences.data?.filter((o) => o.status === 'unpaid').length ?? 0
+ 
+   return (
+-    <Card style={styles.card}>
++    <View style={styles.card}>
+       <Pressable onPress={onPress}>
+-        <Card.Content style={styles.content}>
++        <View style={styles.content}>
+           <View style={[styles.avatarRing, isMoving && styles.avatarRingMoving]}>
+             {entry.driver?.photo_url ? (
+               <Avatar.Image size={52} source={{ uri: entry.driver.photo_url }} />
+@@ -62,30 +62,28 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
+             <View style={[styles.statusDot, isMoving ? styles.statusDotMoving : styles.statusDotParked]} />
+           </View>
+           <View style={styles.info}>
+-            <Text variant="titleMedium">{entry.driver?.full_name ?? 'Driver'}</Text>
++            <Text style={styles.name}>{entry.driver?.full_name ?? 'Driver'}</Text>
+             <View style={styles.vehicleRow}>
+-              <Icon source="car" size={14} color="#8A8A8A" />
+-              <Text variant="bodySmall" style={styles.vehicle}>
++              <Icon source="car" size={14} color={brandColors.inkOnCardSoft} />
++              <Text style={styles.vehicle}>
+                 {entry.cars ? `${entry.cars.make} ${entry.cars.model}` : 'Vehicle unavailable'}
+               </Text>
+             </View>
+             {entry.liveStatus ? (
+               <View style={styles.statusRow}>
+-                <Icon source={isMoving ? 'navigation' : 'map-marker'} size={14} color={isMoving ? brandColors.green : '#8A8A8A'} />
+-                <Text variant="bodySmall" style={[styles.since, isMoving && styles.sinceMoving]}>
++                <Icon source={isMoving ? 'navigation' : 'map-marker'} size={14} color={isMoving ? brandColors.gold : brandColors.inkOnCardSoft} />
++                <Text style={[styles.since, isMoving && styles.sinceMoving]}>
+                   {isMoving
+                     ? `Driving${entry.liveStatus.speed_kmh != null ? ` · ${Math.round(entry.liveStatus.speed_kmh)} km/h` : ''}`
+                     : `Parked · here for ${formatElapsedSince(entry.liveStatus.state_since)}`}
+                 </Text>
+               </View>
+             ) : (
+-              <Text variant="bodySmall" style={styles.since}>
+-                No location yet
+-              </Text>
++              <Text style={styles.since}>No location yet</Text>
+             )}
+           </View>
+-          <Icon source="chevron-right" size={22} color="#B8B8AE" />
+-        </Card.Content>
++          <Icon source="chevron-right" size={22} color={brandColors.inkOnCardSoft} />
++        </View>
+       </Pressable>
+ 
+       <View style={styles.chipRow}>
+@@ -97,10 +95,8 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
+               onPress={() => setSelected(isSelected ? null : chip.key)}
+               style={[styles.chip, isSelected && styles.chipSelected]}
+             >
+-              <Icon source={chip.icon} size={14} color={isSelected ? '#fff' : brandColors.darkGreen} />
+-              <Text variant="labelSmall" style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}>
+-                {chip.label}
+-              </Text>
++              <Icon source={chip.icon} size={14} color={isSelected ? brandColors.deep : brandColors.inkOnCard} />
++              <Text style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}>{chip.label}</Text>
+             </Pressable>
+           )
+         })}
+@@ -118,47 +114,42 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
+                 initials={entry.driver?.full_name ?? undefined}
+               />
+             ) : (
+-              <Text variant="bodyMedium" style={styles.expandedEmpty}>
+-                No location data yet.
+-              </Text>
++              <Text style={styles.expandedEmpty}>No location data yet.</Text>
+             ))}
+           {selected === 'km' && (
+             <View style={styles.expandedRow}>
+-              <Text variant="headlineSmall" style={styles.expandedValue}>
+-                {(distanceTotals.data?.week ?? 0).toFixed(0)} km
+-              </Text>
+-              <Text variant="bodySmall" style={styles.expandedLabel}>
+-                driven this week
+-              </Text>
++              <Text style={styles.expandedValue}>{(distanceTotals.data?.week ?? 0).toFixed(0)} km</Text>
++              <Text style={styles.expandedLabel}>driven this week</Text>
+             </View>
+           )}
+           {selected === 'inspection' && (
+             <View style={styles.expandedRow}>
+-              <Text variant="titleMedium" style={styles.expandedValue}>
++              <Text style={styles.expandedValue}>
+                 {lastInspection?.created_at ? formatShortDate(new Date(lastInspection.created_at)) : 'None yet'}
+               </Text>
+-              <Text variant="bodySmall" style={styles.expandedLabel}>
+-                last inspection
+-              </Text>
++              <Text style={styles.expandedLabel}>last inspection</Text>
+             </View>
+           )}
+           {selected === 'fines' && (
+             <View style={styles.expandedRow}>
+-              <Text variant="titleMedium" style={[styles.expandedValue, unpaidFines > 0 && styles.expandedValueAlert]}>
++              <Text style={[styles.expandedValue, unpaidFines > 0 && styles.expandedValueAlert]}>
+                 {unpaidFines === 0 ? 'No unpaid fines' : `${unpaidFines} unpaid fine${unpaidFines === 1 ? '' : 's'}`}
+               </Text>
+             </View>
+           )}
+         </View>
+       )}
+-    </Card>
++    </View>
+   )
+ }
+ 
+ const styles = StyleSheet.create({
+   card: {
+-    marginBottom: 12,
+-    borderRadius: 16,
++    backgroundColor: brandColors.cardGreen,
++    borderRadius: radius.lg,
++    marginBottom: 16,
++    padding: 20,
++    ...cardShadow,
+   },
+   content: {
+     flexDirection: 'row',
+@@ -167,11 +158,11 @@ const styles = StyleSheet.create({
+   avatarRing: {
+     borderRadius: 30,
+     borderWidth: 2,
+-    borderColor: '#EAEAE5',
++    borderColor: 'rgba(255,255,255,0.25)',
+     padding: 2,
+   },
+   avatarRingMoving: {
+-    borderColor: brandColors.green,
++    borderColor: brandColors.gold,
+   },
+   statusDot: {
+     position: 'absolute',
+@@ -181,18 +172,23 @@ const styles = StyleSheet.create({
+     height: 14,
+     borderRadius: 7,
+     borderWidth: 2,
+-    borderColor: '#fff',
++    borderColor: brandColors.cardGreen,
+   },
+   statusDotMoving: {
+-    backgroundColor: brandColors.green,
++    backgroundColor: brandColors.gold,
+   },
+   statusDotParked: {
+-    backgroundColor: '#B8B8AE',
++    backgroundColor: 'rgba(255,255,255,0.4)',
+   },
+   info: {
+     flex: 1,
+     marginLeft: 14,
+   },
++  name: {
++    color: brandColors.inkOnCard,
++    fontSize: 17,
++    fontWeight: '700',
++  },
+   vehicleRow: {
+     flexDirection: 'row',
+     alignItems: 'center',
+@@ -200,7 +196,7 @@ const styles = StyleSheet.create({
+     gap: 4,
+   },
+   vehicle: {
+-    opacity: 0.7,
++    color: brandColors.inkOnCardSoft,
+   },
+   statusRow: {
+     flexDirection: 'row',
+@@ -209,18 +205,16 @@ const styles = StyleSheet.create({
+     gap: 4,
+   },
+   since: {
+-    opacity: 0.6,
++    color: brandColors.inkOnCardSoft,
+   },
+   sinceMoving: {
+-    color: brandColors.green,
+-    opacity: 1,
++    color: brandColors.gold,
+     fontWeight: '600',
+   },
+   chipRow: {
+     flexDirection: 'row',
+     flexWrap: 'wrap',
+-    paddingHorizontal: 16,
+-    paddingBottom: 16,
++    marginTop: 16,
+     gap: 8,
+   },
+   chip: {
+@@ -230,41 +224,42 @@ const styles = StyleSheet.create({
+     paddingHorizontal: 12,
+     paddingVertical: 6,
+     borderRadius: 14,
+-    backgroundColor: '#F4F7F5',
++    backgroundColor: 'rgba(255,255,255,0.15)',
+   },
+   chipSelected: {
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.gold,
+   },
+   chipLabel: {
+-    color: brandColors.darkGreen,
++    color: brandColors.inkOnCard,
+     fontWeight: '600',
++    fontSize: 12,
+   },
+   chipLabelSelected: {
+-    color: '#fff',
++    color: brandColors.deep,
+   },
+   expandedPanel: {
+-    paddingHorizontal: 16,
+-    paddingBottom: 16,
++    marginTop: 4,
+   },
+   expandedRow: {
+-    backgroundColor: '#F4F7F5',
++    backgroundColor: 'rgba(255,255,255,0.12)',
+     borderRadius: 12,
+     padding: 16,
+     alignItems: 'center',
+   },
+   expandedValue: {
+-    color: brandColors.darkGreen,
++    color: brandColors.inkOnCard,
+     fontWeight: '700',
++    fontSize: 16,
+   },
+   expandedValueAlert: {
+-    color: '#B5651D',
++    color: brandColors.gold,
+   },
+   expandedLabel: {
+-    opacity: 0.6,
++    color: brandColors.inkOnCardSoft,
+     marginTop: 2,
+   },
+   expandedEmpty: {
+-    opacity: 0.6,
++    color: brandColors.inkOnCardSoft,
+     textAlign: 'center',
+     paddingVertical: 12,
+   },
+diff --git a/mobile/src/components/IconBadge.tsx b/mobile/src/components/IconBadge.tsx
+index 031a06f8..90518b73 100644
+--- a/mobile/src/components/IconBadge.tsx
++++ b/mobile/src/components/IconBadge.tsx
+@@ -9,7 +9,7 @@ type IconBadgeProps = {
+   backgroundColor?: string
+ }
+ 
+-export function IconBadge({ source, size = 18, color = '#fff', backgroundColor = brandColors.green }: IconBadgeProps) {
++export function IconBadge({ source, size = 18, color = '#fff', backgroundColor = brandColors.emerald }: IconBadgeProps) {
+   const badgeSize = Math.round(size * 1.9)
+ 
+   return (
+diff --git a/mobile/src/components/InspectionPhotoThumbnail.tsx b/mobile/src/components/InspectionPhotoThumbnail.tsx
+index 37375788..736f72d6 100644
+--- a/mobile/src/components/InspectionPhotoThumbnail.tsx
++++ b/mobile/src/components/InspectionPhotoThumbnail.tsx
+@@ -20,7 +20,7 @@ export function InspectionPhotoThumbnail({ path, bucket }: { path: string; bucke
+   if (isError || !url) {
+     return (
+       <Pressable onPress={() => refetch()} style={[styles.thumbnail, styles.placeholder]}>
+-        <IconButton icon="image-broken-variant" size={24} iconColor={brandColors.errorRed} style={styles.pdfIcon} />
++        <IconButton icon="image-broken-variant" size={24} iconColor={brandColors.alert} style={styles.pdfIcon} />
+         <Text variant="labelSmall" style={styles.retryText}>
+           Tap to retry
+         </Text>
+diff --git a/mobile/src/components/InspectionProgress.tsx b/mobile/src/components/InspectionProgress.tsx
+index a0ba58c2..a2e919d7 100644
+--- a/mobile/src/components/InspectionProgress.tsx
++++ b/mobile/src/components/InspectionProgress.tsx
+@@ -59,10 +59,10 @@ const styles = StyleSheet.create({
+   },
+   count: {
+     fontWeight: '700',
+-    color: brandColors.darkGreen,
++    color: brandColors.deep,
+   },
+   countComplete: {
+-    color: brandColors.green,
++    color: brandColors.emerald,
+   },
+   track: {
+     height: 8,
+@@ -73,9 +73,9 @@ const styles = StyleSheet.create({
+   fill: {
+     height: '100%',
+     borderRadius: 4,
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.deep,
+   },
+   fillComplete: {
+-    backgroundColor: brandColors.green,
++    backgroundColor: brandColors.emerald,
+   },
+ })
+diff --git a/mobile/src/components/InspectionReviewCard.tsx b/mobile/src/components/InspectionReviewCard.tsx
+index 720a5e2a..3afbfbb3 100644
+--- a/mobile/src/components/InspectionReviewCard.tsx
++++ b/mobile/src/components/InspectionReviewCard.tsx
+@@ -18,10 +18,10 @@ const TYPE_LABELS: Record<string, string> = {
+ 
+ const STATUS_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+   pending: { label: 'Awaiting Review', icon: 'clock-outline', color: '#8A6D00' },
+-  approved: { label: 'Approved', icon: 'check-circle', color: brandColors.green },
+-  declined: { label: 'Declined', icon: 'close-circle', color: brandColors.errorRed },
++  approved: { label: 'Approved', icon: 'check-circle', color: brandColors.emerald },
++  declined: { label: 'Declined', icon: 'close-circle', color: brandColors.alert },
+   reinspection_requested: { label: 'Re-inspection Requested', icon: 'refresh-circle', color: '#8A6D00' },
+-  flagged: { label: 'Flagged', icon: 'flag', color: brandColors.errorRed },
++  flagged: { label: 'Flagged', icon: 'flag', color: brandColors.alert },
+ }
+ 
+ export function InspectionReviewCard({
+@@ -141,7 +141,7 @@ export function InspectionReviewCard({
+               </Button>
+               <Button
+                 mode="outlined"
+-                textColor={brandColors.errorRed}
++                textColor={brandColors.alert}
+                 onPress={() => reviewInspection.mutate({ inspectionId: inspection.id, status: 'declined', comment })}
+                 loading={reviewInspection.isPending}
+                 disabled={reviewInspection.isPending}
+@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
+     marginTop: 12,
+   },
+   healthSummary: {
+-    color: brandColors.darkGreen,
++    color: brandColors.deep,
+   },
+   pendingSummary: {
+     opacity: 0.7,
+@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
+     flex: 1,
+   },
+   declineButton: {
+-    borderColor: brandColors.errorRed,
++    borderColor: brandColors.alert,
+   },
+   reviewedComment: {
+     marginTop: 12,
+diff --git a/mobile/src/components/LiveStatusMap.tsx b/mobile/src/components/LiveStatusMap.tsx
+index b039d168..81de6ac0 100644
+--- a/mobile/src/components/LiveStatusMap.tsx
++++ b/mobile/src/components/LiveStatusMap.tsx
+@@ -52,7 +52,7 @@ export function LiveStatusMap({ liveStatus, addressLabel, height = 300, photoUrl
+       <View style={styles.overlay}>
+         <IconBadge
+           source={isMoving ? 'navigation' : 'map-marker'}
+-          backgroundColor={isMoving ? brandColors.green : brandColors.darkGreen}
++          backgroundColor={isMoving ? brandColors.emerald : brandColors.teal}
+         />
+         <View style={styles.overlayText}>
+           <Text variant="bodyMedium" style={styles.overlayLocation} numberOfLines={1}>
+@@ -82,14 +82,14 @@ const styles = StyleSheet.create({
+     height: 52,
+     borderRadius: 26,
+     borderWidth: 3,
+-    borderColor: brandColors.darkGreen,
++    borderColor: brandColors.teal,
+     backgroundColor: '#fff',
+     alignItems: 'center',
+     justifyContent: 'center',
+     overflow: 'hidden',
+   },
+   avatarRingMoving: {
+-    borderColor: brandColors.green,
++    borderColor: brandColors.emerald,
+   },
+   avatarImage: {
+     width: '100%',
+@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
+     width: '100%',
+     height: '100%',
+     borderRadius: 26,
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.teal,
+     alignItems: 'center',
+     justifyContent: 'center',
+   },
+@@ -121,10 +121,10 @@ const styles = StyleSheet.create({
+     borderColor: '#fff',
+   },
+   statusBadgeMoving: {
+-    backgroundColor: brandColors.green,
++    backgroundColor: brandColors.emerald,
+   },
+   statusBadgeParked: {
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.teal,
+   },
+   overlay: {
+     position: 'absolute',
+diff --git a/mobile/src/components/PhotoComparisonRow.tsx b/mobile/src/components/PhotoComparisonRow.tsx
+index 29983bc6..eee0b66f 100644
+--- a/mobile/src/components/PhotoComparisonRow.tsx
++++ b/mobile/src/components/PhotoComparisonRow.tsx
+@@ -18,7 +18,7 @@ type PhotoComparisonRowProps = {
+ }
+ 
+ const STATUS_CONFIG: Record<ShotComparisonStatus, { icon: string; color: string; label: string }> = {
+-  ok: { icon: 'check-circle', color: brandColors.green, label: 'No changes' },
++  ok: { icon: 'check-circle', color: brandColors.emerald, label: 'No changes' },
+   warning: { icon: 'alert-circle', color: '#B5651D', label: 'Possible change detected' },
+   no_baseline: { icon: 'help-circle-outline', color: '#8A8A8A', label: 'No baseline to compare yet' },
+ }
+@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
+     fontWeight: '600',
+   },
+   viewComparison: {
+-    color: brandColors.green,
++    color: brandColors.emerald,
+     fontWeight: '700',
+     marginTop: 6,
+   },
+diff --git a/mobile/src/components/PhotoReviewModal.tsx b/mobile/src/components/PhotoReviewModal.tsx
+index 63afffb8..a9c82901 100644
+--- a/mobile/src/components/PhotoReviewModal.tsx
++++ b/mobile/src/components/PhotoReviewModal.tsx
+@@ -42,7 +42,7 @@ export function PhotoReviewModal({ visible, photoUri, shotKey, label, onRetake,
+           </View>
+ 
+           <View style={styles.tipRow}>
+-            <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.green} />
++            <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
+             <Text variant="bodySmall" style={styles.tipText}>
+               Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
+               if it's cut off.
+@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
+     aspectRatio: 0.85,
+     borderRadius: 12,
+     borderWidth: 2,
+-    borderColor: brandColors.green,
++    borderColor: brandColors.emerald,
+   },
+   exampleBox: {
+     width: '100%',
+diff --git a/mobile/src/components/PhotoSlot.tsx b/mobile/src/components/PhotoSlot.tsx
+index 79c5c139..ff3760c4 100644
+--- a/mobile/src/components/PhotoSlot.tsx
++++ b/mobile/src/components/PhotoSlot.tsx
+@@ -38,7 +38,7 @@ export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }
+           </Animated.View>
+         ) : (
+           <View style={styles.placeholder}>
+-            <IconButton icon="camera-plus" size={28} iconColor={brandColors.green} />
++            <IconButton icon="camera-plus" size={28} iconColor={brandColors.emerald} />
+           </View>
+         )}
+       </Pressable>
+@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
+     aspectRatio: 1,
+     borderRadius: 8,
+     borderWidth: 2,
+-    borderColor: brandColors.green,
++    borderColor: brandColors.emerald,
+   },
+   placeholder: {
+     width: '100%',
+@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
+     position: 'absolute',
+     bottom: -6,
+     right: -6,
+-    backgroundColor: brandColors.green,
++    backgroundColor: brandColors.emerald,
+     borderRadius: 12,
+     borderWidth: 2,
+     borderColor: '#fff',
+@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
+     textAlign: 'center',
+   },
+   labelCaptured: {
+-    color: brandColors.green,
++    color: brandColors.emerald,
+     fontWeight: '700',
+   },
+   labelRow: {
+@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
+     marginBottom: 16,
+   },
+   ownerExampleLabel: {
+-    color: brandColors.green,
++    color: brandColors.emerald,
+     fontWeight: '700',
+     marginBottom: 8,
+     textAlign: 'center',
+diff --git a/mobile/src/components/ReferencePhotoSlot.tsx b/mobile/src/components/ReferencePhotoSlot.tsx
+index 7f145db3..56d850c3 100644
+--- a/mobile/src/components/ReferencePhotoSlot.tsx
++++ b/mobile/src/components/ReferencePhotoSlot.tsx
+@@ -32,7 +32,7 @@ export function ReferencePhotoSlot({ label, localUri, existingPath, uploading, o
+         </View>
+       ) : (
+         <Pressable onPress={onCapture} style={styles.placeholder}>
+-          <IconButton icon="camera-plus" size={28} iconColor={brandColors.green} />
++          <IconButton icon="camera-plus" size={28} iconColor={brandColors.emerald} />
+         </Pressable>
+       )}
+       <Text variant="labelMedium" style={[styles.label, (localUri || existingPath) && styles.labelCaptured]}>
+@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
+     height: 96,
+     borderRadius: 8,
+     borderWidth: 2,
+-    borderColor: brandColors.green,
++    borderColor: brandColors.emerald,
+   },
+   uploadingOverlay: {
+     position: 'absolute',
+@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
+     textAlign: 'center',
+   },
+   labelCaptured: {
+-    color: brandColors.green,
++    color: brandColors.emerald,
+     fontWeight: '700',
+   },
+ })
+diff --git a/mobile/src/components/ReliabilityBar.tsx b/mobile/src/components/ReliabilityBar.tsx
+index 5d47ef49..8c906e3b 100644
+--- a/mobile/src/components/ReliabilityBar.tsx
++++ b/mobile/src/components/ReliabilityBar.tsx
+@@ -46,6 +46,6 @@ const styles = StyleSheet.create({
+   fill: {
+     height: '100%',
+     borderRadius: 4,
+-    backgroundColor: brandColors.green,
++    backgroundColor: brandColors.emerald,
+   },
+ })
+diff --git a/mobile/src/components/RentalTimeline.tsx b/mobile/src/components/RentalTimeline.tsx
+index c9905588..9c29d476 100644
+--- a/mobile/src/components/RentalTimeline.tsx
++++ b/mobile/src/components/RentalTimeline.tsx
+@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
+     width: 22,
+     height: 22,
+     borderRadius: 11,
+-    backgroundColor: brandColors.green,
++    backgroundColor: brandColors.emerald,
+     alignItems: 'center',
+     justifyContent: 'center',
+   },
+diff --git a/mobile/src/components/SectionLabel.tsx b/mobile/src/components/SectionLabel.tsx
+index a623810a..31389949 100644
+--- a/mobile/src/components/SectionLabel.tsx
++++ b/mobile/src/components/SectionLabel.tsx
+@@ -6,7 +6,7 @@ import { brandColors } from '../theme/theme'
+ export function SectionLabel({ icon, label }: { icon: string; label: string }) {
+   return (
+     <View style={styles.row}>
+-      <IconBadge source={icon} size={14} backgroundColor={brandColors.darkGreen} />
++      <IconBadge source={icon} size={14} backgroundColor={brandColors.deep} />
+       <Text variant="labelMedium" style={styles.label}>
+         {label}
+       </Text>
+diff --git a/mobile/src/components/StatTile.tsx b/mobile/src/components/StatTile.tsx
+index 6de85a9b..7a27cd24 100644
+--- a/mobile/src/components/StatTile.tsx
++++ b/mobile/src/components/StatTile.tsx
+@@ -13,7 +13,7 @@ type StatTileProps = {
+ export function StatTile({ label, value, icon, style }: StatTileProps) {
+   return (
+     <View style={[styles.tile, style]}>
+-      {icon && <IconBadge source={icon} size={14} backgroundColor={brandColors.green} />}
++      {icon && <IconBadge source={icon} size={14} backgroundColor={brandColors.emerald} />}
+       <Text variant="labelMedium" style={[styles.label, icon && styles.labelWithIcon]}>
+         {label}
+       </Text>
+diff --git a/mobile/src/components/TabIcon.tsx b/mobile/src/components/TabIcon.tsx
+index a71bc300..bb7e1ecc 100644
+--- a/mobile/src/components/TabIcon.tsx
++++ b/mobile/src/components/TabIcon.tsx
+@@ -26,6 +26,6 @@ const styles = StyleSheet.create({
+     justifyContent: 'center',
+   },
+   pillFocused: {
+-    backgroundColor: `${brandColors.green}1F`,
++    backgroundColor: `${brandColors.emerald}1F`,
+   },
+ })
+diff --git a/mobile/src/components/TripDetailView.tsx b/mobile/src/components/TripDetailView.tsx
+index 1409e8dc..08eaa2e6 100644
+--- a/mobile/src/components/TripDetailView.tsx
++++ b/mobile/src/components/TripDetailView.tsx
+@@ -1,12 +1,12 @@
+ import { View, StyleSheet, ScrollView } from 'react-native'
+-import { Text, Card } from 'react-native-paper'
++import { Text } from 'react-native-paper'
+ import MapView, { Marker, Polyline } from 'react-native-maps'
+ import { useTrip } from '../hooks/useTrip'
+ import { useTripWaypoints } from '../hooks/useTripWaypoints'
+ import { LoadingScreen } from './LoadingScreen'
+ import { IconBadge } from './IconBadge'
+ import { darkMapStyle } from '../theme/mapStyle'
+-import { brandColors } from '../theme/theme'
++import { brandColors, radius, cardShadow } from '../theme/theme'
+ 
+ function formatTime(iso: string): string {
+   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
+@@ -22,13 +22,9 @@ function formatDuration(seconds: number): string {
+ function StatBox({ icon, label, value }: { icon: string; label: string; value: string }) {
+   return (
+     <View style={styles.statBox}>
+-      <IconBadge source={icon} size={16} backgroundColor={brandColors.green} />
+-      <Text variant="titleMedium" style={styles.statBoxValue}>
+-        {value}
+-      </Text>
+-      <Text variant="bodySmall" style={styles.statBoxLabel}>
+-        {label}
+-      </Text>
++      <IconBadge source={icon} size={16} backgroundColor="rgba(255,255,255,0.15)" />
++      <Text style={styles.statBoxValue}>{value}</Text>
++      <Text style={styles.statBoxLabel}>{label}</Text>
+     </View>
+   )
+ }
+@@ -51,7 +47,7 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
+   const end = routeCoords[routeCoords.length - 1]
+ 
+   return (
+-    <ScrollView contentContainerStyle={styles.container}>
++    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+       {routeCoords.length > 1 ? (
+         <MapView
+           style={styles.map}
+@@ -63,9 +59,9 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
+             longitudeDelta: 0.012,
+           }}
+         >
+-          <Polyline coordinates={routeCoords} strokeColor={brandColors.green} strokeWidth={4} />
+-          <Marker coordinate={start} title="Start" pinColor={brandColors.mintGreen} />
+-          <Marker coordinate={end} title="End" pinColor={brandColors.darkGreen} />
++          <Polyline coordinates={routeCoords} strokeColor={brandColors.teal} strokeWidth={4} />
++          <Marker coordinate={start} title="Start" pinColor={brandColors.teal} />
++          <Marker coordinate={end} title="End" pinColor={brandColors.deep} />
+         </MapView>
+       ) : (
+         <View style={styles.noRoute}>
+@@ -100,26 +96,22 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
+           </View>
+         </View>
+ 
+-        <Card style={styles.statsCard}>
+-          <Card.Content style={styles.statsGrid}>
++        <View style={styles.statsCard}>
++          <View style={styles.statsGrid}>
+             <StatBox icon="map-marker-distance" label="Distance" value={`${(trip.distance_km ?? 0).toFixed(1)} km`} />
+             <StatBox icon="timer-outline" label="Duration" value={formatDuration(trip.duration_seconds ?? 0)} />
+             <StatBox icon="speedometer" label="Avg Speed" value={`${Math.round(trip.avg_speed_kmh ?? 0)} km/h`} />
+             <StatBox icon="speedometer-medium" label="Max Speed" value={`${Math.round(trip.max_speed_kmh ?? 0)} km/h`} />
+-          </Card.Content>
+-        </Card>
++          </View>
++        </View>
+ 
+         {(trip.odometer_start_km != null || trip.odometer_end_km != null) && (
+-          <Card style={styles.statsCard}>
+-            <Card.Content>
+-              <Text variant="labelMedium" style={styles.sectionLabel}>
+-                ODOMETER
+-              </Text>
+-              <Text variant="bodyMedium" style={styles.odometerText}>
+-                {trip.odometer_start_km ?? '—'} km → {trip.odometer_end_km ?? '—'} km
+-              </Text>
+-            </Card.Content>
+-          </Card>
++          <View style={styles.statsCard}>
++            <Text style={styles.sectionLabel}>ODOMETER</Text>
++            <Text style={styles.odometerText}>
++              {trip.odometer_start_km ?? '—'} km → {trip.odometer_end_km ?? '—'} km
++            </Text>
++          </View>
+         )}
+       </View>
+     </ScrollView>
+@@ -127,6 +119,9 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
+ }
+ 
+ const styles = StyleSheet.create({
++  screen: {
++    backgroundColor: brandColors.paper,
++  },
+   container: {
+     paddingBottom: 24,
+   },
+@@ -137,7 +132,7 @@ const styles = StyleSheet.create({
+   noRoute: {
+     width: '100%',
+     height: 140,
+-    backgroundColor: '#EAEAE5',
++    backgroundColor: brandColors.grey,
+     alignItems: 'center',
+     justifyContent: 'center',
+   },
+@@ -162,35 +157,41 @@ const styles = StyleSheet.create({
+     height: 10,
+     borderRadius: 5,
+     borderWidth: 1.5,
+-    borderColor: '#B8B8AE',
++    borderColor: brandColors.teal,
+   },
+   line: {
+     width: 1.5,
+     flex: 1,
+-    backgroundColor: '#D6D6CC',
++    backgroundColor: brandColors.tealSoft,
+     marginVertical: 4,
+   },
+   filledDot: {
+     width: 10,
+     height: 10,
+     borderRadius: 5,
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.teal,
+   },
+   routeText: {
+     flex: 1,
+   },
+   routeLabel: {
+-    opacity: 0.6,
++    color: brandColors.charcoalSoft,
+   },
+   routeLabelEnd: {
+     marginTop: 12,
++    color: brandColors.charcoal,
++    fontWeight: '700',
+   },
+   routeTime: {
+-    opacity: 0.6,
++    color: brandColors.charcoalSoft,
+     marginTop: 2,
+   },
+   statsCard: {
++    backgroundColor: brandColors.cardGreen,
++    borderRadius: radius.lg,
++    padding: 20,
+     marginBottom: 16,
++    ...cardShadow,
+   },
+   statsGrid: {
+     flexDirection: 'row',
+@@ -203,19 +204,22 @@ const styles = StyleSheet.create({
+   },
+   statBoxValue: {
+     marginTop: 8,
+-    color: brandColors.darkGreen,
++    color: brandColors.inkOnCard,
++    fontWeight: '700',
++    fontSize: 17,
+   },
+   statBoxLabel: {
+-    opacity: 0.6,
++    color: brandColors.inkOnCardSoft,
+     marginTop: 2,
+   },
+   sectionLabel: {
+-    opacity: 0.6,
++    color: brandColors.inkOnCardSoft,
+     letterSpacing: 0.5,
+     marginBottom: 8,
+   },
+   odometerText: {
+-    color: brandColors.darkGreen,
++    color: brandColors.inkOnCard,
++    fontWeight: '700',
+   },
+   emptyContainer: {
+     flex: 1,
+diff --git a/mobile/src/components/TripRouteRow.tsx b/mobile/src/components/TripRouteRow.tsx
+index 111e0ea3..3519df01 100644
+--- a/mobile/src/components/TripRouteRow.tsx
++++ b/mobile/src/components/TripRouteRow.tsx
+@@ -64,13 +64,13 @@ export function TripRouteRow({
+         </Text>
+         <View style={styles.statsRow}>
+           <View style={styles.statItem}>
+-            <IconBadge source="map-marker-distance" size={11} backgroundColor={brandColors.green} />
++            <IconBadge source="map-marker-distance" size={11} backgroundColor={brandColors.emerald} />
+             <Text variant="bodySmall" style={styles.statText}>
+               {distanceKm.toFixed(1)} km
+             </Text>
+           </View>
+           <View style={styles.statItem}>
+-            <IconBadge source="timer-outline" size={11} backgroundColor={brandColors.darkGreen} />
++            <IconBadge source="timer-outline" size={11} backgroundColor={brandColors.deep} />
+             <Text variant="bodySmall" style={styles.statText}>
+               {formatDurationShort(durationSeconds)}
+             </Text>
+@@ -122,13 +122,13 @@ const styles = StyleSheet.create({
+     width: 10,
+     height: 10,
+     borderRadius: 5,
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.deep,
+   },
+   numberBadge: {
+     width: 24,
+     height: 24,
+     borderRadius: 12,
+-    backgroundColor: brandColors.darkGreen,
++    backgroundColor: brandColors.deep,
+     alignItems: 'center',
+     justifyContent: 'center',
+     marginRight: 12,
+diff --git a/mobile/src/theme/theme.ts b/mobile/src/theme/theme.ts
+index ebdf48e6..0b214398 100644
+--- a/mobile/src/theme/theme.ts
++++ b/mobile/src/theme/theme.ts
+@@ -1,8 +1,9 @@
+ import { MD3LightTheme } from 'react-native-paper'
+ 
+-// Legacy keys (darkGreen/green/mintGreen/errorRed) are kept as-is so screens
+-// not yet migrated to the fintech redesign keep their current look. New
+-// screens should use the design-system tokens below instead.
++// darkGreen/green/errorRed are kept as aliases of deep/emerald/alert for
++// call sites that haven't been migrated to the named tokens yet. mintGreen
++// is its own color — it's only used for the illustrative SVG shot-guide
++// diagrams and the Paper theme's `secondary`, not as a design-system accent.
+ export const brandColors = {
+   darkGreen: '#12331F',
+   green: '#2E7D4F',
+@@ -61,10 +62,10 @@ export const theme = {
+   roundness: 6,
+   colors: {
+     ...MD3LightTheme.colors,
+-    primary: brandColors.green,
++    primary: brandColors.emerald,
+     secondary: brandColors.mintGreen,
+-    background: '#F7F8F5',
++    background: brandColors.paper,
+     surface: '#FFFFFF',
+-    error: brandColors.errorRed,
++    error: brandColors.alert,
+   },
+ }
+-- 
+2.43.0
+
