@@ -5,7 +5,7 @@ export default function OwnerRentalLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: brandColors.darkGreen },
+        headerStyle: { backgroundColor: brandColors.deep },
         headerTintColor: '#fff',
         headerTitleStyle: { color: '#fff' },
       }}

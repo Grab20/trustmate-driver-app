@@ -17,6 +17,7 @@ import {
   SHOT_LABELS,
   type InspectionShotKey,
 } from '../../../../src/components/InspectionShotGuide'
+import { brandColors } from '../../../../src/theme/theme'
 
 // Order matters: photo_urls is a plain array, and this order (exterior then
 // interior, in the order defined in InspectionShotGuide) is the convention
@@ -75,7 +76,7 @@ export default function NewInspectionScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text variant="headlineSmall" style={styles.heading}>
         Vehicle Inspection
       </Text>
@@ -161,6 +162,9 @@ export default function NewInspectionScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     padding: 24,
   },

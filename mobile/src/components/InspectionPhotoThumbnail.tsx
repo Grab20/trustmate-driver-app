@@ -20,7 +20,7 @@ export function InspectionPhotoThumbnail({ path, bucket }: { path: string; bucke
   if (isError || !url) {
     return (
       <Pressable onPress={() => refetch()} style={[styles.thumbnail, styles.placeholder]}>
-        <IconButton icon="image-broken-variant" size={24} iconColor={brandColors.errorRed} style={styles.pdfIcon} />
+        <IconButton icon="image-broken-variant" size={24} iconColor={brandColors.alert} style={styles.pdfIcon} />
         <Text variant="labelSmall" style={styles.retryText}>
           Tap to retry
         </Text>

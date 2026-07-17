@@ -18,7 +18,7 @@ type PhotoComparisonRowProps = {
 }
 
 const STATUS_CONFIG: Record<ShotComparisonStatus, { icon: string; color: string; label: string }> = {
-  ok: { icon: 'check-circle', color: brandColors.green, label: 'No changes' },
+  ok: { icon: 'check-circle', color: brandColors.emerald, label: 'No changes' },
   warning: { icon: 'alert-circle', color: '#B5651D', label: 'Possible change detected' },
   no_baseline: { icon: 'help-circle-outline', color: '#8A8A8A', label: 'No baseline to compare yet' },
 }
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   viewComparison: {
-    color: brandColors.green,
+    color: brandColors.emerald,
     fontWeight: '700',
     marginTop: 6,
   },

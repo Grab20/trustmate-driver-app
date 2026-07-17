@@ -24,10 +24,10 @@ export default function AppLayout() {
     <>
       <Tabs
         screenOptions={{
-          headerStyle: { backgroundColor: brandColors.darkGreen },
+          headerStyle: { backgroundColor: brandColors.deep },
           headerTintColor: '#fff',
           headerTitleStyle: { color: '#fff' },
-          tabBarActiveTintColor: brandColors.green,
+          tabBarActiveTintColor: brandColors.emerald,
           tabBarInactiveTintColor: '#8A8A8A',
           tabBarStyle: {
             height: 64,

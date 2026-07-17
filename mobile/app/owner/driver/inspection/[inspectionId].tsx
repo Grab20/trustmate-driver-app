@@ -29,10 +29,10 @@ const VERIFICATION_ROWS: { key: 'plateMatch' | 'colorMatch' | 'modelMatch' | 'in
 ]
 
 const STATUS_AFTER_DECISION: Record<string, { label: string; color: string; icon: string }> = {
-  approved: { label: 'Inspection Approved', color: brandColors.green, icon: 'check-circle' },
+  approved: { label: 'Inspection Approved', color: brandColors.emerald, icon: 'check-circle' },
   reinspection_requested: { label: 'Re-inspection Requested', color: '#B5651D', icon: 'refresh-circle' },
-  flagged: { label: 'Damage Flagged', color: brandColors.errorRed, icon: 'flag' },
-  declined: { label: 'Inspection Declined', color: brandColors.errorRed, icon: 'close-circle' },
+  flagged: { label: 'Damage Flagged', color: brandColors.alert, icon: 'flag' },
+  declined: { label: 'Inspection Declined', color: brandColors.alert, icon: 'close-circle' },
 }
 
 function computeDriverRecord(inspections: Tables<'vehicle_inspections'>[]) {
@@ -133,7 +133,7 @@ export default function InspectionHealthReportScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text variant="bodySmall" style={styles.vehicleName}>
         {car ? `${car.make} ${car.model}` : 'Vehicle'}
       </Text>
@@ -174,7 +174,7 @@ export default function InspectionHealthReportScreen() {
                     source={bullet.ok ? 'check' : 'alert'}
                     size={12}
                     backgroundColor="transparent"
-                    color={bullet.ok ? brandColors.green : '#B5651D'}
+                    color={bullet.ok ? brandColors.emerald : '#B5651D'}
                   />
                   <Text variant="bodyMedium" style={[styles.summaryText, !bullet.ok && styles.summaryTextWarn]}>
                     {bullet.text}
@@ -248,7 +248,7 @@ export default function InspectionHealthReportScreen() {
                         source={value === true ? 'check' : value === false ? 'close' : 'minus'}
                         size={11}
                         backgroundColor="transparent"
-                        color={value === true ? brandColors.green : value === false ? brandColors.errorRed : '#8A8A8A'}
+                        color={value === true ? brandColors.emerald : value === false ? brandColors.alert : '#8A8A8A'}
                       />
                       <Text variant="bodySmall" style={styles.verificationText}>
                         {value === true ? 'Match' : value === false ? 'Mismatch' : 'N/A'}
@@ -324,7 +324,7 @@ export default function InspectionHealthReportScreen() {
                   source={!itemReport ? 'clock-outline' : itemReport.damage.length > 0 ? 'alert' : 'check'}
                   size={11}
                   backgroundColor="transparent"
-                  color={!itemReport ? '#8A8A8A' : itemReport.damage.length > 0 ? '#B5651D' : brandColors.green}
+                  color={!itemReport ? '#8A8A8A' : itemReport.damage.length > 0 ? '#B5651D' : brandColors.emerald}
                 />
                 <Text variant="bodyMedium" style={[styles.historyLabel, isCurrent && styles.historyLabelCurrent]}>
                   Week {index + 1}: {label}
@@ -401,7 +401,7 @@ export default function InspectionHealthReportScreen() {
             </Button>
             <Button
               mode="outlined"
-              textColor={brandColors.errorRed}
+              textColor={brandColors.alert}
               onPress={() => setShowFlagOptions((prev) => !prev)}
               disabled={reviewInspection.isPending}
               style={[styles.decisionButton, styles.flagButton]}
@@ -468,6 +468,9 @@ export default function InspectionHealthReportScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     padding: 24,
     paddingBottom: 40,
@@ -487,7 +490,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   healthCard: {
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.deep,
   },
   healthCardContent: {
     alignItems: 'center',
@@ -497,7 +500,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   healthLabel: {
-    color: brandColors.mintGreen,
+    color: brandColors.gold,
     marginTop: 2,
   },
   healthLabelWarn: {
@@ -522,11 +525,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   damageCard: {
-    borderColor: brandColors.errorRed,
+    borderColor: brandColors.alert,
     borderWidth: 1,
   },
   damageTitle: {
-    color: brandColors.errorRed,
+    color: brandColors.alert,
     marginBottom: 8,
   },
   damageDescription: {
@@ -565,7 +568,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   qualityPercent: {
-    color: brandColors.darkGreen,
+    color: brandColors.deep,
   },
   historyRow: {
     flexDirection: 'row',
@@ -596,7 +599,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   flagButton: {
-    borderColor: brandColors.errorRed,
+    borderColor: brandColors.alert,
   },
   flagOptionsRow: {
     flexDirection: 'row',

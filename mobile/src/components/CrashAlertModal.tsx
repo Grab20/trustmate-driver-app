@@ -27,7 +27,7 @@ export function CrashAlertModal() {
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.iconRow}>
-            <IconBadge source="car-emergency" size={28} backgroundColor={brandColors.errorRed} />
+            <IconBadge source="car-emergency" size={28} backgroundColor={brandColors.alert} />
           </View>
           <Text variant="headlineSmall" style={styles.title}>
             Possible Crash Detected

@@ -1,5 +1,5 @@
 import { View, ScrollView, StyleSheet } from 'react-native'
-import { Text, Button, Card } from 'react-native-paper'
+import { Text, Button } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useOwnerFleet } from '../../src/hooks/useOwnerFleet'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
@@ -7,7 +7,7 @@ import { useAuthStore } from '../../src/stores/authStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 import { FleetDriverCard } from '../../src/components/FleetDriverCard'
 import { IconBadge } from '../../src/components/IconBadge'
-import { brandColors } from '../../src/theme/theme'
+import { brandColors, radius, cardShadow } from '../../src/theme/theme'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -41,29 +41,23 @@ export default function OwnerDashboardScreen() {
       )}
 
       {fleet && fleet.length > 0 && (
-        <Card style={styles.summaryCard}>
-          <Card.Content style={styles.summaryContent}>
-            <View style={styles.summaryItem}>
-              <IconBadge source="navigation" backgroundColor={brandColors.green} />
-              <View style={styles.summaryText}>
-                <Text variant="titleMedium">{drivingCount}</Text>
-                <Text variant="bodySmall" style={styles.summaryLabel}>
-                  On the road
-                </Text>
-              </View>
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryItem}>
+            <IconBadge source="navigation" backgroundColor="rgba(255,255,255,0.15)" />
+            <View style={styles.summaryText}>
+              <Text style={styles.summaryValue}>{drivingCount}</Text>
+              <Text style={styles.summaryLabel}>On the road</Text>
             </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <IconBadge source="map-marker" backgroundColor={brandColors.darkGreen} />
-              <View style={styles.summaryText}>
-                <Text variant="titleMedium">{parkedCount}</Text>
-                <Text variant="bodySmall" style={styles.summaryLabel}>
-                  Parked
-                </Text>
-              </View>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <IconBadge source="map-marker" backgroundColor="rgba(255,255,255,0.15)" />
+            <View style={styles.summaryText}>
+              <Text style={styles.summaryValue}>{parkedCount}</Text>
+              <Text style={styles.summaryLabel}>Parked</Text>
             </View>
-          </Card.Content>
-        </Card>
+          </View>
+        </View>
       )}
 
       {fleet && fleet.length > 0 ? (
@@ -107,11 +101,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   summaryCard: {
+    backgroundColor: brandColors.cardGreen,
+    borderRadius: radius.lg,
+    padding: 20,
     marginBottom: 16,
-  },
-  summaryContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    ...cardShadow,
   },
   summaryItem: {
     flexDirection: 'row',
@@ -121,14 +117,19 @@ const styles = StyleSheet.create({
   summaryText: {
     marginLeft: 12,
   },
+  summaryValue: {
+    color: brandColors.inkOnCard,
+    fontSize: 18,
+    fontWeight: '700',
+  },
   summaryLabel: {
-    opacity: 0.6,
+    color: brandColors.inkOnCardSoft,
     marginTop: 2,
   },
   summaryDivider: {
     width: StyleSheet.hairlineWidth,
     height: 32,
-    backgroundColor: '#E3E3DD',
+    backgroundColor: 'rgba(255,255,255,0.2)',
     marginHorizontal: 12,
   },
   empty: {

@@ -46,6 +46,6 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
     borderRadius: 4,
-    backgroundColor: brandColors.green,
+    backgroundColor: brandColors.emerald,
   },
 })

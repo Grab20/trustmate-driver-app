@@ -1,8 +1,9 @@
 import { MD3LightTheme } from 'react-native-paper'
 
-// Legacy keys (darkGreen/green/mintGreen/errorRed) are kept as-is so screens
-// not yet migrated to the fintech redesign keep their current look. New
-// screens should use the design-system tokens below instead.
+// darkGreen/green/errorRed are kept as aliases of deep/emerald/alert for
+// call sites that haven't been migrated to the named tokens yet. mintGreen
+// is its own color — it's only used for the illustrative SVG shot-guide
+// diagrams and the Paper theme's `secondary`, not as a design-system accent.
 export const brandColors = {
   darkGreen: '#12331F',
   green: '#2E7D4F',
@@ -61,10 +62,10 @@ export const theme = {
   roundness: 6,
   colors: {
     ...MD3LightTheme.colors,
-    primary: brandColors.green,
+    primary: brandColors.emerald,
     secondary: brandColors.mintGreen,
-    background: '#F7F8F5',
+    background: brandColors.paper,
     surface: '#FFFFFF',
-    error: brandColors.errorRed,
+    error: brandColors.alert,
   },
 }

@@ -1,12 +1,12 @@
 import { View, StyleSheet, ScrollView } from 'react-native'
-import { Text, Card } from 'react-native-paper'
+import { Text } from 'react-native-paper'
 import MapView, { Marker, Polyline } from 'react-native-maps'
 import { useTrip } from '../hooks/useTrip'
 import { useTripWaypoints } from '../hooks/useTripWaypoints'
 import { LoadingScreen } from './LoadingScreen'
 import { IconBadge } from './IconBadge'
 import { darkMapStyle } from '../theme/mapStyle'
-import { brandColors } from '../theme/theme'
+import { brandColors, radius, cardShadow } from '../theme/theme'
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -22,13 +22,9 @@ function formatDuration(seconds: number): string {
 function StatBox({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <View style={styles.statBox}>
-      <IconBadge source={icon} size={16} backgroundColor={brandColors.green} />
-      <Text variant="titleMedium" style={styles.statBoxValue}>
-        {value}
-      </Text>
-      <Text variant="bodySmall" style={styles.statBoxLabel}>
-        {label}
-      </Text>
+      <IconBadge source={icon} size={16} backgroundColor="rgba(255,255,255,0.15)" />
+      <Text style={styles.statBoxValue}>{value}</Text>
+      <Text style={styles.statBoxLabel}>{label}</Text>
     </View>
   )
 }
@@ -51,7 +47,7 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
   const end = routeCoords[routeCoords.length - 1]
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       {routeCoords.length > 1 ? (
         <MapView
           style={styles.map}
@@ -63,9 +59,9 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
             longitudeDelta: 0.012,
           }}
         >
-          <Polyline coordinates={routeCoords} strokeColor={brandColors.green} strokeWidth={4} />
-          <Marker coordinate={start} title="Start" pinColor={brandColors.mintGreen} />
-          <Marker coordinate={end} title="End" pinColor={brandColors.darkGreen} />
+          <Polyline coordinates={routeCoords} strokeColor={brandColors.teal} strokeWidth={4} />
+          <Marker coordinate={start} title="Start" pinColor={brandColors.teal} />
+          <Marker coordinate={end} title="End" pinColor={brandColors.deep} />
         </MapView>
       ) : (
         <View style={styles.noRoute}>
@@ -100,26 +96,22 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
           </View>
         </View>
 
-        <Card style={styles.statsCard}>
-          <Card.Content style={styles.statsGrid}>
+        <View style={styles.statsCard}>
+          <View style={styles.statsGrid}>
             <StatBox icon="map-marker-distance" label="Distance" value={`${(trip.distance_km ?? 0).toFixed(1)} km`} />
             <StatBox icon="timer-outline" label="Duration" value={formatDuration(trip.duration_seconds ?? 0)} />
             <StatBox icon="speedometer" label="Avg Speed" value={`${Math.round(trip.avg_speed_kmh ?? 0)} km/h`} />
             <StatBox icon="speedometer-medium" label="Max Speed" value={`${Math.round(trip.max_speed_kmh ?? 0)} km/h`} />
-          </Card.Content>
-        </Card>
+          </View>
+        </View>
 
         {(trip.odometer_start_km != null || trip.odometer_end_km != null) && (
-          <Card style={styles.statsCard}>
-            <Card.Content>
-              <Text variant="labelMedium" style={styles.sectionLabel}>
-                ODOMETER
-              </Text>
-              <Text variant="bodyMedium" style={styles.odometerText}>
-                {trip.odometer_start_km ?? '—'} km → {trip.odometer_end_km ?? '—'} km
-              </Text>
-            </Card.Content>
-          </Card>
+          <View style={styles.statsCard}>
+            <Text style={styles.sectionLabel}>ODOMETER</Text>
+            <Text style={styles.odometerText}>
+              {trip.odometer_start_km ?? '—'} km → {trip.odometer_end_km ?? '—'} km
+            </Text>
+          </View>
         )}
       </View>
     </ScrollView>
@@ -127,6 +119,9 @@ export function TripDetailView({ tripId }: { tripId: string | undefined }) {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     paddingBottom: 24,
   },
@@ -137,7 +132,7 @@ const styles = StyleSheet.create({
   noRoute: {
     width: '100%',
     height: 140,
-    backgroundColor: '#EAEAE5',
+    backgroundColor: brandColors.grey,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -162,35 +157,41 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: '#B8B8AE',
+    borderColor: brandColors.teal,
   },
   line: {
     width: 1.5,
     flex: 1,
-    backgroundColor: '#D6D6CC',
+    backgroundColor: brandColors.tealSoft,
     marginVertical: 4,
   },
   filledDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.teal,
   },
   routeText: {
     flex: 1,
   },
   routeLabel: {
-    opacity: 0.6,
+    color: brandColors.charcoalSoft,
   },
   routeLabelEnd: {
     marginTop: 12,
+    color: brandColors.charcoal,
+    fontWeight: '700',
   },
   routeTime: {
-    opacity: 0.6,
+    color: brandColors.charcoalSoft,
     marginTop: 2,
   },
   statsCard: {
+    backgroundColor: brandColors.cardGreen,
+    borderRadius: radius.lg,
+    padding: 20,
     marginBottom: 16,
+    ...cardShadow,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -203,19 +204,22 @@ const styles = StyleSheet.create({
   },
   statBoxValue: {
     marginTop: 8,
-    color: brandColors.darkGreen,
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
+    fontSize: 17,
   },
   statBoxLabel: {
-    opacity: 0.6,
+    color: brandColors.inkOnCardSoft,
     marginTop: 2,
   },
   sectionLabel: {
-    opacity: 0.6,
+    color: brandColors.inkOnCardSoft,
     letterSpacing: 0.5,
     marginBottom: 8,
   },
   odometerText: {
-    color: brandColors.darkGreen,
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
   },
   emptyContainer: {
     flex: 1,

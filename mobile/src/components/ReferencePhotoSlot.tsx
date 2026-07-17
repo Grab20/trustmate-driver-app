@@ -32,7 +32,7 @@ export function ReferencePhotoSlot({ label, localUri, existingPath, uploading, o
         </View>
       ) : (
         <Pressable onPress={onCapture} style={styles.placeholder}>
-          <IconButton icon="camera-plus" size={28} iconColor={brandColors.green} />
+          <IconButton icon="camera-plus" size={28} iconColor={brandColors.emerald} />
         </Pressable>
       )}
       <Text variant="labelMedium" style={[styles.label, (localUri || existingPath) && styles.labelCaptured]}>
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: brandColors.green,
+    borderColor: brandColors.emerald,
   },
   uploadingOverlay: {
     position: 'absolute',
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   labelCaptured: {
-    color: brandColors.green,
+    color: brandColors.emerald,
     fontWeight: '700',
   },
 })

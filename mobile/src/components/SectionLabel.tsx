@@ -6,7 +6,7 @@ import { brandColors } from '../theme/theme'
 export function SectionLabel({ icon, label }: { icon: string; label: string }) {
   return (
     <View style={styles.row}>
-      <IconBadge source={icon} size={14} backgroundColor={brandColors.darkGreen} />
+      <IconBadge source={icon} size={14} backgroundColor={brandColors.deep} />
       <Text variant="labelMedium" style={styles.label}>
         {label}
       </Text>

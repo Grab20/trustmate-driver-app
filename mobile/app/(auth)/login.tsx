@@ -27,7 +27,7 @@ export default function LoginScreen() {
     >
       <View style={styles.container}>
         <View style={styles.heroBadge}>
-          <IconBadge source="shield-car" size={36} backgroundColor={brandColors.darkGreen} />
+          <IconBadge source="shield-car" size={36} backgroundColor={brandColors.deep} />
         </View>
         <Text variant="headlineMedium" style={styles.title}>
           TrustMate Driver
@@ -46,7 +46,7 @@ export default function LoginScreen() {
           textContentType="emailAddress"
           left={<TextInput.Icon icon="email-outline" />}
           outlineColor="#DDE3DE"
-          activeOutlineColor={brandColors.green}
+          activeOutlineColor={brandColors.emerald}
           style={styles.input}
         />
         <TextInput
@@ -58,7 +58,7 @@ export default function LoginScreen() {
           textContentType="password"
           left={<TextInput.Icon icon="lock-outline" />}
           outlineColor="#DDE3DE"
-          activeOutlineColor={brandColors.green}
+          activeOutlineColor={brandColors.emerald}
           style={styles.input}
         />
 

@@ -15,6 +15,7 @@ import {
   type InspectionShotKey,
 } from '../../../src/components/InspectionShotGuide'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
+import { brandColors } from '../../../src/theme/theme'
 
 const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_KEYS]
 
@@ -68,7 +69,7 @@ export default function ReferencePhotosScreen() {
   if (isCarLoading || isPhotosLoading) return <LoadingScreen />
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text variant="headlineSmall" style={styles.heading}>
         Reference Photos
       </Text>
@@ -115,6 +116,9 @@ export default function ReferencePhotosScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     padding: 24,
     paddingBottom: 40,

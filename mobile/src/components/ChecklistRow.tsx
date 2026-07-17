@@ -5,7 +5,7 @@ import { brandColors } from '../theme/theme'
 export function ChecklistRow({ ok, label }: { ok: boolean; label: string }) {
   return (
     <View style={styles.row}>
-      <Icon source={ok ? 'check-circle' : 'alert-circle'} size={18} color={ok ? brandColors.green : '#B5651D'} />
+      <Icon source={ok ? 'check-circle' : 'alert-circle'} size={18} color={ok ? brandColors.emerald : '#B5651D'} />
       <Text variant="bodyMedium" style={styles.label}>
         {label}
       </Text>

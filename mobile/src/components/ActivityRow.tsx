@@ -21,7 +21,7 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
     const { trip } = item
     return (
       <Wrapper style={styles.row} onPress={onPress}>
-        <IconBadge source="car" backgroundColor={brandColors.darkGreen} />
+        <IconBadge source="car" backgroundColor={brandColors.deep} />
         <View style={styles.rowText}>
           <Text variant="bodyMedium">
             {trip.start_location ?? 'Unknown'} → {trip.end_location ?? 'Unknown'}
@@ -38,7 +38,7 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
   const { inspection } = item
   return (
     <Wrapper style={styles.row} onPress={onPress}>
-      <IconBadge source="clipboard-check-outline" backgroundColor={brandColors.green} />
+      <IconBadge source="clipboard-check-outline" backgroundColor={brandColors.emerald} />
       <View style={styles.rowText}>
         <Text variant="bodyMedium">
           {INSPECTION_TYPE_LABELS[inspection.inspection_type] ?? inspection.inspection_type}

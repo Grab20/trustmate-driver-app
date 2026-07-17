@@ -218,7 +218,7 @@ export default function RentalScreen() {
         mode="outlined"
         onPress={() => router.push('/rental/report-incident')}
         style={styles.reportButton}
-        textColor={brandColors.errorRed}
+        textColor={brandColors.alert}
       >
         Report Incident
       </Button>
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   goodStandingCard: {
-    borderColor: brandColors.green,
+    borderColor: brandColors.emerald,
     borderWidth: 1,
   },
   ownerRow: {
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   healthTitle: {
-    color: brandColors.darkGreen,
+    color: brandColors.deep,
     marginBottom: 12,
   },
   checklist: {
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   },
   paymentAmount: {
     marginTop: 4,
-    color: brandColors.darkGreen,
+    color: brandColors.deep,
   },
   streak: {
     marginTop: 8,
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   reportButton: {
     marginTop: 8,
     marginBottom: 24,
-    borderColor: brandColors.errorRed,
+    borderColor: brandColors.alert,
   },
   emptyContainer: {
     flex: 1,

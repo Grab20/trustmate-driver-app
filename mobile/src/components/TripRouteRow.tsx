@@ -64,13 +64,13 @@ export function TripRouteRow({
         </Text>
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <IconBadge source="map-marker-distance" size={11} backgroundColor={brandColors.green} />
+            <IconBadge source="map-marker-distance" size={11} backgroundColor={brandColors.emerald} />
             <Text variant="bodySmall" style={styles.statText}>
               {distanceKm.toFixed(1)} km
             </Text>
           </View>
           <View style={styles.statItem}>
-            <IconBadge source="timer-outline" size={11} backgroundColor={brandColors.darkGreen} />
+            <IconBadge source="timer-outline" size={11} backgroundColor={brandColors.deep} />
             <Text variant="bodySmall" style={styles.statText}>
               {formatDurationShort(durationSeconds)}
             </Text>
@@ -122,13 +122,13 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.deep,
   },
   numberBadge: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.deep,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,

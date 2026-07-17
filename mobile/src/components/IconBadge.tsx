@@ -9,7 +9,7 @@ type IconBadgeProps = {
   backgroundColor?: string
 }
 
-export function IconBadge({ source, size = 18, color = '#fff', backgroundColor = brandColors.green }: IconBadgeProps) {
+export function IconBadge({ source, size = 18, color = '#fff', backgroundColor = brandColors.emerald }: IconBadgeProps) {
   const badgeSize = Math.round(size * 1.9)
 
   return (

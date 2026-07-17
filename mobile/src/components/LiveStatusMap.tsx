@@ -52,7 +52,7 @@ export function LiveStatusMap({ liveStatus, addressLabel, height = 300, photoUrl
       <View style={styles.overlay}>
         <IconBadge
           source={isMoving ? 'navigation' : 'map-marker'}
-          backgroundColor={isMoving ? brandColors.green : brandColors.darkGreen}
+          backgroundColor={isMoving ? brandColors.emerald : brandColors.teal}
         />
         <View style={styles.overlayText}>
           <Text variant="bodyMedium" style={styles.overlayLocation} numberOfLines={1}>
@@ -82,14 +82,14 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     borderWidth: 3,
-    borderColor: brandColors.darkGreen,
+    borderColor: brandColors.teal,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   avatarRingMoving: {
-    borderColor: brandColors.green,
+    borderColor: brandColors.emerald,
   },
   avatarImage: {
     width: '100%',
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 26,
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.teal,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -121,10 +121,10 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   statusBadgeMoving: {
-    backgroundColor: brandColors.green,
+    backgroundColor: brandColors.emerald,
   },
   statusBadgeParked: {
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.teal,
   },
   overlay: {
     position: 'absolute',

@@ -21,7 +21,7 @@ export function AIAnalysisSummary({
   if (!aiAnalyzedAt) {
     return (
       <View style={styles.pendingBanner}>
-        <ActivityIndicator size={16} color={brandColors.green} />
+        <ActivityIndicator size={16} color={brandColors.emerald} />
         <Text variant="bodySmall" style={styles.pendingText}>
           AI review in progress…
         </Text>
@@ -52,7 +52,7 @@ export function AIAnalysisSummary({
         <IconBadge
           source={hasFlags ? 'alert-circle' : 'check-circle'}
           size={14}
-          backgroundColor={hasFlags ? '#B5651D' : brandColors.green}
+          backgroundColor={hasFlags ? '#B5651D' : brandColors.emerald}
         />
         <Text variant="bodySmall" style={styles.summaryText}>
           Vehicle Health: {report.healthScore}/100 · {report.healthLabel}
@@ -68,7 +68,7 @@ export function AIAnalysisSummary({
                 source={bullet.ok ? 'check' : 'alert'}
                 size={12}
                 backgroundColor="transparent"
-                color={bullet.ok ? brandColors.green : '#B5651D'}
+                color={bullet.ok ? brandColors.emerald : '#B5651D'}
               />
               <Text variant="bodySmall" style={[styles.detailText, !bullet.ok && styles.detailAlert]}>
                 {bullet.text}

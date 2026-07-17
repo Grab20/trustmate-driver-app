@@ -7,8 +7,7 @@ import { useRecentActivity } from '../../../src/hooks/useRecentActivity'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
 import { TripRouteRow } from '../../../src/components/TripRouteRow'
 import { ActivityRow } from '../../../src/components/ActivityRow'
-import { IconBadge } from '../../../src/components/IconBadge'
-import { brandColors } from '../../../src/theme/theme'
+import { brandColors, radius, cardShadow } from '../../../src/theme/theme'
 
 function formatDrivingTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600)
@@ -26,40 +25,18 @@ export default function ActivityScreen() {
   if (isTotalsLoading || isTripsLoading || isRecentLoading) return <LoadingScreen />
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineMedium" style={styles.heading}>
-        Activity
-      </Text>
-
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <View style={styles.statsRow}>
-        <Card style={styles.statCard}>
-          <Card.Content>
-            <IconBadge source="map-marker-distance" backgroundColor={brandColors.green} />
-            <Text variant="labelMedium" style={styles.statLabel}>
-              TODAY
-            </Text>
-            <Text variant="titleLarge" style={styles.statValue}>
-              {(distanceTotals?.today ?? 0).toFixed(0)} km
-            </Text>
-            <Text variant="bodySmall" style={styles.statSub}>
-              {formatDrivingTime(distanceTotals?.durationTodaySeconds ?? 0)} driving
-            </Text>
-          </Card.Content>
-        </Card>
-        <Card style={styles.statCard}>
-          <Card.Content>
-            <IconBadge source="calendar-week" backgroundColor={brandColors.darkGreen} />
-            <Text variant="labelMedium" style={styles.statLabel}>
-              THIS WEEK
-            </Text>
-            <Text variant="titleLarge" style={styles.statValue}>
-              {(distanceTotals?.week ?? 0).toFixed(0)} km
-            </Text>
-            <Text variant="bodySmall" style={styles.statSub}>
-              {formatDrivingTime(distanceTotals?.durationWeekSeconds ?? 0)} driving
-            </Text>
-          </Card.Content>
-        </Card>
+        <View style={[styles.card, styles.statCard]}>
+          <Text style={styles.statLabel}>TODAY</Text>
+          <Text style={styles.statValue}>{(distanceTotals?.today ?? 0).toFixed(0)} km</Text>
+          <Text style={styles.statSub}>{formatDrivingTime(distanceTotals?.durationTodaySeconds ?? 0)} driving</Text>
+        </View>
+        <View style={[styles.card, styles.statCard]}>
+          <Text style={styles.statLabel}>THIS WEEK</Text>
+          <Text style={styles.statValue}>{(distanceTotals?.week ?? 0).toFixed(0)} km</Text>
+          <Text style={styles.statSub}>{formatDrivingTime(distanceTotals?.durationWeekSeconds ?? 0)} driving</Text>
+        </View>
       </View>
 
       <Text variant="labelMedium" style={styles.sectionLabel}>
@@ -114,35 +91,43 @@ export default function ActivityScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     padding: 24,
-  },
-  heading: {
-    marginBottom: 16,
   },
   statsRow: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 8,
   },
+  card: {
+    backgroundColor: brandColors.cardGreen,
+    borderRadius: radius.lg,
+    padding: 16,
+    ...cardShadow,
+  },
   statCard: {
     flex: 1,
   },
   statLabel: {
-    opacity: 0.6,
+    color: brandColors.inkOnCardSoft,
+    fontSize: 12,
     letterSpacing: 0.5,
-    marginTop: 8,
+    marginBottom: 6,
   },
   statValue: {
-    marginTop: 4,
-    color: brandColors.darkGreen,
+    color: brandColors.inkOnCard,
+    fontSize: 22,
+    fontWeight: '700',
   },
   statSub: {
-    opacity: 0.6,
-    marginTop: 2,
+    color: brandColors.inkOnCardSoft,
+    marginTop: 4,
   },
   sectionLabel: {
-    opacity: 0.6,
+    color: brandColors.charcoalSoft,
     letterSpacing: 0.5,
     marginTop: 16,
     marginBottom: 8,

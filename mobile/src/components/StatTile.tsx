@@ -13,7 +13,7 @@ type StatTileProps = {
 export function StatTile({ label, value, icon, style }: StatTileProps) {
   return (
     <View style={[styles.tile, style]}>
-      {icon && <IconBadge source={icon} size={14} backgroundColor={brandColors.green} />}
+      {icon && <IconBadge source={icon} size={14} backgroundColor={brandColors.emerald} />}
       <Text variant="labelMedium" style={[styles.label, icon && styles.labelWithIcon]}>
         {label}
       </Text>

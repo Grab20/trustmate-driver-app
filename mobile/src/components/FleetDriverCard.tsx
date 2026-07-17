@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, StyleSheet, Pressable } from 'react-native'
-import { Text, Card, Avatar, Icon } from 'react-native-paper'
+import { Text, Avatar, Icon } from 'react-native-paper'
 import type { OwnerFleetEntry } from '../hooks/useOwnerFleet'
 import { useDriverDistanceTotals } from '../hooks/useDriverDistanceTotals'
 import { useDriverInspectionsForOwner } from '../hooks/useInspections'
@@ -8,7 +8,7 @@ import { useDriverTrafficOffencesForOwner } from '../hooks/useTrafficOffences'
 import { LiveStatusMap } from './LiveStatusMap'
 import { reverseGeocodeLabel } from '../lib/reverseGeocode'
 import { formatElapsedSince, formatShortDate } from '../utils/schedule'
-import { brandColors } from '../theme/theme'
+import { brandColors, radius, cardShadow } from '../theme/theme'
 
 type InfoKey = 'location' | 'km' | 'inspection' | 'fines'
 
@@ -50,9 +50,9 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
   const unpaidFines = offences.data?.filter((o) => o.status === 'unpaid').length ?? 0
 
   return (
-    <Card style={styles.card}>
+    <View style={styles.card}>
       <Pressable onPress={onPress}>
-        <Card.Content style={styles.content}>
+        <View style={styles.content}>
           <View style={[styles.avatarRing, isMoving && styles.avatarRingMoving]}>
             {entry.driver?.photo_url ? (
               <Avatar.Image size={52} source={{ uri: entry.driver.photo_url }} />
@@ -62,30 +62,28 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
             <View style={[styles.statusDot, isMoving ? styles.statusDotMoving : styles.statusDotParked]} />
           </View>
           <View style={styles.info}>
-            <Text variant="titleMedium">{entry.driver?.full_name ?? 'Driver'}</Text>
+            <Text style={styles.name}>{entry.driver?.full_name ?? 'Driver'}</Text>
             <View style={styles.vehicleRow}>
-              <Icon source="car" size={14} color="#8A8A8A" />
-              <Text variant="bodySmall" style={styles.vehicle}>
+              <Icon source="car" size={14} color={brandColors.inkOnCardSoft} />
+              <Text style={styles.vehicle}>
                 {entry.cars ? `${entry.cars.make} ${entry.cars.model}` : 'Vehicle unavailable'}
               </Text>
             </View>
             {entry.liveStatus ? (
               <View style={styles.statusRow}>
-                <Icon source={isMoving ? 'navigation' : 'map-marker'} size={14} color={isMoving ? brandColors.green : '#8A8A8A'} />
-                <Text variant="bodySmall" style={[styles.since, isMoving && styles.sinceMoving]}>
+                <Icon source={isMoving ? 'navigation' : 'map-marker'} size={14} color={isMoving ? brandColors.gold : brandColors.inkOnCardSoft} />
+                <Text style={[styles.since, isMoving && styles.sinceMoving]}>
                   {isMoving
                     ? `Driving${entry.liveStatus.speed_kmh != null ? ` · ${Math.round(entry.liveStatus.speed_kmh)} km/h` : ''}`
                     : `Parked · here for ${formatElapsedSince(entry.liveStatus.state_since)}`}
                 </Text>
               </View>
             ) : (
-              <Text variant="bodySmall" style={styles.since}>
-                No location yet
-              </Text>
+              <Text style={styles.since}>No location yet</Text>
             )}
           </View>
-          <Icon source="chevron-right" size={22} color="#B8B8AE" />
-        </Card.Content>
+          <Icon source="chevron-right" size={22} color={brandColors.inkOnCardSoft} />
+        </View>
       </Pressable>
 
       <View style={styles.chipRow}>
@@ -97,10 +95,8 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
               onPress={() => setSelected(isSelected ? null : chip.key)}
               style={[styles.chip, isSelected && styles.chipSelected]}
             >
-              <Icon source={chip.icon} size={14} color={isSelected ? '#fff' : brandColors.darkGreen} />
-              <Text variant="labelSmall" style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}>
-                {chip.label}
-              </Text>
+              <Icon source={chip.icon} size={14} color={isSelected ? brandColors.deep : brandColors.inkOnCard} />
+              <Text style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}>{chip.label}</Text>
             </Pressable>
           )
         })}
@@ -118,47 +114,42 @@ export function FleetDriverCard({ entry, onPress }: { entry: OwnerFleetEntry; on
                 initials={entry.driver?.full_name ?? undefined}
               />
             ) : (
-              <Text variant="bodyMedium" style={styles.expandedEmpty}>
-                No location data yet.
-              </Text>
+              <Text style={styles.expandedEmpty}>No location data yet.</Text>
             ))}
           {selected === 'km' && (
             <View style={styles.expandedRow}>
-              <Text variant="headlineSmall" style={styles.expandedValue}>
-                {(distanceTotals.data?.week ?? 0).toFixed(0)} km
-              </Text>
-              <Text variant="bodySmall" style={styles.expandedLabel}>
-                driven this week
-              </Text>
+              <Text style={styles.expandedValue}>{(distanceTotals.data?.week ?? 0).toFixed(0)} km</Text>
+              <Text style={styles.expandedLabel}>driven this week</Text>
             </View>
           )}
           {selected === 'inspection' && (
             <View style={styles.expandedRow}>
-              <Text variant="titleMedium" style={styles.expandedValue}>
+              <Text style={styles.expandedValue}>
                 {lastInspection?.created_at ? formatShortDate(new Date(lastInspection.created_at)) : 'None yet'}
               </Text>
-              <Text variant="bodySmall" style={styles.expandedLabel}>
-                last inspection
-              </Text>
+              <Text style={styles.expandedLabel}>last inspection</Text>
             </View>
           )}
           {selected === 'fines' && (
             <View style={styles.expandedRow}>
-              <Text variant="titleMedium" style={[styles.expandedValue, unpaidFines > 0 && styles.expandedValueAlert]}>
+              <Text style={[styles.expandedValue, unpaidFines > 0 && styles.expandedValueAlert]}>
                 {unpaidFines === 0 ? 'No unpaid fines' : `${unpaidFines} unpaid fine${unpaidFines === 1 ? '' : 's'}`}
               </Text>
             </View>
           )}
         </View>
       )}
-    </Card>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: 12,
-    borderRadius: 16,
+    backgroundColor: brandColors.cardGreen,
+    borderRadius: radius.lg,
+    marginBottom: 16,
+    padding: 20,
+    ...cardShadow,
   },
   content: {
     flexDirection: 'row',
@@ -167,11 +158,11 @@ const styles = StyleSheet.create({
   avatarRing: {
     borderRadius: 30,
     borderWidth: 2,
-    borderColor: '#EAEAE5',
+    borderColor: 'rgba(255,255,255,0.25)',
     padding: 2,
   },
   avatarRingMoving: {
-    borderColor: brandColors.green,
+    borderColor: brandColors.gold,
   },
   statusDot: {
     position: 'absolute',
@@ -181,17 +172,22 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 7,
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: brandColors.cardGreen,
   },
   statusDotMoving: {
-    backgroundColor: brandColors.green,
+    backgroundColor: brandColors.gold,
   },
   statusDotParked: {
-    backgroundColor: '#B8B8AE',
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
   info: {
     flex: 1,
     marginLeft: 14,
+  },
+  name: {
+    color: brandColors.inkOnCard,
+    fontSize: 17,
+    fontWeight: '700',
   },
   vehicleRow: {
     flexDirection: 'row',
@@ -200,7 +196,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   vehicle: {
-    opacity: 0.7,
+    color: brandColors.inkOnCardSoft,
   },
   statusRow: {
     flexDirection: 'row',
@@ -209,18 +205,16 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   since: {
-    opacity: 0.6,
+    color: brandColors.inkOnCardSoft,
   },
   sinceMoving: {
-    color: brandColors.green,
-    opacity: 1,
+    color: brandColors.gold,
     fontWeight: '600',
   },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    marginTop: 16,
     gap: 8,
   },
   chip: {
@@ -230,41 +224,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
-    backgroundColor: '#F4F7F5',
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   chipSelected: {
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.gold,
   },
   chipLabel: {
-    color: brandColors.darkGreen,
+    color: brandColors.inkOnCard,
     fontWeight: '600',
+    fontSize: 12,
   },
   chipLabelSelected: {
-    color: '#fff',
+    color: brandColors.deep,
   },
   expandedPanel: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    marginTop: 4,
   },
   expandedRow: {
-    backgroundColor: '#F4F7F5',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
   },
   expandedValue: {
-    color: brandColors.darkGreen,
+    color: brandColors.inkOnCard,
     fontWeight: '700',
+    fontSize: 16,
   },
   expandedValueAlert: {
-    color: '#B5651D',
+    color: brandColors.gold,
   },
   expandedLabel: {
-    opacity: 0.6,
+    color: brandColors.inkOnCardSoft,
     marginTop: 2,
   },
   expandedEmpty: {
-    opacity: 0.6,
+    color: brandColors.inkOnCardSoft,
     textAlign: 'center',
     paddingVertical: 12,
   },

@@ -26,6 +26,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pillFocused: {
-    backgroundColor: `${brandColors.green}1F`,
+    backgroundColor: `${brandColors.emerald}1F`,
   },
 })

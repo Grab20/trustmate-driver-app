@@ -18,10 +18,10 @@ const TYPE_LABELS: Record<string, string> = {
 
 const STATUS_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
   pending: { label: 'Awaiting Review', icon: 'clock-outline', color: '#8A6D00' },
-  approved: { label: 'Approved', icon: 'check-circle', color: brandColors.green },
-  declined: { label: 'Declined', icon: 'close-circle', color: brandColors.errorRed },
+  approved: { label: 'Approved', icon: 'check-circle', color: brandColors.emerald },
+  declined: { label: 'Declined', icon: 'close-circle', color: brandColors.alert },
   reinspection_requested: { label: 'Re-inspection Requested', icon: 'refresh-circle', color: '#8A6D00' },
-  flagged: { label: 'Flagged', icon: 'flag', color: brandColors.errorRed },
+  flagged: { label: 'Flagged', icon: 'flag', color: brandColors.alert },
 }
 
 export function InspectionReviewCard({
@@ -141,7 +141,7 @@ export function InspectionReviewCard({
               </Button>
               <Button
                 mode="outlined"
-                textColor={brandColors.errorRed}
+                textColor={brandColors.alert}
                 onPress={() => reviewInspection.mutate({ inspectionId: inspection.id, status: 'declined', comment })}
                 loading={reviewInspection.isPending}
                 disabled={reviewInspection.isPending}
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   healthSummary: {
-    color: brandColors.darkGreen,
+    color: brandColors.deep,
   },
   pendingSummary: {
     opacity: 0.7,
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   declineButton: {
-    borderColor: brandColors.errorRed,
+    borderColor: brandColors.alert,
   },
   reviewedComment: {
     marginTop: 12,

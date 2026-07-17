@@ -98,7 +98,7 @@ export default function OwnerDriverDetailScreen() {
   const vehicleCare = careTotal > 0 ? (excellentCare / careTotal) * 100 : null
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Card style={styles.headerCard}>
         <Card.Content style={styles.headerContent}>
           {profile?.photo_url ? (
@@ -302,12 +302,15 @@ export default function OwnerDriverDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: brandColors.paper,
+  },
   container: {
     padding: 24,
     paddingBottom: 40,
   },
   headerCard: {
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.deep,
     marginBottom: 16,
   },
   headerContent: {
@@ -351,11 +354,11 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   goodStandingCard: {
-    borderColor: brandColors.green,
+    borderColor: brandColors.emerald,
     borderWidth: 1,
   },
   healthTitle: {
-    color: brandColors.darkGreen,
+    color: brandColors.deep,
     marginBottom: 12,
   },
   checklist: {
@@ -367,7 +370,7 @@ const styles = StyleSheet.create({
   },
   paymentAmount: {
     marginTop: 4,
-    color: brandColors.darkGreen,
+    color: brandColors.deep,
   },
   streak: {
     marginTop: 8,

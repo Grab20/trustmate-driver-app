@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   marker: {
     position: 'absolute',
     borderWidth: 3,
-    borderColor: brandColors.errorRed,
+    borderColor: brandColors.alert,
     borderRadius: 6,
     backgroundColor: 'rgba(199,67,58,0.15)',
   },
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   infoTitle: {
-    color: brandColors.errorRed,
+    color: brandColors.alert,
     marginBottom: 8,
   },
   infoRow: {

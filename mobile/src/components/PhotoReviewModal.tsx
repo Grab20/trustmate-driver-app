@@ -42,7 +42,7 @@ export function PhotoReviewModal({ visible, photoUri, shotKey, label, onRetake, 
           </View>
 
           <View style={styles.tipRow}>
-            <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.green} />
+            <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
             <Text variant="bodySmall" style={styles.tipText}>
               Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
               if it's cut off.
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     aspectRatio: 0.85,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: brandColors.green,
+    borderColor: brandColors.emerald,
   },
   exampleBox: {
     width: '100%',

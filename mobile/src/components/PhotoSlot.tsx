@@ -38,7 +38,7 @@ export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }
           </Animated.View>
         ) : (
           <View style={styles.placeholder}>
-            <IconButton icon="camera-plus" size={28} iconColor={brandColors.green} />
+            <IconButton icon="camera-plus" size={28} iconColor={brandColors.emerald} />
           </View>
         )}
       </Pressable>
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: brandColors.green,
+    borderColor: brandColors.emerald,
   },
   placeholder: {
     width: '100%',
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: -6,
     right: -6,
-    backgroundColor: brandColors.green,
+    backgroundColor: brandColors.emerald,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#fff',
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   labelCaptured: {
-    color: brandColors.green,
+    color: brandColors.emerald,
     fontWeight: '700',
   },
   labelRow: {
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   ownerExampleLabel: {
-    color: brandColors.green,
+    color: brandColors.emerald,
     fontWeight: '700',
     marginBottom: 8,
     textAlign: 'center',

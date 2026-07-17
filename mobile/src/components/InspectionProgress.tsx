@@ -59,10 +59,10 @@ const styles = StyleSheet.create({
   },
   count: {
     fontWeight: '700',
-    color: brandColors.darkGreen,
+    color: brandColors.deep,
   },
   countComplete: {
-    color: brandColors.green,
+    color: brandColors.emerald,
   },
   track: {
     height: 8,
@@ -73,9 +73,9 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
     borderRadius: 4,
-    backgroundColor: brandColors.darkGreen,
+    backgroundColor: brandColors.deep,
   },
   fillComplete: {
-    backgroundColor: brandColors.green,
+    backgroundColor: brandColors.emerald,
   },
 })
