@@ -1,0 +1,152 @@
+From c857cfb96a206d9608b8c2d655fdfb9b7512e6c4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 17 Jul 2026 05:14:57 +0000
+Subject: [PATCH] Autosave owner reference photos per-shot instead of batching
+ to one Save
+
+Opening the native camera repeatedly is memory-heavy, and Android can
+reclaim the app's memory while it's open, restarting the app back to its
+home screen. Since reference photos were only uploaded on a final "Save"
+press, that restart wiped out every photo taken in that session. Each
+photo now uploads immediately after capture so progress always survives.
+---
+ mobile/app/owner/driver/reference-photos.tsx | 37 ++++++++++----------
+ mobile/src/components/ReferencePhotoSlot.tsx | 23 ++++++++++--
+ 2 files changed, 38 insertions(+), 22 deletions(-)
+
+diff --git a/mobile/app/owner/driver/reference-photos.tsx b/mobile/app/owner/driver/reference-photos.tsx
+index 3c794c69..f7336a99 100644
+--- a/mobile/app/owner/driver/reference-photos.tsx
++++ b/mobile/app/owner/driver/reference-photos.tsx
+@@ -35,30 +35,33 @@ export default function ReferencePhotosScreen() {
+     return map
+   }, [existingPhotos])
+ 
++  const [uploadingKey, setUploadingKey] = useState<InspectionShotKey | null>(null)
+   const capturedCount = ALL_SHOTS.filter((key) => localUris[key] || existingByShotKey[key]).length
+   const allShotsCaptured = capturedCount === ALL_SHOTS.length
+ 
+   async function handleCapture(key: InspectionShotKey) {
++    if (!carId) return
+     const { status } = await ImagePicker.requestCameraPermissionsAsync()
+     if (status !== 'granted') {
+       Alert.alert('Permission needed', 'Camera access is required to take reference photos.')
+       return
+     }
+     const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
+-    if (!result.canceled) {
+-      setLocalUris((prev) => ({ ...prev, [key]: result.assets[0].uri }))
+-    }
+-  }
++    if (result.canceled) return
+ 
+-  async function handleSave() {
+-    if (!carId || Object.keys(localUris).length === 0) return
++    const uri = result.assets[0].uri
++    setLocalUris((prev) => ({ ...prev, [key]: uri }))
++    setUploadingKey(key)
+     try {
+-      await submitReferencePhotos.mutateAsync({ carId, photos: localUris })
+-      setLocalUris({})
+-      Alert.alert('Saved', 'Reference photos saved. The AI will compare future inspections against these.')
+-      router.back()
++      // Upload immediately rather than waiting for a final "Save" — the native
++      // camera can force Android to reclaim the app's memory while it's open,
++      // which restarts the app and would otherwise lose every shot taken
++      // before the last one that got saved.
++      await submitReferencePhotos.mutateAsync({ carId, photos: { [key]: uri } })
+     } catch (err) {
+-      Alert.alert('Save failed', err instanceof Error ? err.message : 'Unknown error')
++      Alert.alert('Upload failed', err instanceof Error ? err.message : 'Unknown error')
++    } finally {
++      setUploadingKey(null)
+     }
+   }
+ 
+@@ -84,6 +87,7 @@ export default function ReferencePhotosScreen() {
+             label={SHOT_LABELS[key]}
+             localUri={localUris[key] ?? null}
+             existingPath={existingByShotKey[key] ?? null}
++            uploading={uploadingKey === key}
+             onCapture={() => handleCapture(key)}
+           />
+         ))}
+@@ -97,19 +101,14 @@ export default function ReferencePhotosScreen() {
+             label={SHOT_LABELS[key]}
+             localUri={localUris[key] ?? null}
+             existingPath={existingByShotKey[key] ?? null}
++            uploading={uploadingKey === key}
+             onCapture={() => handleCapture(key)}
+           />
+         ))}
+       </View>
+ 
+-      <Button
+-        mode="contained"
+-        onPress={handleSave}
+-        loading={submitReferencePhotos.isPending}
+-        disabled={submitReferencePhotos.isPending || Object.keys(localUris).length === 0}
+-        style={styles.saveButton}
+-      >
+-        {allShotsCaptured ? 'Save Reference Photos' : `Save (${capturedCount}/${ALL_SHOTS.length} captured)`}
++      <Button mode="contained" onPress={() => router.back()} style={styles.saveButton}>
++        {allShotsCaptured ? 'Done' : `Done (${capturedCount}/${ALL_SHOTS.length} captured)`}
+       </Button>
+     </ScrollView>
+   )
+diff --git a/mobile/src/components/ReferencePhotoSlot.tsx b/mobile/src/components/ReferencePhotoSlot.tsx
+index 20f78f4d..7f145db3 100644
+--- a/mobile/src/components/ReferencePhotoSlot.tsx
++++ b/mobile/src/components/ReferencePhotoSlot.tsx
+@@ -1,5 +1,5 @@
+ import { View, Image, StyleSheet, Pressable } from 'react-native'
+-import { IconButton, Text } from 'react-native-paper'
++import { IconButton, Text, ActivityIndicator } from 'react-native-paper'
+ import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+ import { brandColors } from '../theme/theme'
+ 
+@@ -7,15 +7,21 @@ type ReferencePhotoSlotProps = {
+   label: string
+   localUri: string | null
+   existingPath: string | null
++  uploading?: boolean
+   onCapture: () => void
+ }
+ 
+-export function ReferencePhotoSlot({ label, localUri, existingPath, onCapture }: ReferencePhotoSlotProps) {
++export function ReferencePhotoSlot({ label, localUri, existingPath, uploading, onCapture }: ReferencePhotoSlotProps) {
+   return (
+     <View style={styles.container}>
+       {localUri ? (
+-        <Pressable onPress={onCapture}>
++        <Pressable onPress={onCapture} disabled={uploading}>
+           <Image source={{ uri: localUri }} style={styles.localPhoto} />
++          {uploading && (
++            <View style={styles.uploadingOverlay}>
++              <ActivityIndicator size="small" color="#fff" />
++            </View>
++          )}
+         </Pressable>
+       ) : existingPath ? (
+         <View style={styles.existingWrap}>
+@@ -60,6 +66,17 @@ const styles = StyleSheet.create({
+     borderWidth: 2,
+     borderColor: brandColors.green,
+   },
++  uploadingOverlay: {
++    position: 'absolute',
++    top: 0,
++    left: 0,
++    right: 0,
++    bottom: 0,
++    borderRadius: 8,
++    backgroundColor: 'rgba(0,0,0,0.4)',
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
+   existingWrap: {
+     position: 'relative',
+   },
+-- 
+2.43.0
+
