@@ -1,8 +1,29 @@
+import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { uploadInspectionPhoto } from '../lib/uploadInspectionPhoto'
 import { useAuthStore } from '../stores/authStore'
 import type { Tables } from '../types/database'
+
+// A submission's fire-and-forget analyze-inspection call can fail silently
+// (cold start, transient network error) and leave ai_analyzed_at null
+// forever, with no owner-facing signal that anything went wrong. Retrying
+// once whenever a report screen opens on an unanalyzed inspection lets it
+// self-heal instead of getting stuck showing "in progress" indefinitely.
+export function useRetryPendingAnalysis(
+  inspection: Pick<Tables<'vehicle_inspections'>, 'id' | 'ai_analyzed_at' | 'inspection_type'> | null | undefined,
+) {
+  const attemptedId = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!inspection) return
+    if (inspection.inspection_type !== 'weekly_checkin') return
+    if (inspection.ai_analyzed_at) return
+    if (attemptedId.current === inspection.id) return
+    attemptedId.current = inspection.id
+    supabase.functions.invoke('analyze-inspection', { body: { inspectionId: inspection.id } }).catch(() => {})
+  }, [inspection])
+}
 
 export function useInspectionHistory() {
   const userId = useAuthStore((s) => s.session?.user.id)

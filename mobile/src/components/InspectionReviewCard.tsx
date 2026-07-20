@@ -3,7 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native'
 import { Text, Card, Button, TextInput, Icon } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import type { Tables } from '../types/database'
-import { useReviewInspection } from '../hooks/useInspections'
+import { useReviewInspection, useRetryPendingAnalysis } from '../hooks/useInspections'
 import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
 import { AIAnalysisSummary } from './AIAnalysisSummary'
 import { IconBadge } from './IconBadge'
@@ -34,6 +34,8 @@ export function InspectionReviewCard({
   const router = useRouter()
   const reviewInspection = useReviewInspection(driverId)
   const [comment, setComment] = useState(inspection.owner_review_comment ?? '')
+
+  useRetryPendingAnalysis(inspection)
 
   const reviewStatus = inspection.owner_review_status ?? 'pending'
   const statusConfig = STATUS_CONFIG[reviewStatus] ?? STATUS_CONFIG.pending

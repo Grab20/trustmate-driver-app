@@ -6,6 +6,7 @@ import {
   useInspectionReport,
   useWeeklyInspectionsForCar,
   useReviewInspection,
+  useRetryPendingAnalysis,
 } from '../../../../src/hooks/useInspections'
 import { useCar } from '../../../../src/hooks/useCar'
 import { useCarReferencePhotos } from '../../../../src/hooks/useCarReferencePhotos'
@@ -95,6 +96,8 @@ export default function InspectionHealthReportScreen() {
   }, [weeklyInspections, inspection])
 
   const driverRecord = useMemo(() => computeDriverRecord(weeklyInspections ?? []), [weeklyInspections])
+
+  useRetryPendingAnalysis(inspection)
 
   if (isInspectionLoading || isHistoryLoading || !inspection) return <LoadingScreen />
 
