@@ -145,6 +145,7 @@ export default function NewInspectionScreen() {
         photoUri={pendingReview?.uri ?? null}
         shotKey={pendingReview?.key ?? 'front'}
         label={pendingReview ? SHOT_LABELS[pendingReview.key] : ''}
+        referencePhotoPath={pendingReview ? (referencePhotoByShotKey[pendingReview.key] ?? null) : null}
         onRetake={() => {
           const key = pendingReview?.key
           setPendingReview(null)

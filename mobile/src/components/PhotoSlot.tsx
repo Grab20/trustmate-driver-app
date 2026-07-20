@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { View, Image, StyleSheet, Pressable, Modal, Animated } from 'react-native'
-import { Text, IconButton, Button } from 'react-native-paper'
+import { Text, IconButton, Button, ActivityIndicator } from 'react-native-paper'
 import { InspectionShotGuide, INSTRUCTIONS, type InspectionShotKey } from './InspectionShotGuide'
 import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+import { useSignedPhotoUrl } from '../hooks/useSignedPhotoUrl'
 import { brandColors } from '../theme/theme'
 
 type PhotoSlotProps = {
@@ -16,6 +17,10 @@ type PhotoSlotProps = {
 export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }: PhotoSlotProps) {
   const [showGuide, setShowGuide] = useState(false)
   const scaleAnim = useRef(new Animated.Value(uri ? 1 : 0.85)).current
+  const { data: referenceUrl, isLoading: isReferenceLoading } = useSignedPhotoUrl(
+    referencePhotoPath ?? undefined,
+    'car-reference-photos',
+  )
 
   useEffect(() => {
     if (uri) {
@@ -36,6 +41,19 @@ export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }
               <IconButton icon="camera-retake" size={16} iconColor="#fff" style={styles.retakeIcon} />
             </View>
           </Animated.View>
+        ) : referenceUrl ? (
+          <View style={styles.placeholder}>
+            <Image source={{ uri: referenceUrl }} style={styles.referenceImage} />
+            <View style={styles.referenceDim} />
+            <View style={styles.refTag}>
+              <Text style={styles.refTagText}>REF</Text>
+            </View>
+            <IconButton icon="camera-plus" size={26} iconColor="#fff" style={styles.referenceCameraIcon} />
+          </View>
+        ) : isReferenceLoading ? (
+          <View style={styles.placeholder}>
+            <ActivityIndicator size="small" />
+          </View>
         ) : (
           <View style={styles.placeholder}>
             <IconButton icon="camera-plus" size={28} iconColor={brandColors.emerald} />
@@ -103,6 +121,40 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4F7F5',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  referenceImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  referenceDim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  refTag: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: brandColors.gold,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  refTagText: {
+    color: brandColors.deep,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  referenceCameraIcon: {
+    margin: 0,
   },
   checkBadge: {
     position: 'absolute',

@@ -1,6 +1,7 @@
 import { Modal, View, Image, StyleSheet } from 'react-native'
 import { Text, Button } from 'react-native-paper'
 import { InspectionShotGuide, type InspectionShotKey } from './InspectionShotGuide'
+import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
 import { IconBadge } from './IconBadge'
 import { brandColors } from '../theme/theme'
 
@@ -9,11 +10,20 @@ type PhotoReviewModalProps = {
   photoUri: string | null
   shotKey: InspectionShotKey
   label: string
+  referencePhotoPath?: string | null
   onRetake: () => void
   onConfirm: () => void
 }
 
-export function PhotoReviewModal({ visible, photoUri, shotKey, label, onRetake, onConfirm }: PhotoReviewModalProps) {
+export function PhotoReviewModal({
+  visible,
+  photoUri,
+  shotKey,
+  label,
+  referencePhotoPath,
+  onRetake,
+  onConfirm,
+}: PhotoReviewModalProps) {
   if (!photoUri) return null
 
   return (
@@ -33,11 +43,17 @@ export function PhotoReviewModal({ visible, photoUri, shotKey, label, onRetake, 
             </View>
             <View style={styles.compareColumn}>
               <Text variant="labelSmall" style={styles.compareLabel}>
-                EXAMPLE
+                {referencePhotoPath ? "OWNER'S EXAMPLE" : 'EXAMPLE'}
               </Text>
-              <View style={styles.exampleBox}>
-                <InspectionShotGuide shotKey={shotKey} compact />
-              </View>
+              {referencePhotoPath ? (
+                <View style={styles.exampleBox}>
+                  <InspectionPhotoThumbnail path={referencePhotoPath} bucket="car-reference-photos" />
+                </View>
+              ) : (
+                <View style={styles.exampleBox}>
+                  <InspectionShotGuide shotKey={shotKey} compact />
+                </View>
+              )}
             </View>
           </View>
 
