@@ -1,0 +1,2668 @@
+From b97ad18b0aae444261c08e535403237413081a75 Mon Sep 17 00:00:00 2001
+From: TrustMate Driver App <noreply@trustmate.app>
+Date: Thu, 23 Jul 2026 15:53:01 +0000
+Subject: [PATCH] Fix inspection capture-loss bug, redesign shot list, and
+ pending fixes
+
+- Photos are now uploaded immediately as each is captured (draft path) and
+  persisted to AsyncStorage, so the native camera killing the app mid
+  walkaround no longer loses already-taken shots and dumps the driver back
+  at Home.
+- Inspection shot list restructured into a full directional walkaround:
+  Front, Front Driver Side, Driver Side, Back Driver Side, Back, Back
+  Passenger Side, Passenger Side, Front Passenger Side (exterior) plus
+  Dashboard, Front Seats, Back Seats, Boot/Trunk (interior). Every shot has
+  its own illustrated diagram so drivers who can't read the labels can
+  still recognize the angle.
+- check-inspection-photo and analyze-inspection edge functions updated to
+  match the new 12-shot key list (server-side, already deployed).
+- Also includes previously-delivered but not-yet-applied fixes: real-time
+  per-photo quality/match gate during capture, reference-photo cache
+  staleness fix, trip-tracking permission-denial banner, missing expo-font
+  peer dependency.
+---
+ expofontfixbatch7.patch                       |   58 -
+ mobile/app/(app)/index.tsx                    |   45 +-
+ mobile/app/(app)/rental/inspections/new.tsx   |   69 +-
+ mobile/package-lock.json                      |    7 +-
+ mobile/package.json                           |    1 +
+ mobile/src/components/InspectionShotGuide.tsx |  112 +-
+ mobile/src/components/PhotoReviewModal.tsx    |  112 +-
+ mobile/src/components/PhotoSlot.tsx           |   28 +-
+ mobile/src/hooks/useAutoTripTracking.ts       |    8 +-
+ mobile/src/hooks/useCarReferencePhotos.ts     |    5 +
+ mobile/src/hooks/useInspectionDraft.ts        |   58 +
+ mobile/src/hooks/useInspections.ts            |   24 +-
+ mobile/src/hooks/usePhotoQualityCheck.ts      |   64 +
+ mobile/src/lib/uploadInspectionDraftPhoto.ts  |   41 +
+ mobile/src/stores/autoTripTrackingStore.ts    |   17 +
+ realtimephotocheckbatch8.patch                |  453 -------
+ trackingandphotocachefixbatch9.patch          | 1102 -----------------
+ 17 files changed, 519 insertions(+), 1685 deletions(-)
+ delete mode 100644 expofontfixbatch7.patch
+ create mode 100644 mobile/src/hooks/useInspectionDraft.ts
+ create mode 100644 mobile/src/hooks/usePhotoQualityCheck.ts
+ create mode 100644 mobile/src/lib/uploadInspectionDraftPhoto.ts
+ create mode 100644 mobile/src/stores/autoTripTrackingStore.ts
+ delete mode 100644 realtimephotocheckbatch8.patch
+ delete mode 100644 trackingandphotocachefixbatch9.patch
+
+diff --git a/expofontfixbatch7.patch b/expofontfixbatch7.patch
+deleted file mode 100644
+index 55d889c8..00000000
+--- a/expofontfixbatch7.patch
++++ /dev/null
+@@ -1,58 +0,0 @@
+-From 45c6dfe8d798adce9095aebbce2d29e0fa1920a9 Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Mon, 20 Jul 2026 20:18:39 +0000
+-Subject: [PATCH] Add missing expo-font peer dependency
+-MIME-Version: 1.0
+-Content-Type: text/plain; charset=UTF-8
+-Content-Transfer-Encoding: 8bit
+-
+-expo doctor flagged this during a local EAS build: @expo/vector-icons
+-(used throughout the app for every icon — tab bar, badges, buttons)
+-requires expo-font as a peer dependency, which was never installed. It
+-went unnoticed because Expo Go bundles its own fonts, but a standalone
+-build doesn't, and could crash or render icons incorrectly without it.
+----
+- mobile/package-lock.json | 7 ++++---
+- mobile/package.json      | 1 +
+- 2 files changed, 5 insertions(+), 3 deletions(-)
+-
+-diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+-index 111923a0..19cd9e04 100644
+---- a/mobile/package-lock.json
+-+++ b/mobile/package-lock.json
+-@@ -17,6 +17,7 @@
+-         "expo-constants": "~57.0.3",
+-         "expo-device": "~57.0.0",
+-         "expo-document-picker": "~57.0.0",
+-+        "expo-font": "~57.0.0",
+-         "expo-image-picker": "~57.0.2",
+-         "expo-linking": "~57.0.2",
+-         "expo-location": "~57.0.2",
+-@@ -3686,9 +3687,9 @@
+-       }
+-     },
+-     "node_modules/expo-font": {
+--      "version": "57.0.0",
+--      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.0.tgz",
+--      "integrity": "sha512-zF+J7WrNFjqyAADwdvDgkFEoIQv9DqcjJ57HVstNEH7/7Tx1ThPEhKraodEQOwSjMYWirP+4BYsVbdb+/Zr4QQ==",
+-+      "version": "57.0.1",
+-+      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.1.tgz",
+-+      "integrity": "sha512-QyS9L1Kh9sKJg4gfU6rdbpxpmH+DyzBX8z6jVvXMUDoqLr1GqmkO/Wu379KCXjL///kWbhpNlbi7AgBuj4VdIQ==",
+-       "license": "MIT",
+-       "dependencies": {
+-         "fontfaceobserver": "^2.1.0"
+-diff --git a/mobile/package.json b/mobile/package.json
+-index 1caa0b8a..1a56c3d0 100644
+---- a/mobile/package.json
+-+++ b/mobile/package.json
+-@@ -12,6 +12,7 @@
+-     "expo-constants": "~57.0.3",
+-     "expo-device": "~57.0.0",
+-     "expo-document-picker": "~57.0.0",
+-+    "expo-font": "~57.0.0",
+-     "expo-image-picker": "~57.0.2",
+-     "expo-linking": "~57.0.2",
+-     "expo-location": "~57.0.2",
+--- 
+-2.43.0
+-
+diff --git a/mobile/app/(app)/index.tsx b/mobile/app/(app)/index.tsx
+index 9a62ce44..269ac92b 100644
+--- a/mobile/app/(app)/index.tsx
++++ b/mobile/app/(app)/index.tsx
+@@ -1,4 +1,4 @@
+-import { View, StyleSheet, ScrollView, Pressable } from 'react-native'
++import { View, StyleSheet, ScrollView, Pressable, Linking } from 'react-native'
+ import { Text, Button } from 'react-native-paper'
+ import { useRouter } from 'expo-router'
+ import { useActiveRental } from '../../src/hooks/useActiveRental'
+@@ -8,6 +8,7 @@ import { useMyLiveStatus } from '../../src/hooks/useMyLiveStatus'
+ import { useTrustScoreTrend } from '../../src/hooks/useTrustScoreTrend'
+ import { useRecentActivity } from '../../src/hooks/useRecentActivity'
+ import { useAuthStore } from '../../src/stores/authStore'
++import { useAutoTripTrackingStore } from '../../src/stores/autoTripTrackingStore'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+ import { TrustScoreRing } from '../../src/components/TrustScoreRing'
+ import { IconBadge } from '../../src/components/IconBadge'
+@@ -46,6 +47,7 @@ export default function HomeScreen() {
+   const { data: trendPoints } = useTrustScoreTrend()
+   const { data: recentActivity } = useRecentActivity()
+   const signOut = useAuthStore((s) => s.signOut)
++  const trackingStatus = useAutoTripTrackingStore((s) => s.status)
+ 
+   if (isLoading) return <LoadingScreen />
+ 
+@@ -115,6 +117,22 @@ export default function HomeScreen() {
+         </Button>
+       )}
+ 
++      {trackingStatus === 'denied' && (
++        <View style={styles.trackingBanner}>
++          <IconBadge source="map-marker-off" backgroundColor={brandColors.alert} size={16} />
++          <View style={styles.trackingBannerText}>
++            <Text style={styles.trackingBannerTitle}>Trip tracking is off</Text>
++            <Text style={styles.trackingBannerBody}>
++              Location access isn't set to "Allow all the time", so trips and live location won't be tracked. Open
++              Settings → Location and allow it.
++            </Text>
++            <Button mode="text" compact onPress={() => Linking.openSettings()} style={styles.trackingBannerButton}>
++              Open Settings
++            </Button>
++          </View>
++        </View>
++      )}
++
+       <View style={styles.card}>
+         <View style={styles.rentalHeader}>
+           <View style={styles.rentalTitleRow}>
+@@ -270,6 +288,31 @@ const styles = StyleSheet.create({
+   switchButton: {
+     marginBottom: 16,
+   },
++  trackingBanner: {
++    flexDirection: 'row',
++    gap: 12,
++    backgroundColor: brandColors.alertSoft,
++    borderRadius: radius.lg,
++    padding: 16,
++    marginBottom: 16,
++  },
++  trackingBannerText: {
++    flex: 1,
++  },
++  trackingBannerTitle: {
++    color: brandColors.alert,
++    fontWeight: '700',
++  },
++  trackingBannerBody: {
++    color: brandColors.charcoal,
++    opacity: 0.8,
++    marginTop: 2,
++  },
++  trackingBannerButton: {
++    alignSelf: 'flex-start',
++    marginTop: 4,
++    marginLeft: -8,
++  },
+   sectionLabel: {
+     color: brandColors.charcoalSoft,
+     letterSpacing: 0.5,
+diff --git a/mobile/app/(app)/rental/inspections/new.tsx b/mobile/app/(app)/rental/inspections/new.tsx
+index 81cd5f97..50480c7d 100644
+--- a/mobile/app/(app)/rental/inspections/new.tsx
++++ b/mobile/app/(app)/rental/inspections/new.tsx
+@@ -7,6 +7,9 @@ import { useActiveRental } from '../../../../src/hooks/useActiveRental'
+ import { useVehicleOdometer } from '../../../../src/hooks/useVehicleOdometer'
+ import { useSubmitInspection } from '../../../../src/hooks/useInspections'
+ import { useCarReferencePhotos } from '../../../../src/hooks/useCarReferencePhotos'
++import { useInspectionDraft } from '../../../../src/hooks/useInspectionDraft'
++import { uploadInspectionDraftPhoto } from '../../../../src/lib/uploadInspectionDraftPhoto'
++import { useAuthStore } from '../../../../src/stores/authStore'
+ import { PhotoSlot } from '../../../../src/components/PhotoSlot'
+ import { InspectionProgress } from '../../../../src/components/InspectionProgress'
+ import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
+@@ -26,10 +29,12 @@ const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_
+ 
+ export default function NewInspectionScreen() {
+   const router = useRouter()
++  const userId = useAuthStore((s) => s.session?.user.id)
+   const { data: activeRental } = useActiveRental()
+   const { data: odometer } = useVehicleOdometer(activeRental?.car_id ?? undefined)
+   const { data: referencePhotos } = useCarReferencePhotos(activeRental?.car_id ?? undefined)
+   const submitInspection = useSubmitInspection()
++  const { draft, saveShot, clear: clearDraft } = useInspectionDraft(activeRental?.car_id ?? undefined)
+ 
+   const referencePhotoByShotKey = Object.fromEntries(
+     (referencePhotos ?? []).map((row) => [row.shot_key, row.photo_path]),
+@@ -39,12 +44,20 @@ export default function NewInspectionScreen() {
+     odometer?.current_km != null ? String(odometer.current_km) : '',
+   )
+   const [notes, setNotes] = useState('')
++  // Local-session preview only — the source of truth for what's actually
++  // captured is `draft` (uploaded immediately per shot), so a shot rehydrated
++  // from a prior crashed session still counts even with no entry here.
+   const [shots, setShots] = useState<Record<InspectionShotKey, string | null>>(
+     Object.fromEntries(ALL_SHOTS.map((key) => [key, null])) as Record<InspectionShotKey, string | null>,
+   )
+-  const [pendingReview, setPendingReview] = useState<{ key: InspectionShotKey; uri: string } | null>(null)
++  const [pendingReview, setPendingReview] = useState<{
++    key: InspectionShotKey
++    uri: string
++    base64: string | null
++    mimeType: string | null
++  } | null>(null)
+ 
+-  const capturedCount = ALL_SHOTS.filter((key) => shots[key] !== null).length
++  const capturedCount = ALL_SHOTS.filter((key) => shots[key] || draft[key]).length
+   const allShotsCaptured = capturedCount === ALL_SHOTS.length
+ 
+   async function handleCapture(key: InspectionShotKey) {
+@@ -53,22 +66,54 @@ export default function NewInspectionScreen() {
+       Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
+       return
+     }
+-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
++    const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true })
+     if (!result.canceled) {
+-      setPendingReview({ key, uri: result.assets[0].uri })
++      const asset = result.assets[0]
++      setPendingReview({ key, uri: asset.uri, base64: asset.base64 ?? null, mimeType: asset.mimeType ?? null })
++    }
++  }
++
++  async function handleConfirm() {
++    const review = pendingReview
++    setPendingReview(null)
++    if (!review || !activeRental?.car_id || !userId) return
++    // Show the photo immediately, then persist it to storage in the
++    // background — the native camera activity can cause Android to kill the
++    // app before Submit is reached, and an unsaved local file would be lost
++    // along with it, silently dumping the driver back at the app's home
++    // screen mid walkaround.
++    setShots((prev) => ({ ...prev, [review.key]: review.uri }))
++    try {
++      const path = await uploadInspectionDraftPhoto(userId, activeRental.car_id, review.key, review.uri)
++      saveShot(review.key, path)
++    } catch {
++      // Not fatal here — handleSubmit re-attempts the upload for any shot
++      // that never made it into the draft.
+     }
+   }
+ 
+   async function handleSubmit() {
+-    if (!activeRental?.car_id || !allShotsCaptured) return
++    if (!activeRental?.car_id || !userId || !allShotsCaptured) return
+     try {
++      const draftPhotoPaths: string[] = []
++      for (const key of ALL_SHOTS) {
++        let path = draft[key]
++        if (!path) {
++          const localUri = shots[key]
++          if (!localUri) throw new Error(`Missing photo for ${SHOT_LABELS[key]}`)
++          path = await uploadInspectionDraftPhoto(userId, activeRental.car_id, key, localUri)
++        }
++        draftPhotoPaths.push(path)
++      }
++
+       await submitInspection.mutateAsync({
+         carId: activeRental.car_id,
+         applicationId: activeRental.id,
+         odometerKm: odometerKm.trim() ? Number(odometerKm) : null,
+         notes,
+-        photoUris: ALL_SHOTS.map((key) => shots[key] as string),
++        draftPhotoPaths,
+       })
++      await clearDraft()
+       router.back()
+     } catch (err) {
+       Alert.alert('Submission failed', err instanceof Error ? err.message : 'Unknown error')
+@@ -110,6 +155,7 @@ export default function NewInspectionScreen() {
+             label={SHOT_LABELS[key]}
+             shotKey={key}
+             uri={shots[key]}
++            capturedPhotoPath={draft[key] ?? null}
+             onCapture={() => handleCapture(key)}
+             referencePhotoPath={referencePhotoByShotKey[key] ?? null}
+           />
+@@ -124,6 +170,7 @@ export default function NewInspectionScreen() {
+             label={SHOT_LABELS[key]}
+             shotKey={key}
+             uri={shots[key]}
++            capturedPhotoPath={draft[key] ?? null}
+             onCapture={() => handleCapture(key)}
+             referencePhotoPath={referencePhotoByShotKey[key] ?? null}
+           />
+@@ -143,20 +190,18 @@ export default function NewInspectionScreen() {
+       <PhotoReviewModal
+         visible={!!pendingReview}
+         photoUri={pendingReview?.uri ?? null}
++        photoBase64={pendingReview?.base64 ?? null}
++        photoMimeType={pendingReview?.mimeType ?? null}
+         shotKey={pendingReview?.key ?? 'front'}
+         label={pendingReview ? SHOT_LABELS[pendingReview.key] : ''}
++        carId={activeRental?.car_id ?? null}
+         referencePhotoPath={pendingReview ? (referencePhotoByShotKey[pendingReview.key] ?? null) : null}
+         onRetake={() => {
+           const key = pendingReview?.key
+           setPendingReview(null)
+           if (key) handleCapture(key)
+         }}
+-        onConfirm={() => {
+-          if (pendingReview) {
+-            setShots((prev) => ({ ...prev, [pendingReview.key]: pendingReview.uri }))
+-          }
+-          setPendingReview(null)
+-        }}
++        onConfirm={handleConfirm}
+       />
+     </ScrollView>
+   )
+diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+index 111923a0..19cd9e04 100644
+--- a/mobile/package-lock.json
++++ b/mobile/package-lock.json
+@@ -17,6 +17,7 @@
+         "expo-constants": "~57.0.3",
+         "expo-device": "~57.0.0",
+         "expo-document-picker": "~57.0.0",
++        "expo-font": "~57.0.0",
+         "expo-image-picker": "~57.0.2",
+         "expo-linking": "~57.0.2",
+         "expo-location": "~57.0.2",
+@@ -3686,9 +3687,9 @@
+       }
+     },
+     "node_modules/expo-font": {
+-      "version": "57.0.0",
+-      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.0.tgz",
+-      "integrity": "sha512-zF+J7WrNFjqyAADwdvDgkFEoIQv9DqcjJ57HVstNEH7/7Tx1ThPEhKraodEQOwSjMYWirP+4BYsVbdb+/Zr4QQ==",
++      "version": "57.0.1",
++      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.1.tgz",
++      "integrity": "sha512-QyS9L1Kh9sKJg4gfU6rdbpxpmH+DyzBX8z6jVvXMUDoqLr1GqmkO/Wu379KCXjL///kWbhpNlbi7AgBuj4VdIQ==",
+       "license": "MIT",
+       "dependencies": {
+         "fontfaceobserver": "^2.1.0"
+diff --git a/mobile/package.json b/mobile/package.json
+index 1caa0b8a..1a56c3d0 100644
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -12,6 +12,7 @@
+     "expo-constants": "~57.0.3",
+     "expo-device": "~57.0.0",
+     "expo-document-picker": "~57.0.0",
++    "expo-font": "~57.0.0",
+     "expo-image-picker": "~57.0.2",
+     "expo-linking": "~57.0.2",
+     "expo-location": "~57.0.2",
+diff --git a/mobile/src/components/InspectionShotGuide.tsx b/mobile/src/components/InspectionShotGuide.tsx
+index 9b7ab824..b3b26347 100644
+--- a/mobile/src/components/InspectionShotGuide.tsx
++++ b/mobile/src/components/InspectionShotGuide.tsx
+@@ -1,51 +1,64 @@
+ import { View, StyleSheet } from 'react-native'
+-import Svg, { Rect, Circle, Path, Ellipse, Line } from 'react-native-svg'
++import Svg, { Rect, Circle, Path, Ellipse, Line, G } from 'react-native-svg'
+ import { Text } from 'react-native-paper'
+ import { brandColors } from '../theme/theme'
+ 
+ export type InspectionShotKey =
+   | 'front'
+-  | 'front_corner'
+-  | 'passenger_side'
+-  | 'rear'
+-  | 'driver_corner'
++  | 'front_driver_side'
+   | 'driver_side'
++  | 'back_driver_side'
++  | 'rear'
++  | 'back_passenger_side'
++  | 'passenger_side'
++  | 'front_passenger_side'
+   | 'dashboard'
+   | 'front_seats'
++  | 'back_seats'
+   | 'boot'
+ 
++// Walkaround order: front, then clockwise around the car (driver side first,
++// front to back), ending back at the front on the passenger side.
+ export const EXTERIOR_SHOT_KEYS: InspectionShotKey[] = [
+   'front',
+-  'front_corner',
+-  'passenger_side',
+-  'rear',
+-  'driver_corner',
++  'front_driver_side',
+   'driver_side',
++  'back_driver_side',
++  'rear',
++  'back_passenger_side',
++  'passenger_side',
++  'front_passenger_side',
+ ]
+ 
+-export const INTERIOR_SHOT_KEYS: InspectionShotKey[] = ['dashboard', 'front_seats', 'boot']
++export const INTERIOR_SHOT_KEYS: InspectionShotKey[] = ['dashboard', 'front_seats', 'back_seats', 'boot']
+ 
+ export const SHOT_LABELS: Record<InspectionShotKey, string> = {
+   front: 'Front',
+-  front_corner: 'Front Corner',
+-  passenger_side: 'Passenger Side',
+-  rear: 'Rear',
+-  driver_corner: 'Driver Corner',
++  front_driver_side: 'Front Driver Side',
+   driver_side: 'Driver Side',
++  back_driver_side: 'Back Driver Side',
++  rear: 'Back',
++  back_passenger_side: 'Back Passenger Side',
++  passenger_side: 'Passenger Side',
++  front_passenger_side: 'Front Passenger Side',
+   dashboard: 'Dashboard',
+   front_seats: 'Front Seats',
++  back_seats: 'Back Seats',
+   boot: 'Boot / Trunk',
+ }
+ 
+ export const INSTRUCTIONS: Record<InspectionShotKey, string> = {
+   front: 'Stand back about 2m directly in front of the car, and include the full bumper and number plate.',
+-  front_corner: 'Stand at the front corner, angled so both the front and one side of the car are visible.',
+-  passenger_side: 'Stand to the passenger side, far enough back to fit the whole car from front to back.',
++  front_driver_side: "Stand at the front corner on the driver's side, angled so both the front and driver side are visible.",
++  driver_side: "Stand to the driver's side, far enough back to fit the whole car from front to back.",
++  back_driver_side: "Stand at the back corner on the driver's side, angled so both the back and driver side are visible.",
+   rear: 'Stand back about 2m directly behind the car, and include the full bumper and number plate.',
+-  driver_corner: 'Stand at the rear corner on the driver side, angled so both the rear and side are visible.',
+-  driver_side: 'Stand to the driver side, far enough back to fit the whole car from front to back.',
++  back_passenger_side: "Stand at the back corner on the passenger's side, angled so both the back and passenger side are visible.",
++  passenger_side: "Stand to the passenger's side, far enough back to fit the whole car from front to back.",
++  front_passenger_side: "Stand at the front corner on the passenger's side, angled so both the front and passenger side are visible.",
+   dashboard: 'Sit in the driver seat and photograph the dashboard, steering wheel, and odometer.',
+   front_seats: 'Open the driver door and photograph the front seats and floor area.',
++  back_seats: 'Open a back door and photograph the back seats and floor area.',
+   boot: 'Open the boot/trunk and photograph the inside, empty and clearly lit.',
+ }
+ 
+@@ -83,25 +96,46 @@ function SideDiagram() {
+   )
+ }
+ 
+-function CornerDiagram() {
++// A corner view shows one full side plus one end of the car. `mirror` flips it
++// left/right (driver vs passenger side); `flip` mirrors it front-to-back so the
++// "nose" (narrower, windscreen-raked end) points the other way (front vs back
++// corner) — the two flags together cover all four corners from one shape.
++function CornerDiagram({ mirror = false, flip = false }: { mirror?: boolean; flip?: boolean }) {
++  const scaleX = mirror ? -1 : 1
++  const scaleY = flip ? -1 : 1
+   return (
+     <Svg width={140} height={110} viewBox="0 0 140 110">
+       <Ellipse cx="72" cy="92" rx="55" ry="7" fill="#00000012" />
+-      <Path
+-        d="M20 80 Q18 55 42 50 L54 32 L88 30 L112 44 Q124 50 122 80 Z"
+-        fill={brandColors.mintGreen}
+-        stroke={brandColors.darkGreen}
+-        strokeWidth={2.5}
+-      />
+-      <Path d="M58 35 L50 50 L86 48 L84 33 Z" fill="#fff" opacity={0.85} />
+-      <Circle cx="46" cy="82" r={10} fill={brandColors.darkGreen} />
+-      <Circle cx="104" cy="82" r={10} fill={brandColors.darkGreen} />
+-      <Circle cx="46" cy="82" r={4} fill="#EAEAE5" />
+-      <Circle cx="104" cy="82" r={4} fill="#EAEAE5" />
++      <G transform={`translate(72,60) scale(${scaleX},${scaleY}) translate(-72,-60)`}>
++        <Path
++          d="M20 80 Q18 55 42 50 L54 32 L88 30 L112 44 Q124 50 122 80 Z"
++          fill={brandColors.mintGreen}
++          stroke={brandColors.darkGreen}
++          strokeWidth={2.5}
++        />
++        <Path d="M58 35 L50 50 L86 48 L84 33 Z" fill="#fff" opacity={0.85} />
++        <Circle cx="46" cy="82" r={10} fill={brandColors.darkGreen} />
++        <Circle cx="104" cy="82" r={10} fill={brandColors.darkGreen} />
++        <Circle cx="46" cy="82" r={4} fill="#EAEAE5" />
++        <Circle cx="104" cy="82" r={4} fill="#EAEAE5" />
++      </G>
+     </Svg>
+   )
+ }
+ 
++function FrontDriverSideDiagram() {
++  return <CornerDiagram mirror={false} flip={false} />
++}
++function BackDriverSideDiagram() {
++  return <CornerDiagram mirror={false} flip={true} />
++}
++function BackPassengerSideDiagram() {
++  return <CornerDiagram mirror={true} flip={true} />
++}
++function FrontPassengerSideDiagram() {
++  return <CornerDiagram mirror={true} flip={false} />
++}
++
+ function InteriorDiagram() {
+   return (
+     <Svg width={140} height={110} viewBox="0 0 140 110">
+@@ -113,6 +147,17 @@ function InteriorDiagram() {
+   )
+ }
+ 
++function BackSeatsDiagram() {
++  return (
++    <Svg width={140} height={110} viewBox="0 0 140 110">
++      <Rect x="18" y="16" width="104" height="78" rx="12" fill="#F4F7F5" stroke={brandColors.darkGreen} strokeWidth={2.5} />
++      <Rect x="26" y="46" width="88" height="36" rx="8" fill={brandColors.green} opacity={0.85} />
++      <Line x1="70" y1="46" x2="70" y2="82" stroke="#F4F7F5" strokeWidth={3} />
++      <Line x1="30" y1="30" x2="110" y2="30" stroke={brandColors.darkGreen} strokeWidth={1.5} opacity={0.4} />
++    </Svg>
++  )
++}
++
+ function DashboardDiagram() {
+   return (
+     <Svg width={140} height={110} viewBox="0 0 140 110">
+@@ -142,9 +187,12 @@ const DIAGRAMS: Record<InspectionShotKey, () => React.JSX.Element> = {
+   rear: FrontBackDiagram,
+   passenger_side: SideDiagram,
+   driver_side: SideDiagram,
+-  front_corner: CornerDiagram,
+-  driver_corner: CornerDiagram,
++  front_driver_side: FrontDriverSideDiagram,
++  back_driver_side: BackDriverSideDiagram,
++  back_passenger_side: BackPassengerSideDiagram,
++  front_passenger_side: FrontPassengerSideDiagram,
+   front_seats: InteriorDiagram,
++  back_seats: BackSeatsDiagram,
+   dashboard: DashboardDiagram,
+   boot: BootDiagram,
+ }
+diff --git a/mobile/src/components/PhotoReviewModal.tsx b/mobile/src/components/PhotoReviewModal.tsx
+index ca462aec..e7f30d3c 100644
+--- a/mobile/src/components/PhotoReviewModal.tsx
++++ b/mobile/src/components/PhotoReviewModal.tsx
+@@ -1,15 +1,19 @@
+ import { Modal, View, Image, StyleSheet } from 'react-native'
+-import { Text, Button } from 'react-native-paper'
++import { Text, Button, ActivityIndicator } from 'react-native-paper'
+ import { InspectionShotGuide, type InspectionShotKey } from './InspectionShotGuide'
+ import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+ import { IconBadge } from './IconBadge'
++import { usePhotoQualityCheck } from '../hooks/usePhotoQualityCheck'
+ import { brandColors } from '../theme/theme'
+ 
+ type PhotoReviewModalProps = {
+   visible: boolean
+   photoUri: string | null
++  photoBase64?: string | null
++  photoMimeType?: string | null
+   shotKey: InspectionShotKey
+   label: string
++  carId?: string | null
+   referencePhotoPath?: string | null
+   onRetake: () => void
+   onConfirm: () => void
+@@ -18,14 +22,28 @@ type PhotoReviewModalProps = {
+ export function PhotoReviewModal({
+   visible,
+   photoUri,
++  photoBase64,
++  photoMimeType,
+   shotKey,
+   label,
++  carId,
+   referencePhotoPath,
+   onRetake,
+   onConfirm,
+ }: PhotoReviewModalProps) {
++  const check = usePhotoQualityCheck({
++    base64: photoUri ? photoBase64 : null,
++    mimeType: photoMimeType,
++    shotKey,
++    carId,
++    referencePhotoPath,
++  })
++
+   if (!photoUri) return null
+ 
++  const isChecking = check.status === 'checking'
++  const isRejected = check.status === 'rejected'
++
+   return (
+     <Modal visible={visible} transparent animationType="fade" onRequestClose={onRetake}>
+       <View style={styles.overlay}>
+@@ -39,7 +57,10 @@ export function PhotoReviewModal({
+               <Text variant="labelSmall" style={styles.compareLabel}>
+                 YOUR PHOTO
+               </Text>
+-              <Image source={{ uri: photoUri }} style={styles.photo} />
++              <Image
++                source={{ uri: photoUri }}
++                style={[styles.photo, isRejected && styles.photoRejected]}
++              />
+             </View>
+             <View style={styles.compareColumn}>
+               <Text variant="labelSmall" style={styles.compareLabel}>
+@@ -57,19 +78,50 @@ export function PhotoReviewModal({
+             </View>
+           </View>
+ 
+-          <View style={styles.tipRow}>
+-            <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
+-            <Text variant="bodySmall" style={styles.tipText}>
+-              Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
+-              if it's cut off.
+-            </Text>
+-          </View>
++          {isChecking ? (
++            <View style={styles.checkingRow}>
++              <ActivityIndicator size="small" color={brandColors.emerald} />
++              <Text variant="bodySmall" style={styles.checkingText}>
++                Checking photo quality…
++              </Text>
++            </View>
++          ) : isRejected ? (
++            <View style={styles.rejectRow}>
++              <View style={styles.rejectHeader}>
++                <IconBadge source="alert-circle" size={16} backgroundColor={brandColors.alert} />
++                <Text variant="labelMedium" style={styles.rejectTitle}>
++                  Photo rejected{check.issues.length > 0 ? ` (${check.issues.length} issue${check.issues.length > 1 ? 's' : ''})` : ''}
++                </Text>
++              </View>
++              {check.issues.map((issue, index) => (
++                <Text key={index} variant="bodySmall" style={styles.rejectIssue}>
++                  • {issue}
++                </Text>
++              ))}
++              <Text variant="bodySmall" style={styles.rejectHint}>
++                Please retake this photo — hold the camera steady and make sure the whole car is in frame.
++              </Text>
++            </View>
++          ) : (
++            <View style={styles.tipRow}>
++              <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
++              <Text variant="bodySmall" style={styles.tipText}>
++                Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
++                if it's cut off.
++              </Text>
++            </View>
++          )}
+ 
+           <View style={styles.actionRow}>
+             <Button mode="outlined" onPress={onRetake} style={styles.actionButton}>
+               Retake
+             </Button>
+-            <Button mode="contained" onPress={onConfirm} style={styles.actionButton}>
++            <Button
++              mode="contained"
++              onPress={onConfirm}
++              disabled={isChecking || isRejected}
++              style={styles.actionButton}
++            >
+               Use This Photo
+             </Button>
+           </View>
+@@ -117,6 +169,9 @@ const styles = StyleSheet.create({
+     borderWidth: 2,
+     borderColor: brandColors.emerald,
+   },
++  photoRejected: {
++    borderColor: brandColors.alert,
++  },
+   exampleBox: {
+     width: '100%',
+     minHeight: 150,
+@@ -125,6 +180,43 @@ const styles = StyleSheet.create({
+     alignItems: 'center',
+     justifyContent: 'center',
+   },
++  checkingRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 10,
++    marginTop: 16,
++    backgroundColor: '#F4F7F5',
++    borderRadius: 12,
++    padding: 12,
++  },
++  checkingText: {
++    opacity: 0.8,
++  },
++  rejectRow: {
++    marginTop: 16,
++    backgroundColor: brandColors.alertSoft,
++    borderRadius: 12,
++    padding: 12,
++  },
++  rejectHeader: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 8,
++    marginBottom: 6,
++  },
++  rejectTitle: {
++    color: brandColors.alert,
++    fontWeight: '700',
++  },
++  rejectIssue: {
++    color: brandColors.alert,
++    marginLeft: 2,
++    marginBottom: 2,
++  },
++  rejectHint: {
++    marginTop: 6,
++    opacity: 0.8,
++  },
+   tipRow: {
+     flexDirection: 'row',
+     alignItems: 'flex-start',
+diff --git a/mobile/src/components/PhotoSlot.tsx b/mobile/src/components/PhotoSlot.tsx
+index a1e99f5b..ac185613 100644
+--- a/mobile/src/components/PhotoSlot.tsx
++++ b/mobile/src/components/PhotoSlot.tsx
+@@ -10,30 +10,40 @@ type PhotoSlotProps = {
+   label: string
+   shotKey: InspectionShotKey
+   uri: string | null
++  // A storage path for this shot already uploaded in a prior (possibly
++  // crashed) session, used to rehydrate the preview when there's no local
++  // `uri` for the current app session — see useInspectionDraft.
++  capturedPhotoPath?: string | null
+   onCapture: () => void
+   referencePhotoPath?: string | null
+ }
+ 
+-export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }: PhotoSlotProps) {
++export function PhotoSlot({ label, shotKey, uri, capturedPhotoPath, onCapture, referencePhotoPath }: PhotoSlotProps) {
+   const [showGuide, setShowGuide] = useState(false)
+-  const scaleAnim = useRef(new Animated.Value(uri ? 1 : 0.85)).current
++  const isCaptured = !!uri || !!capturedPhotoPath
++  const { data: capturedSignedUrl } = useSignedPhotoUrl(
++    !uri && capturedPhotoPath ? capturedPhotoPath : undefined,
++    'inspection-photos',
++  )
++  const displayUri = uri ?? capturedSignedUrl ?? null
++  const scaleAnim = useRef(new Animated.Value(isCaptured ? 1 : 0.85)).current
+   const { data: referenceUrl, isLoading: isReferenceLoading } = useSignedPhotoUrl(
+     referencePhotoPath ?? undefined,
+     'car-reference-photos',
+   )
+ 
+   useEffect(() => {
+-    if (uri) {
++    if (isCaptured) {
+       Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 5, tension: 80 }).start()
+     }
+-  }, [uri])
++  }, [isCaptured])
+ 
+   return (
+     <View style={styles.container}>
+       <Pressable onPress={onCapture}>
+-        {uri ? (
++        {displayUri ? (
+           <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+-            <Image source={{ uri }} style={styles.photo} />
++            <Image source={{ uri: displayUri }} style={styles.photo} />
+             <View style={styles.checkBadge}>
+               <IconButton icon="check-bold" size={14} iconColor="#fff" style={styles.checkIcon} />
+             </View>
+@@ -41,6 +51,10 @@ export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }
+               <IconButton icon="camera-retake" size={16} iconColor="#fff" style={styles.retakeIcon} />
+             </View>
+           </Animated.View>
++        ) : isCaptured ? (
++          <View style={styles.placeholder}>
++            <ActivityIndicator size="small" color={brandColors.emerald} />
++          </View>
+         ) : referenceUrl ? (
+           <View style={styles.placeholder}>
+             <Image source={{ uri: referenceUrl }} style={styles.referenceImage} />
+@@ -61,7 +75,7 @@ export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }
+         )}
+       </Pressable>
+       <View style={styles.labelRow}>
+-        <Text variant="labelMedium" style={[styles.label, uri && styles.labelCaptured]}>
++        <Text variant="labelMedium" style={[styles.label, isCaptured && styles.labelCaptured]}>
+           {label}
+         </Text>
+         <IconButton icon="information-outline" size={16} style={styles.infoIcon} onPress={() => setShowGuide(true)} />
+diff --git a/mobile/src/hooks/useAutoTripTracking.ts b/mobile/src/hooks/useAutoTripTracking.ts
+index 8c5ead65..3cd75011 100644
+--- a/mobile/src/hooks/useAutoTripTracking.ts
++++ b/mobile/src/hooks/useAutoTripTracking.ts
+@@ -1,16 +1,18 @@
+-import { useEffect, useState } from 'react'
++import { useEffect } from 'react'
+ import * as Location from 'expo-location'
+ import { useActiveRental } from './useActiveRental'
+ import { useAuthStore } from '../stores/authStore'
+ import { setAutoTripContext } from '../lib/autoTripStorage'
+ import { BACKGROUND_LOCATION_TASK } from '../tasks/backgroundLocationTask'
++import { useAutoTripTrackingStore, type AutoTripPermissionStatus } from '../stores/autoTripTrackingStore'
+ 
+-export type AutoTripPermissionStatus = 'unknown' | 'granted' | 'denied'
++export type { AutoTripPermissionStatus }
+ 
+ export function useAutoTripTracking(): AutoTripPermissionStatus {
+   const userId = useAuthStore((s) => s.session?.user.id)
+   const { data: activeRental } = useActiveRental()
+-  const [status, setStatus] = useState<AutoTripPermissionStatus>('unknown')
++  const status = useAutoTripTrackingStore((s) => s.status)
++  const setStatus = useAutoTripTrackingStore((s) => s.setStatus)
+ 
+   const carId = activeRental?.car_id
+   const applicationId = activeRental?.id
+diff --git a/mobile/src/hooks/useCarReferencePhotos.ts b/mobile/src/hooks/useCarReferencePhotos.ts
+index 85c7e880..dec8ba20 100644
+--- a/mobile/src/hooks/useCarReferencePhotos.ts
++++ b/mobile/src/hooks/useCarReferencePhotos.ts
+@@ -51,6 +51,11 @@ export function useSubmitReferencePhotos() {
+     },
+     onSuccess: (_data, variables) => {
+       queryClient.invalidateQueries({ queryKey: ['car-reference-photos', variables.carId] })
++      // The uploaded photo overwrites the same storage path (upsert), so the
++      // cached signed URL for that path is now pointing at stale bytes — bust
++      // it so the next render signs a fresh URL and the Image component
++      // actually re-fetches instead of showing the old cached photo.
++      queryClient.invalidateQueries({ queryKey: ['signed-photo-url', 'car-reference-photos'] })
+     },
+   })
+ }
+diff --git a/mobile/src/hooks/useInspectionDraft.ts b/mobile/src/hooks/useInspectionDraft.ts
+new file mode 100644
+index 00000000..d9732037
+--- /dev/null
++++ b/mobile/src/hooks/useInspectionDraft.ts
+@@ -0,0 +1,58 @@
++import { useCallback, useEffect, useState } from 'react'
++import AsyncStorage from '@react-native-async-storage/async-storage'
++
++function draftStorageKey(carId: string): string {
++  return `inspection-draft:${carId}`
++}
++
++// Persists {shotKey: uploadedStoragePath} to AsyncStorage as each shot is
++// captured, so if the native camera causes Android to kill the app mid
++// walkaround, reopening "New Inspection" for the same car rehydrates
++// already-captured shots instead of starting the whole 12-photo sequence
++// over from scratch.
++export function useInspectionDraft(carId: string | undefined) {
++  const [draft, setDraft] = useState<Record<string, string>>({})
++  const [isLoaded, setIsLoaded] = useState(false)
++
++  useEffect(() => {
++    let cancelled = false
++    if (!carId) {
++      setDraft({})
++      setIsLoaded(true)
++      return
++    }
++    setIsLoaded(false)
++    AsyncStorage.getItem(draftStorageKey(carId))
++      .then((raw) => {
++        if (cancelled) return
++        setDraft(raw ? (JSON.parse(raw) as Record<string, string>) : {})
++        setIsLoaded(true)
++      })
++      .catch(() => {
++        if (!cancelled) setIsLoaded(true)
++      })
++    return () => {
++      cancelled = true
++    }
++  }, [carId])
++
++  const saveShot = useCallback(
++    (shotKey: string, path: string) => {
++      if (!carId) return
++      setDraft((prev) => {
++        const next = { ...prev, [shotKey]: path }
++        AsyncStorage.setItem(draftStorageKey(carId), JSON.stringify(next)).catch(() => {})
++        return next
++      })
++    },
++    [carId],
++  )
++
++  const clear = useCallback(async () => {
++    if (!carId) return
++    setDraft({})
++    await AsyncStorage.removeItem(draftStorageKey(carId)).catch(() => {})
++  }, [carId])
++
++  return { draft, isLoaded, saveShot, clear }
++}
+diff --git a/mobile/src/hooks/useInspections.ts b/mobile/src/hooks/useInspections.ts
+index cd9e357d..b8bf8e38 100644
+--- a/mobile/src/hooks/useInspections.ts
++++ b/mobile/src/hooks/useInspections.ts
+@@ -50,7 +50,11 @@ type SubmitInspectionInput = {
+   applicationId: string
+   odometerKm: number | null
+   notes: string
+-  photoUris: string[]
++  photoUris?: string[]
++  // Already-uploaded storage paths (see uploadInspectionDraftPhoto) — used
++  // instead of photoUris when the shots were uploaded immediately as they
++  // were captured, rather than all at once here.
++  draftPhotoPaths?: string[]
+   inspectionType?: 'weekly_checkin' | 'proof_of_payment' | 'incident_report'
+ }
+ 
+@@ -78,9 +82,21 @@ export function useSubmitInspection() {
+       if (insertError) throw insertError
+ 
+       const photoPaths: string[] = []
+-      for (let i = 0; i < input.photoUris.length; i++) {
+-        const path = await uploadInspectionPhoto(driverId, inspection.id, input.photoUris[i], i)
+-        photoPaths.push(path)
++      if (input.draftPhotoPaths && input.draftPhotoPaths.length > 0) {
++        for (let i = 0; i < input.draftPhotoPaths.length; i++) {
++          const draftPath = input.draftPhotoPaths[i]
++          const extensionMatch = draftPath.match(/\.(\w+)$/)
++          const extension = extensionMatch ? extensionMatch[1] : 'jpg'
++          const finalPath = `${driverId}/${inspection.id}/${i}.${extension}`
++          const { error: copyError } = await supabase.storage.from('inspection-photos').copy(draftPath, finalPath)
++          if (copyError) throw copyError
++          photoPaths.push(finalPath)
++        }
++      } else {
++        for (let i = 0; i < (input.photoUris ?? []).length; i++) {
++          const path = await uploadInspectionPhoto(driverId, inspection.id, (input.photoUris as string[])[i], i)
++          photoPaths.push(path)
++        }
+       }
+ 
+       if (photoPaths.length > 0) {
+diff --git a/mobile/src/hooks/usePhotoQualityCheck.ts b/mobile/src/hooks/usePhotoQualityCheck.ts
+new file mode 100644
+index 00000000..53e86ee0
+--- /dev/null
++++ b/mobile/src/hooks/usePhotoQualityCheck.ts
+@@ -0,0 +1,64 @@
++import { useEffect, useState } from 'react'
++import { supabase } from '../lib/supabase'
++
++export type PhotoCheckStatus = 'idle' | 'checking' | 'passed' | 'rejected'
++
++export type PhotoCheckResult = {
++  status: PhotoCheckStatus
++  issues: string[]
++}
++
++type PhotoQualityCheckParams = {
++  base64: string | null | undefined
++  mimeType?: string | null
++  shotKey: string
++  carId: string | null | undefined
++  referencePhotoPath?: string | null
++}
++
++// Real-time per-photo gate: called once right after each shot is taken, so a
++// blurry photo or a mismatched vehicle is caught immediately instead of only
++// surfacing in the post-submission report. A broken check (network error,
++// missing config) fails open server-side, so this never gets stuck showing
++// "rejected" for a reason unrelated to the photo itself.
++export function usePhotoQualityCheck({
++  base64,
++  mimeType,
++  shotKey,
++  carId,
++  referencePhotoPath,
++}: PhotoQualityCheckParams): PhotoCheckResult {
++  const [result, setResult] = useState<PhotoCheckResult>({ status: 'idle', issues: [] })
++
++  useEffect(() => {
++    let cancelled = false
++    if (!base64 || !carId) {
++      setResult({ status: 'idle', issues: [] })
++      return
++    }
++    setResult({ status: 'checking', issues: [] })
++    supabase.functions
++      .invoke('check-inspection-photo', {
++        body: { imageBase64: base64, mimeType: mimeType ?? 'image/jpeg', shotKey, carId, referencePhotoPath },
++      })
++      .then(({ data, error }) => {
++        if (cancelled) return
++        if (error || !data) {
++          setResult({ status: 'passed', issues: [] })
++          return
++        }
++        setResult({
++          status: data.passed ? 'passed' : 'rejected',
++          issues: Array.isArray(data.issues) ? data.issues : [],
++        })
++      })
++      .catch(() => {
++        if (!cancelled) setResult({ status: 'passed', issues: [] })
++      })
++    return () => {
++      cancelled = true
++    }
++  }, [base64, carId, shotKey, referencePhotoPath, mimeType])
++
++  return result
++}
+diff --git a/mobile/src/lib/uploadInspectionDraftPhoto.ts b/mobile/src/lib/uploadInspectionDraftPhoto.ts
+new file mode 100644
+index 00000000..939cf8ae
+--- /dev/null
++++ b/mobile/src/lib/uploadInspectionDraftPhoto.ts
+@@ -0,0 +1,41 @@
++import { supabase } from './supabase'
++
++const MIME_TYPES: Record<string, string> = {
++  jpg: 'image/jpeg',
++  jpeg: 'image/jpeg',
++  png: 'image/png',
++  heic: 'image/heic',
++}
++
++// Uploaded to a stable per-driver/per-car "draft" path (not tied to an
++// inspection id, since none exists yet) so a shot survives even if the
++// native camera forces Android to kill the app before the driver reaches
++// the final Submit button. Reused across weeks via upsert; useSubmitInspection
++// copies these to their permanent per-inspection path at submit time so an
++// old inspection's photo_urls never point at a path a later week overwrites.
++export async function uploadInspectionDraftPhoto(
++  driverId: string,
++  carId: string,
++  shotKey: string,
++  localUri: string,
++): Promise<string> {
++  const extensionMatch = localUri.match(/\.(\w+)$/)
++  const extension = (extensionMatch ? extensionMatch[1] : 'jpg').toLowerCase()
++  const path = `${driverId}/draft/${carId}/${shotKey}.${extension}`
++
++  const response = await fetch(localUri)
++  const arrayBuffer = await response.arrayBuffer()
++  const headerContentType = response.headers.get('content-type')
++  const contentType =
++    headerContentType && headerContentType !== 'application/octet-stream'
++      ? headerContentType
++      : (MIME_TYPES[extension] ?? 'application/octet-stream')
++
++  const { error } = await supabase.storage.from('inspection-photos').upload(path, arrayBuffer, {
++    contentType,
++    upsert: true,
++  })
++
++  if (error) throw error
++  return path
++}
+diff --git a/mobile/src/stores/autoTripTrackingStore.ts b/mobile/src/stores/autoTripTrackingStore.ts
+new file mode 100644
+index 00000000..842807c1
+--- /dev/null
++++ b/mobile/src/stores/autoTripTrackingStore.ts
+@@ -0,0 +1,17 @@
++import { create } from 'zustand'
++
++export type AutoTripPermissionStatus = 'unknown' | 'granted' | 'denied'
++
++type AutoTripTrackingState = {
++  status: AutoTripPermissionStatus
++  setStatus: (status: AutoTripPermissionStatus) => void
++}
++
++// useAutoTripTracking's permission result is mounted once at the app-shell
++// layout, but the driver needs to see (and act on) a denial from screens
++// further down the tree — a store lets any screen read it without
++// re-invoking the permission-request side effects.
++export const useAutoTripTrackingStore = create<AutoTripTrackingState>((set) => ({
++  status: 'unknown',
++  setStatus: (status) => set({ status }),
++}))
+diff --git a/realtimephotocheckbatch8.patch b/realtimephotocheckbatch8.patch
+deleted file mode 100644
+index 8a83fabf..00000000
+--- a/realtimephotocheckbatch8.patch
++++ /dev/null
+@@ -1,453 +0,0 @@
+-From 45c6dfe8d798adce9095aebbce2d29e0fa1920a9 Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Mon, 20 Jul 2026 20:18:39 +0000
+-Subject: [PATCH 1/3] Add missing expo-font peer dependency
+-MIME-Version: 1.0
+-Content-Type: text/plain; charset=UTF-8
+-Content-Transfer-Encoding: 8bit
+-
+-expo doctor flagged this during a local EAS build: @expo/vector-icons
+-(used throughout the app for every icon — tab bar, badges, buttons)
+-requires expo-font as a peer dependency, which was never installed. It
+-went unnoticed because Expo Go bundles its own fonts, but a standalone
+-build doesn't, and could crash or render icons incorrectly without it.
+----
+- mobile/package-lock.json | 7 ++++---
+- mobile/package.json      | 1 +
+- 2 files changed, 5 insertions(+), 3 deletions(-)
+-
+-diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+-index 111923a0..19cd9e04 100644
+---- a/mobile/package-lock.json
+-+++ b/mobile/package-lock.json
+-@@ -17,6 +17,7 @@
+-         "expo-constants": "~57.0.3",
+-         "expo-device": "~57.0.0",
+-         "expo-document-picker": "~57.0.0",
+-+        "expo-font": "~57.0.0",
+-         "expo-image-picker": "~57.0.2",
+-         "expo-linking": "~57.0.2",
+-         "expo-location": "~57.0.2",
+-@@ -3686,9 +3687,9 @@
+-       }
+-     },
+-     "node_modules/expo-font": {
+--      "version": "57.0.0",
+--      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.0.tgz",
+--      "integrity": "sha512-zF+J7WrNFjqyAADwdvDgkFEoIQv9DqcjJ57HVstNEH7/7Tx1ThPEhKraodEQOwSjMYWirP+4BYsVbdb+/Zr4QQ==",
+-+      "version": "57.0.1",
+-+      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.1.tgz",
+-+      "integrity": "sha512-QyS9L1Kh9sKJg4gfU6rdbpxpmH+DyzBX8z6jVvXMUDoqLr1GqmkO/Wu379KCXjL///kWbhpNlbi7AgBuj4VdIQ==",
+-       "license": "MIT",
+-       "dependencies": {
+-         "fontfaceobserver": "^2.1.0"
+-diff --git a/mobile/package.json b/mobile/package.json
+-index 1caa0b8a..1a56c3d0 100644
+---- a/mobile/package.json
+-+++ b/mobile/package.json
+-@@ -12,6 +12,7 @@
+-     "expo-constants": "~57.0.3",
+-     "expo-device": "~57.0.0",
+-     "expo-document-picker": "~57.0.0",
+-+    "expo-font": "~57.0.0",
+-     "expo-image-picker": "~57.0.2",
+-     "expo-linking": "~57.0.2",
+-     "expo-location": "~57.0.2",
+--- 
+-2.43.0
+-
+-
+-From 4006bd8e33a054612be3862bc87f0afd0a49ef70 Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Tue, 21 Jul 2026 12:46:03 +0000
+-Subject: [PATCH 2/3] Add real-time per-photo quality/match gate during
+- inspection capture
+-
+-Adds a check-inspection-photo edge function (Gemini vision, called once
+-per shot right after capture) that rejects blurry photos or photos that
+-clearly show a different vehicle than the owner's reference, mirroring
+-the reference "scans.ai" UX. Rejections hard-block the driver until they
+-retake the shot; a broken check fails open so infra issues never
+-permanently block submission.
+----
+- mobile/app/(app)/rental/inspections/new.tsx |  15 ++-
+- mobile/src/components/PhotoReviewModal.tsx  | 112 ++++++++++++++++++--
+- mobile/src/hooks/usePhotoQualityCheck.ts    |  64 +++++++++++
+- 3 files changed, 178 insertions(+), 13 deletions(-)
+- create mode 100644 mobile/src/hooks/usePhotoQualityCheck.ts
+-
+-diff --git a/mobile/app/(app)/rental/inspections/new.tsx b/mobile/app/(app)/rental/inspections/new.tsx
+-index 81cd5f97..0320ff00 100644
+---- a/mobile/app/(app)/rental/inspections/new.tsx
+-+++ b/mobile/app/(app)/rental/inspections/new.tsx
+-@@ -42,7 +42,12 @@ export default function NewInspectionScreen() {
+-   const [shots, setShots] = useState<Record<InspectionShotKey, string | null>>(
+-     Object.fromEntries(ALL_SHOTS.map((key) => [key, null])) as Record<InspectionShotKey, string | null>,
+-   )
+--  const [pendingReview, setPendingReview] = useState<{ key: InspectionShotKey; uri: string } | null>(null)
+-+  const [pendingReview, setPendingReview] = useState<{
+-+    key: InspectionShotKey
+-+    uri: string
+-+    base64: string | null
+-+    mimeType: string | null
+-+  } | null>(null)
+- 
+-   const capturedCount = ALL_SHOTS.filter((key) => shots[key] !== null).length
+-   const allShotsCaptured = capturedCount === ALL_SHOTS.length
+-@@ -53,9 +58,10 @@ export default function NewInspectionScreen() {
+-       Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
+-       return
+-     }
+--    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
+-+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true })
+-     if (!result.canceled) {
+--      setPendingReview({ key, uri: result.assets[0].uri })
+-+      const asset = result.assets[0]
+-+      setPendingReview({ key, uri: asset.uri, base64: asset.base64 ?? null, mimeType: asset.mimeType ?? null })
+-     }
+-   }
+- 
+-@@ -143,8 +149,11 @@ export default function NewInspectionScreen() {
+-       <PhotoReviewModal
+-         visible={!!pendingReview}
+-         photoUri={pendingReview?.uri ?? null}
+-+        photoBase64={pendingReview?.base64 ?? null}
+-+        photoMimeType={pendingReview?.mimeType ?? null}
+-         shotKey={pendingReview?.key ?? 'front'}
+-         label={pendingReview ? SHOT_LABELS[pendingReview.key] : ''}
+-+        carId={activeRental?.car_id ?? null}
+-         referencePhotoPath={pendingReview ? (referencePhotoByShotKey[pendingReview.key] ?? null) : null}
+-         onRetake={() => {
+-           const key = pendingReview?.key
+-diff --git a/mobile/src/components/PhotoReviewModal.tsx b/mobile/src/components/PhotoReviewModal.tsx
+-index ca462aec..e7f30d3c 100644
+---- a/mobile/src/components/PhotoReviewModal.tsx
+-+++ b/mobile/src/components/PhotoReviewModal.tsx
+-@@ -1,15 +1,19 @@
+- import { Modal, View, Image, StyleSheet } from 'react-native'
+--import { Text, Button } from 'react-native-paper'
+-+import { Text, Button, ActivityIndicator } from 'react-native-paper'
+- import { InspectionShotGuide, type InspectionShotKey } from './InspectionShotGuide'
+- import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+- import { IconBadge } from './IconBadge'
+-+import { usePhotoQualityCheck } from '../hooks/usePhotoQualityCheck'
+- import { brandColors } from '../theme/theme'
+- 
+- type PhotoReviewModalProps = {
+-   visible: boolean
+-   photoUri: string | null
+-+  photoBase64?: string | null
+-+  photoMimeType?: string | null
+-   shotKey: InspectionShotKey
+-   label: string
+-+  carId?: string | null
+-   referencePhotoPath?: string | null
+-   onRetake: () => void
+-   onConfirm: () => void
+-@@ -18,14 +22,28 @@ type PhotoReviewModalProps = {
+- export function PhotoReviewModal({
+-   visible,
+-   photoUri,
+-+  photoBase64,
+-+  photoMimeType,
+-   shotKey,
+-   label,
+-+  carId,
+-   referencePhotoPath,
+-   onRetake,
+-   onConfirm,
+- }: PhotoReviewModalProps) {
+-+  const check = usePhotoQualityCheck({
+-+    base64: photoUri ? photoBase64 : null,
+-+    mimeType: photoMimeType,
+-+    shotKey,
+-+    carId,
+-+    referencePhotoPath,
+-+  })
+-+
+-   if (!photoUri) return null
+- 
+-+  const isChecking = check.status === 'checking'
+-+  const isRejected = check.status === 'rejected'
+-+
+-   return (
+-     <Modal visible={visible} transparent animationType="fade" onRequestClose={onRetake}>
+-       <View style={styles.overlay}>
+-@@ -39,7 +57,10 @@ export function PhotoReviewModal({
+-               <Text variant="labelSmall" style={styles.compareLabel}>
+-                 YOUR PHOTO
+-               </Text>
+--              <Image source={{ uri: photoUri }} style={styles.photo} />
+-+              <Image
+-+                source={{ uri: photoUri }}
+-+                style={[styles.photo, isRejected && styles.photoRejected]}
+-+              />
+-             </View>
+-             <View style={styles.compareColumn}>
+-               <Text variant="labelSmall" style={styles.compareLabel}>
+-@@ -57,19 +78,50 @@ export function PhotoReviewModal({
+-             </View>
+-           </View>
+- 
+--          <View style={styles.tipRow}>
+--            <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
+--            <Text variant="bodySmall" style={styles.tipText}>
+--              Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
+--              if it's cut off.
+--            </Text>
+--          </View>
+-+          {isChecking ? (
+-+            <View style={styles.checkingRow}>
+-+              <ActivityIndicator size="small" color={brandColors.emerald} />
+-+              <Text variant="bodySmall" style={styles.checkingText}>
+-+                Checking photo quality…
+-+              </Text>
+-+            </View>
+-+          ) : isRejected ? (
+-+            <View style={styles.rejectRow}>
+-+              <View style={styles.rejectHeader}>
+-+                <IconBadge source="alert-circle" size={16} backgroundColor={brandColors.alert} />
+-+                <Text variant="labelMedium" style={styles.rejectTitle}>
+-+                  Photo rejected{check.issues.length > 0 ? ` (${check.issues.length} issue${check.issues.length > 1 ? 's' : ''})` : ''}
+-+                </Text>
+-+              </View>
+-+              {check.issues.map((issue, index) => (
+-+                <Text key={index} variant="bodySmall" style={styles.rejectIssue}>
+-+                  • {issue}
+-+                </Text>
+-+              ))}
+-+              <Text variant="bodySmall" style={styles.rejectHint}>
+-+                Please retake this photo — hold the camera steady and make sure the whole car is in frame.
+-+              </Text>
+-+            </View>
+-+          ) : (
+-+            <View style={styles.tipRow}>
+-+              <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
+-+              <Text variant="bodySmall" style={styles.tipText}>
+-+                Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
+-+                if it's cut off.
+-+              </Text>
+-+            </View>
+-+          )}
+- 
+-           <View style={styles.actionRow}>
+-             <Button mode="outlined" onPress={onRetake} style={styles.actionButton}>
+-               Retake
+-             </Button>
+--            <Button mode="contained" onPress={onConfirm} style={styles.actionButton}>
+-+            <Button
+-+              mode="contained"
+-+              onPress={onConfirm}
+-+              disabled={isChecking || isRejected}
+-+              style={styles.actionButton}
+-+            >
+-               Use This Photo
+-             </Button>
+-           </View>
+-@@ -117,6 +169,9 @@ const styles = StyleSheet.create({
+-     borderWidth: 2,
+-     borderColor: brandColors.emerald,
+-   },
+-+  photoRejected: {
+-+    borderColor: brandColors.alert,
+-+  },
+-   exampleBox: {
+-     width: '100%',
+-     minHeight: 150,
+-@@ -125,6 +180,43 @@ const styles = StyleSheet.create({
+-     alignItems: 'center',
+-     justifyContent: 'center',
+-   },
+-+  checkingRow: {
+-+    flexDirection: 'row',
+-+    alignItems: 'center',
+-+    gap: 10,
+-+    marginTop: 16,
+-+    backgroundColor: '#F4F7F5',
+-+    borderRadius: 12,
+-+    padding: 12,
+-+  },
+-+  checkingText: {
+-+    opacity: 0.8,
+-+  },
+-+  rejectRow: {
+-+    marginTop: 16,
+-+    backgroundColor: brandColors.alertSoft,
+-+    borderRadius: 12,
+-+    padding: 12,
+-+  },
+-+  rejectHeader: {
+-+    flexDirection: 'row',
+-+    alignItems: 'center',
+-+    gap: 8,
+-+    marginBottom: 6,
+-+  },
+-+  rejectTitle: {
+-+    color: brandColors.alert,
+-+    fontWeight: '700',
+-+  },
+-+  rejectIssue: {
+-+    color: brandColors.alert,
+-+    marginLeft: 2,
+-+    marginBottom: 2,
+-+  },
+-+  rejectHint: {
+-+    marginTop: 6,
+-+    opacity: 0.8,
+-+  },
+-   tipRow: {
+-     flexDirection: 'row',
+-     alignItems: 'flex-start',
+-diff --git a/mobile/src/hooks/usePhotoQualityCheck.ts b/mobile/src/hooks/usePhotoQualityCheck.ts
+-new file mode 100644
+-index 00000000..53e86ee0
+---- /dev/null
+-+++ b/mobile/src/hooks/usePhotoQualityCheck.ts
+-@@ -0,0 +1,64 @@
+-+import { useEffect, useState } from 'react'
+-+import { supabase } from '../lib/supabase'
+-+
+-+export type PhotoCheckStatus = 'idle' | 'checking' | 'passed' | 'rejected'
+-+
+-+export type PhotoCheckResult = {
+-+  status: PhotoCheckStatus
+-+  issues: string[]
+-+}
+-+
+-+type PhotoQualityCheckParams = {
+-+  base64: string | null | undefined
+-+  mimeType?: string | null
+-+  shotKey: string
+-+  carId: string | null | undefined
+-+  referencePhotoPath?: string | null
+-+}
+-+
+-+// Real-time per-photo gate: called once right after each shot is taken, so a
+-+// blurry photo or a mismatched vehicle is caught immediately instead of only
+-+// surfacing in the post-submission report. A broken check (network error,
+-+// missing config) fails open server-side, so this never gets stuck showing
+-+// "rejected" for a reason unrelated to the photo itself.
+-+export function usePhotoQualityCheck({
+-+  base64,
+-+  mimeType,
+-+  shotKey,
+-+  carId,
+-+  referencePhotoPath,
+-+}: PhotoQualityCheckParams): PhotoCheckResult {
+-+  const [result, setResult] = useState<PhotoCheckResult>({ status: 'idle', issues: [] })
+-+
+-+  useEffect(() => {
+-+    let cancelled = false
+-+    if (!base64 || !carId) {
+-+      setResult({ status: 'idle', issues: [] })
+-+      return
+-+    }
+-+    setResult({ status: 'checking', issues: [] })
+-+    supabase.functions
+-+      .invoke('check-inspection-photo', {
+-+        body: { imageBase64: base64, mimeType: mimeType ?? 'image/jpeg', shotKey, carId, referencePhotoPath },
+-+      })
+-+      .then(({ data, error }) => {
+-+        if (cancelled) return
+-+        if (error || !data) {
+-+          setResult({ status: 'passed', issues: [] })
+-+          return
+-+        }
+-+        setResult({
+-+          status: data.passed ? 'passed' : 'rejected',
+-+          issues: Array.isArray(data.issues) ? data.issues : [],
+-+        })
+-+      })
+-+      .catch(() => {
+-+        if (!cancelled) setResult({ status: 'passed', issues: [] })
+-+      })
+-+    return () => {
+-+      cancelled = true
+-+    }
+-+  }, [base64, carId, shotKey, referencePhotoPath, mimeType])
+-+
+-+  return result
+-+}
+--- 
+-2.43.0
+-
+-
+-From d48c24e6908ea761f6f824f8b9269b36b49175d7 Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Tue, 21 Jul 2026 12:46:10 +0000
+-Subject: [PATCH 3/3] Remove stray patch file
+-
+-This patch was uploaded directly to GitHub without being applied; the
+-fix it contains was already committed as 45c6dfe8.
+----
+- expofontfixbatch7.patch | 58 -----------------------------------------
+- 1 file changed, 58 deletions(-)
+- delete mode 100644 expofontfixbatch7.patch
+-
+-diff --git a/expofontfixbatch7.patch b/expofontfixbatch7.patch
+-deleted file mode 100644
+-index 55d889c8..00000000
+---- a/expofontfixbatch7.patch
+-+++ /dev/null
+-@@ -1,58 +0,0 @@
+--From 45c6dfe8d798adce9095aebbce2d29e0fa1920a9 Mon Sep 17 00:00:00 2001
+--From: Claude <noreply@anthropic.com>
+--Date: Mon, 20 Jul 2026 20:18:39 +0000
+--Subject: [PATCH] Add missing expo-font peer dependency
+--MIME-Version: 1.0
+--Content-Type: text/plain; charset=UTF-8
+--Content-Transfer-Encoding: 8bit
+--
+--expo doctor flagged this during a local EAS build: @expo/vector-icons
+--(used throughout the app for every icon — tab bar, badges, buttons)
+--requires expo-font as a peer dependency, which was never installed. It
+--went unnoticed because Expo Go bundles its own fonts, but a standalone
+--build doesn't, and could crash or render icons incorrectly without it.
+-----
+-- mobile/package-lock.json | 7 ++++---
+-- mobile/package.json      | 1 +
+-- 2 files changed, 5 insertions(+), 3 deletions(-)
+--
+--diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+--index 111923a0..19cd9e04 100644
+----- a/mobile/package-lock.json
+--+++ b/mobile/package-lock.json
+--@@ -17,6 +17,7 @@
+--         "expo-constants": "~57.0.3",
+--         "expo-device": "~57.0.0",
+--         "expo-document-picker": "~57.0.0",
+--+        "expo-font": "~57.0.0",
+--         "expo-image-picker": "~57.0.2",
+--         "expo-linking": "~57.0.2",
+--         "expo-location": "~57.0.2",
+--@@ -3686,9 +3687,9 @@
+--       }
+--     },
+--     "node_modules/expo-font": {
+---      "version": "57.0.0",
+---      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.0.tgz",
+---      "integrity": "sha512-zF+J7WrNFjqyAADwdvDgkFEoIQv9DqcjJ57HVstNEH7/7Tx1ThPEhKraodEQOwSjMYWirP+4BYsVbdb+/Zr4QQ==",
+--+      "version": "57.0.1",
+--+      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.1.tgz",
+--+      "integrity": "sha512-QyS9L1Kh9sKJg4gfU6rdbpxpmH+DyzBX8z6jVvXMUDoqLr1GqmkO/Wu379KCXjL///kWbhpNlbi7AgBuj4VdIQ==",
+--       "license": "MIT",
+--       "dependencies": {
+--         "fontfaceobserver": "^2.1.0"
+--diff --git a/mobile/package.json b/mobile/package.json
+--index 1caa0b8a..1a56c3d0 100644
+----- a/mobile/package.json
+--+++ b/mobile/package.json
+--@@ -12,6 +12,7 @@
+--     "expo-constants": "~57.0.3",
+--     "expo-device": "~57.0.0",
+--     "expo-document-picker": "~57.0.0",
+--+    "expo-font": "~57.0.0",
+--     "expo-image-picker": "~57.0.2",
+--     "expo-linking": "~57.0.2",
+--     "expo-location": "~57.0.2",
+---- 
+--2.43.0
+--
+--- 
+-2.43.0
+-
+diff --git a/trackingandphotocachefixbatch9.patch b/trackingandphotocachefixbatch9.patch
+deleted file mode 100644
+index eb5f4bfe..00000000
+--- a/trackingandphotocachefixbatch9.patch
++++ /dev/null
+@@ -1,1102 +0,0 @@
+-From 45c6dfe8d798adce9095aebbce2d29e0fa1920a9 Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Mon, 20 Jul 2026 20:18:39 +0000
+-Subject: [PATCH 1/5] Add missing expo-font peer dependency
+-MIME-Version: 1.0
+-Content-Type: text/plain; charset=UTF-8
+-Content-Transfer-Encoding: 8bit
+-
+-expo doctor flagged this during a local EAS build: @expo/vector-icons
+-(used throughout the app for every icon — tab bar, badges, buttons)
+-requires expo-font as a peer dependency, which was never installed. It
+-went unnoticed because Expo Go bundles its own fonts, but a standalone
+-build doesn't, and could crash or render icons incorrectly without it.
+----
+- mobile/package-lock.json | 7 ++++---
+- mobile/package.json      | 1 +
+- 2 files changed, 5 insertions(+), 3 deletions(-)
+-
+-diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+-index 111923a0..19cd9e04 100644
+---- a/mobile/package-lock.json
+-+++ b/mobile/package-lock.json
+-@@ -17,6 +17,7 @@
+-         "expo-constants": "~57.0.3",
+-         "expo-device": "~57.0.0",
+-         "expo-document-picker": "~57.0.0",
+-+        "expo-font": "~57.0.0",
+-         "expo-image-picker": "~57.0.2",
+-         "expo-linking": "~57.0.2",
+-         "expo-location": "~57.0.2",
+-@@ -3686,9 +3687,9 @@
+-       }
+-     },
+-     "node_modules/expo-font": {
+--      "version": "57.0.0",
+--      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.0.tgz",
+--      "integrity": "sha512-zF+J7WrNFjqyAADwdvDgkFEoIQv9DqcjJ57HVstNEH7/7Tx1ThPEhKraodEQOwSjMYWirP+4BYsVbdb+/Zr4QQ==",
+-+      "version": "57.0.1",
+-+      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.1.tgz",
+-+      "integrity": "sha512-QyS9L1Kh9sKJg4gfU6rdbpxpmH+DyzBX8z6jVvXMUDoqLr1GqmkO/Wu379KCXjL///kWbhpNlbi7AgBuj4VdIQ==",
+-       "license": "MIT",
+-       "dependencies": {
+-         "fontfaceobserver": "^2.1.0"
+-diff --git a/mobile/package.json b/mobile/package.json
+-index 1caa0b8a..1a56c3d0 100644
+---- a/mobile/package.json
+-+++ b/mobile/package.json
+-@@ -12,6 +12,7 @@
+-     "expo-constants": "~57.0.3",
+-     "expo-device": "~57.0.0",
+-     "expo-document-picker": "~57.0.0",
+-+    "expo-font": "~57.0.0",
+-     "expo-image-picker": "~57.0.2",
+-     "expo-linking": "~57.0.2",
+-     "expo-location": "~57.0.2",
+--- 
+-2.43.0
+-
+-
+-From 4006bd8e33a054612be3862bc87f0afd0a49ef70 Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Tue, 21 Jul 2026 12:46:03 +0000
+-Subject: [PATCH 2/5] Add real-time per-photo quality/match gate during
+- inspection capture
+-
+-Adds a check-inspection-photo edge function (Gemini vision, called once
+-per shot right after capture) that rejects blurry photos or photos that
+-clearly show a different vehicle than the owner's reference, mirroring
+-the reference "scans.ai" UX. Rejections hard-block the driver until they
+-retake the shot; a broken check fails open so infra issues never
+-permanently block submission.
+----
+- mobile/app/(app)/rental/inspections/new.tsx |  15 ++-
+- mobile/src/components/PhotoReviewModal.tsx  | 112 ++++++++++++++++++--
+- mobile/src/hooks/usePhotoQualityCheck.ts    |  64 +++++++++++
+- 3 files changed, 178 insertions(+), 13 deletions(-)
+- create mode 100644 mobile/src/hooks/usePhotoQualityCheck.ts
+-
+-diff --git a/mobile/app/(app)/rental/inspections/new.tsx b/mobile/app/(app)/rental/inspections/new.tsx
+-index 81cd5f97..0320ff00 100644
+---- a/mobile/app/(app)/rental/inspections/new.tsx
+-+++ b/mobile/app/(app)/rental/inspections/new.tsx
+-@@ -42,7 +42,12 @@ export default function NewInspectionScreen() {
+-   const [shots, setShots] = useState<Record<InspectionShotKey, string | null>>(
+-     Object.fromEntries(ALL_SHOTS.map((key) => [key, null])) as Record<InspectionShotKey, string | null>,
+-   )
+--  const [pendingReview, setPendingReview] = useState<{ key: InspectionShotKey; uri: string } | null>(null)
+-+  const [pendingReview, setPendingReview] = useState<{
+-+    key: InspectionShotKey
+-+    uri: string
+-+    base64: string | null
+-+    mimeType: string | null
+-+  } | null>(null)
+- 
+-   const capturedCount = ALL_SHOTS.filter((key) => shots[key] !== null).length
+-   const allShotsCaptured = capturedCount === ALL_SHOTS.length
+-@@ -53,9 +58,10 @@ export default function NewInspectionScreen() {
+-       Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
+-       return
+-     }
+--    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
+-+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true })
+-     if (!result.canceled) {
+--      setPendingReview({ key, uri: result.assets[0].uri })
+-+      const asset = result.assets[0]
+-+      setPendingReview({ key, uri: asset.uri, base64: asset.base64 ?? null, mimeType: asset.mimeType ?? null })
+-     }
+-   }
+- 
+-@@ -143,8 +149,11 @@ export default function NewInspectionScreen() {
+-       <PhotoReviewModal
+-         visible={!!pendingReview}
+-         photoUri={pendingReview?.uri ?? null}
+-+        photoBase64={pendingReview?.base64 ?? null}
+-+        photoMimeType={pendingReview?.mimeType ?? null}
+-         shotKey={pendingReview?.key ?? 'front'}
+-         label={pendingReview ? SHOT_LABELS[pendingReview.key] : ''}
+-+        carId={activeRental?.car_id ?? null}
+-         referencePhotoPath={pendingReview ? (referencePhotoByShotKey[pendingReview.key] ?? null) : null}
+-         onRetake={() => {
+-           const key = pendingReview?.key
+-diff --git a/mobile/src/components/PhotoReviewModal.tsx b/mobile/src/components/PhotoReviewModal.tsx
+-index ca462aec..e7f30d3c 100644
+---- a/mobile/src/components/PhotoReviewModal.tsx
+-+++ b/mobile/src/components/PhotoReviewModal.tsx
+-@@ -1,15 +1,19 @@
+- import { Modal, View, Image, StyleSheet } from 'react-native'
+--import { Text, Button } from 'react-native-paper'
+-+import { Text, Button, ActivityIndicator } from 'react-native-paper'
+- import { InspectionShotGuide, type InspectionShotKey } from './InspectionShotGuide'
+- import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+- import { IconBadge } from './IconBadge'
+-+import { usePhotoQualityCheck } from '../hooks/usePhotoQualityCheck'
+- import { brandColors } from '../theme/theme'
+- 
+- type PhotoReviewModalProps = {
+-   visible: boolean
+-   photoUri: string | null
+-+  photoBase64?: string | null
+-+  photoMimeType?: string | null
+-   shotKey: InspectionShotKey
+-   label: string
+-+  carId?: string | null
+-   referencePhotoPath?: string | null
+-   onRetake: () => void
+-   onConfirm: () => void
+-@@ -18,14 +22,28 @@ type PhotoReviewModalProps = {
+- export function PhotoReviewModal({
+-   visible,
+-   photoUri,
+-+  photoBase64,
+-+  photoMimeType,
+-   shotKey,
+-   label,
+-+  carId,
+-   referencePhotoPath,
+-   onRetake,
+-   onConfirm,
+- }: PhotoReviewModalProps) {
+-+  const check = usePhotoQualityCheck({
+-+    base64: photoUri ? photoBase64 : null,
+-+    mimeType: photoMimeType,
+-+    shotKey,
+-+    carId,
+-+    referencePhotoPath,
+-+  })
+-+
+-   if (!photoUri) return null
+- 
+-+  const isChecking = check.status === 'checking'
+-+  const isRejected = check.status === 'rejected'
+-+
+-   return (
+-     <Modal visible={visible} transparent animationType="fade" onRequestClose={onRetake}>
+-       <View style={styles.overlay}>
+-@@ -39,7 +57,10 @@ export function PhotoReviewModal({
+-               <Text variant="labelSmall" style={styles.compareLabel}>
+-                 YOUR PHOTO
+-               </Text>
+--              <Image source={{ uri: photoUri }} style={styles.photo} />
+-+              <Image
+-+                source={{ uri: photoUri }}
+-+                style={[styles.photo, isRejected && styles.photoRejected]}
+-+              />
+-             </View>
+-             <View style={styles.compareColumn}>
+-               <Text variant="labelSmall" style={styles.compareLabel}>
+-@@ -57,19 +78,50 @@ export function PhotoReviewModal({
+-             </View>
+-           </View>
+- 
+--          <View style={styles.tipRow}>
+--            <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
+--            <Text variant="bodySmall" style={styles.tipText}>
+--              Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
+--              if it's cut off.
+--            </Text>
+--          </View>
+-+          {isChecking ? (
+-+            <View style={styles.checkingRow}>
+-+              <ActivityIndicator size="small" color={brandColors.emerald} />
+-+              <Text variant="bodySmall" style={styles.checkingText}>
+-+                Checking photo quality…
+-+              </Text>
+-+            </View>
+-+          ) : isRejected ? (
+-+            <View style={styles.rejectRow}>
+-+              <View style={styles.rejectHeader}>
+-+                <IconBadge source="alert-circle" size={16} backgroundColor={brandColors.alert} />
+-+                <Text variant="labelMedium" style={styles.rejectTitle}>
+-+                  Photo rejected{check.issues.length > 0 ? ` (${check.issues.length} issue${check.issues.length > 1 ? 's' : ''})` : ''}
+-+                </Text>
+-+              </View>
+-+              {check.issues.map((issue, index) => (
+-+                <Text key={index} variant="bodySmall" style={styles.rejectIssue}>
+-+                  • {issue}
+-+                </Text>
+-+              ))}
+-+              <Text variant="bodySmall" style={styles.rejectHint}>
+-+                Please retake this photo — hold the camera steady and make sure the whole car is in frame.
+-+              </Text>
+-+            </View>
+-+          ) : (
+-+            <View style={styles.tipRow}>
+-+              <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
+-+              <Text variant="bodySmall" style={styles.tipText}>
+-+                Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
+-+                if it's cut off.
+-+              </Text>
+-+            </View>
+-+          )}
+- 
+-           <View style={styles.actionRow}>
+-             <Button mode="outlined" onPress={onRetake} style={styles.actionButton}>
+-               Retake
+-             </Button>
+--            <Button mode="contained" onPress={onConfirm} style={styles.actionButton}>
+-+            <Button
+-+              mode="contained"
+-+              onPress={onConfirm}
+-+              disabled={isChecking || isRejected}
+-+              style={styles.actionButton}
+-+            >
+-               Use This Photo
+-             </Button>
+-           </View>
+-@@ -117,6 +169,9 @@ const styles = StyleSheet.create({
+-     borderWidth: 2,
+-     borderColor: brandColors.emerald,
+-   },
+-+  photoRejected: {
+-+    borderColor: brandColors.alert,
+-+  },
+-   exampleBox: {
+-     width: '100%',
+-     minHeight: 150,
+-@@ -125,6 +180,43 @@ const styles = StyleSheet.create({
+-     alignItems: 'center',
+-     justifyContent: 'center',
+-   },
+-+  checkingRow: {
+-+    flexDirection: 'row',
+-+    alignItems: 'center',
+-+    gap: 10,
+-+    marginTop: 16,
+-+    backgroundColor: '#F4F7F5',
+-+    borderRadius: 12,
+-+    padding: 12,
+-+  },
+-+  checkingText: {
+-+    opacity: 0.8,
+-+  },
+-+  rejectRow: {
+-+    marginTop: 16,
+-+    backgroundColor: brandColors.alertSoft,
+-+    borderRadius: 12,
+-+    padding: 12,
+-+  },
+-+  rejectHeader: {
+-+    flexDirection: 'row',
+-+    alignItems: 'center',
+-+    gap: 8,
+-+    marginBottom: 6,
+-+  },
+-+  rejectTitle: {
+-+    color: brandColors.alert,
+-+    fontWeight: '700',
+-+  },
+-+  rejectIssue: {
+-+    color: brandColors.alert,
+-+    marginLeft: 2,
+-+    marginBottom: 2,
+-+  },
+-+  rejectHint: {
+-+    marginTop: 6,
+-+    opacity: 0.8,
+-+  },
+-   tipRow: {
+-     flexDirection: 'row',
+-     alignItems: 'flex-start',
+-diff --git a/mobile/src/hooks/usePhotoQualityCheck.ts b/mobile/src/hooks/usePhotoQualityCheck.ts
+-new file mode 100644
+-index 00000000..53e86ee0
+---- /dev/null
+-+++ b/mobile/src/hooks/usePhotoQualityCheck.ts
+-@@ -0,0 +1,64 @@
+-+import { useEffect, useState } from 'react'
+-+import { supabase } from '../lib/supabase'
+-+
+-+export type PhotoCheckStatus = 'idle' | 'checking' | 'passed' | 'rejected'
+-+
+-+export type PhotoCheckResult = {
+-+  status: PhotoCheckStatus
+-+  issues: string[]
+-+}
+-+
+-+type PhotoQualityCheckParams = {
+-+  base64: string | null | undefined
+-+  mimeType?: string | null
+-+  shotKey: string
+-+  carId: string | null | undefined
+-+  referencePhotoPath?: string | null
+-+}
+-+
+-+// Real-time per-photo gate: called once right after each shot is taken, so a
+-+// blurry photo or a mismatched vehicle is caught immediately instead of only
+-+// surfacing in the post-submission report. A broken check (network error,
+-+// missing config) fails open server-side, so this never gets stuck showing
+-+// "rejected" for a reason unrelated to the photo itself.
+-+export function usePhotoQualityCheck({
+-+  base64,
+-+  mimeType,
+-+  shotKey,
+-+  carId,
+-+  referencePhotoPath,
+-+}: PhotoQualityCheckParams): PhotoCheckResult {
+-+  const [result, setResult] = useState<PhotoCheckResult>({ status: 'idle', issues: [] })
+-+
+-+  useEffect(() => {
+-+    let cancelled = false
+-+    if (!base64 || !carId) {
+-+      setResult({ status: 'idle', issues: [] })
+-+      return
+-+    }
+-+    setResult({ status: 'checking', issues: [] })
+-+    supabase.functions
+-+      .invoke('check-inspection-photo', {
+-+        body: { imageBase64: base64, mimeType: mimeType ?? 'image/jpeg', shotKey, carId, referencePhotoPath },
+-+      })
+-+      .then(({ data, error }) => {
+-+        if (cancelled) return
+-+        if (error || !data) {
+-+          setResult({ status: 'passed', issues: [] })
+-+          return
+-+        }
+-+        setResult({
+-+          status: data.passed ? 'passed' : 'rejected',
+-+          issues: Array.isArray(data.issues) ? data.issues : [],
+-+        })
+-+      })
+-+      .catch(() => {
+-+        if (!cancelled) setResult({ status: 'passed', issues: [] })
+-+      })
+-+    return () => {
+-+      cancelled = true
+-+    }
+-+  }, [base64, carId, shotKey, referencePhotoPath, mimeType])
+-+
+-+  return result
+-+}
+--- 
+-2.43.0
+-
+-
+-From d48c24e6908ea761f6f824f8b9269b36b49175d7 Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Tue, 21 Jul 2026 12:46:10 +0000
+-Subject: [PATCH 3/5] Remove stray patch file
+-
+-This patch was uploaded directly to GitHub without being applied; the
+-fix it contains was already committed as 45c6dfe8.
+----
+- expofontfixbatch7.patch | 58 -----------------------------------------
+- 1 file changed, 58 deletions(-)
+- delete mode 100644 expofontfixbatch7.patch
+-
+-diff --git a/expofontfixbatch7.patch b/expofontfixbatch7.patch
+-deleted file mode 100644
+-index 55d889c8..00000000
+---- a/expofontfixbatch7.patch
+-+++ /dev/null
+-@@ -1,58 +0,0 @@
+--From 45c6dfe8d798adce9095aebbce2d29e0fa1920a9 Mon Sep 17 00:00:00 2001
+--From: Claude <noreply@anthropic.com>
+--Date: Mon, 20 Jul 2026 20:18:39 +0000
+--Subject: [PATCH] Add missing expo-font peer dependency
+--MIME-Version: 1.0
+--Content-Type: text/plain; charset=UTF-8
+--Content-Transfer-Encoding: 8bit
+--
+--expo doctor flagged this during a local EAS build: @expo/vector-icons
+--(used throughout the app for every icon — tab bar, badges, buttons)
+--requires expo-font as a peer dependency, which was never installed. It
+--went unnoticed because Expo Go bundles its own fonts, but a standalone
+--build doesn't, and could crash or render icons incorrectly without it.
+-----
+-- mobile/package-lock.json | 7 ++++---
+-- mobile/package.json      | 1 +
+-- 2 files changed, 5 insertions(+), 3 deletions(-)
+--
+--diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+--index 111923a0..19cd9e04 100644
+----- a/mobile/package-lock.json
+--+++ b/mobile/package-lock.json
+--@@ -17,6 +17,7 @@
+--         "expo-constants": "~57.0.3",
+--         "expo-device": "~57.0.0",
+--         "expo-document-picker": "~57.0.0",
+--+        "expo-font": "~57.0.0",
+--         "expo-image-picker": "~57.0.2",
+--         "expo-linking": "~57.0.2",
+--         "expo-location": "~57.0.2",
+--@@ -3686,9 +3687,9 @@
+--       }
+--     },
+--     "node_modules/expo-font": {
+---      "version": "57.0.0",
+---      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.0.tgz",
+---      "integrity": "sha512-zF+J7WrNFjqyAADwdvDgkFEoIQv9DqcjJ57HVstNEH7/7Tx1ThPEhKraodEQOwSjMYWirP+4BYsVbdb+/Zr4QQ==",
+--+      "version": "57.0.1",
+--+      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.1.tgz",
+--+      "integrity": "sha512-QyS9L1Kh9sKJg4gfU6rdbpxpmH+DyzBX8z6jVvXMUDoqLr1GqmkO/Wu379KCXjL///kWbhpNlbi7AgBuj4VdIQ==",
+--       "license": "MIT",
+--       "dependencies": {
+--         "fontfaceobserver": "^2.1.0"
+--diff --git a/mobile/package.json b/mobile/package.json
+--index 1caa0b8a..1a56c3d0 100644
+----- a/mobile/package.json
+--+++ b/mobile/package.json
+--@@ -12,6 +12,7 @@
+--     "expo-constants": "~57.0.3",
+--     "expo-device": "~57.0.0",
+--     "expo-document-picker": "~57.0.0",
+--+    "expo-font": "~57.0.0",
+--     "expo-image-picker": "~57.0.2",
+--     "expo-linking": "~57.0.2",
+--     "expo-location": "~57.0.2",
+---- 
+--2.43.0
+--
+--- 
+-2.43.0
+-
+-
+-From 125036bf38049ce1a145b424975edc75fb97c126 Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Wed, 22 Jul 2026 05:08:50 +0000
+-Subject: [PATCH 4/5] Fix reference-photo cache staleness and surface
+- trip-tracking permission denial
+-
+-Reference photos: re-uploading overwrote the same storage path, but the
+-signed-URL query cache was keyed by that same unchanged path, so the app
+-kept showing the old photo indefinitely. Bust that cache on upload.
+-
+-Trip tracking: useAutoTripTracking's permission result was discarded, so
+-a denied background-location permission (common on Android 11+, which
+-requires a separate "Allow all the time" step) silently disabled both
+-trip auto-start and live-location reporting with zero indication why.
+-Surface it as an actionable banner on the driver Home screen.
+----
+- mobile/app/(app)/index.tsx                 | 45 +++++++++++++++++++++-
+- mobile/src/hooks/useAutoTripTracking.ts    |  8 ++--
+- mobile/src/hooks/useCarReferencePhotos.ts  |  5 +++
+- mobile/src/stores/autoTripTrackingStore.ts | 17 ++++++++
+- 4 files changed, 71 insertions(+), 4 deletions(-)
+- create mode 100644 mobile/src/stores/autoTripTrackingStore.ts
+-
+-diff --git a/mobile/app/(app)/index.tsx b/mobile/app/(app)/index.tsx
+-index 9a62ce44..269ac92b 100644
+---- a/mobile/app/(app)/index.tsx
+-+++ b/mobile/app/(app)/index.tsx
+-@@ -1,4 +1,4 @@
+--import { View, StyleSheet, ScrollView, Pressable } from 'react-native'
+-+import { View, StyleSheet, ScrollView, Pressable, Linking } from 'react-native'
+- import { Text, Button } from 'react-native-paper'
+- import { useRouter } from 'expo-router'
+- import { useActiveRental } from '../../src/hooks/useActiveRental'
+-@@ -8,6 +8,7 @@ import { useMyLiveStatus } from '../../src/hooks/useMyLiveStatus'
+- import { useTrustScoreTrend } from '../../src/hooks/useTrustScoreTrend'
+- import { useRecentActivity } from '../../src/hooks/useRecentActivity'
+- import { useAuthStore } from '../../src/stores/authStore'
+-+import { useAutoTripTrackingStore } from '../../src/stores/autoTripTrackingStore'
+- import { LoadingScreen } from '../../src/components/LoadingScreen'
+- import { TrustScoreRing } from '../../src/components/TrustScoreRing'
+- import { IconBadge } from '../../src/components/IconBadge'
+-@@ -46,6 +47,7 @@ export default function HomeScreen() {
+-   const { data: trendPoints } = useTrustScoreTrend()
+-   const { data: recentActivity } = useRecentActivity()
+-   const signOut = useAuthStore((s) => s.signOut)
+-+  const trackingStatus = useAutoTripTrackingStore((s) => s.status)
+- 
+-   if (isLoading) return <LoadingScreen />
+- 
+-@@ -115,6 +117,22 @@ export default function HomeScreen() {
+-         </Button>
+-       )}
+- 
+-+      {trackingStatus === 'denied' && (
+-+        <View style={styles.trackingBanner}>
+-+          <IconBadge source="map-marker-off" backgroundColor={brandColors.alert} size={16} />
+-+          <View style={styles.trackingBannerText}>
+-+            <Text style={styles.trackingBannerTitle}>Trip tracking is off</Text>
+-+            <Text style={styles.trackingBannerBody}>
+-+              Location access isn't set to "Allow all the time", so trips and live location won't be tracked. Open
+-+              Settings → Location and allow it.
+-+            </Text>
+-+            <Button mode="text" compact onPress={() => Linking.openSettings()} style={styles.trackingBannerButton}>
+-+              Open Settings
+-+            </Button>
+-+          </View>
+-+        </View>
+-+      )}
+-+
+-       <View style={styles.card}>
+-         <View style={styles.rentalHeader}>
+-           <View style={styles.rentalTitleRow}>
+-@@ -270,6 +288,31 @@ const styles = StyleSheet.create({
+-   switchButton: {
+-     marginBottom: 16,
+-   },
+-+  trackingBanner: {
+-+    flexDirection: 'row',
+-+    gap: 12,
+-+    backgroundColor: brandColors.alertSoft,
+-+    borderRadius: radius.lg,
+-+    padding: 16,
+-+    marginBottom: 16,
+-+  },
+-+  trackingBannerText: {
+-+    flex: 1,
+-+  },
+-+  trackingBannerTitle: {
+-+    color: brandColors.alert,
+-+    fontWeight: '700',
+-+  },
+-+  trackingBannerBody: {
+-+    color: brandColors.charcoal,
+-+    opacity: 0.8,
+-+    marginTop: 2,
+-+  },
+-+  trackingBannerButton: {
+-+    alignSelf: 'flex-start',
+-+    marginTop: 4,
+-+    marginLeft: -8,
+-+  },
+-   sectionLabel: {
+-     color: brandColors.charcoalSoft,
+-     letterSpacing: 0.5,
+-diff --git a/mobile/src/hooks/useAutoTripTracking.ts b/mobile/src/hooks/useAutoTripTracking.ts
+-index 8c5ead65..3cd75011 100644
+---- a/mobile/src/hooks/useAutoTripTracking.ts
+-+++ b/mobile/src/hooks/useAutoTripTracking.ts
+-@@ -1,16 +1,18 @@
+--import { useEffect, useState } from 'react'
+-+import { useEffect } from 'react'
+- import * as Location from 'expo-location'
+- import { useActiveRental } from './useActiveRental'
+- import { useAuthStore } from '../stores/authStore'
+- import { setAutoTripContext } from '../lib/autoTripStorage'
+- import { BACKGROUND_LOCATION_TASK } from '../tasks/backgroundLocationTask'
+-+import { useAutoTripTrackingStore, type AutoTripPermissionStatus } from '../stores/autoTripTrackingStore'
+- 
+--export type AutoTripPermissionStatus = 'unknown' | 'granted' | 'denied'
+-+export type { AutoTripPermissionStatus }
+- 
+- export function useAutoTripTracking(): AutoTripPermissionStatus {
+-   const userId = useAuthStore((s) => s.session?.user.id)
+-   const { data: activeRental } = useActiveRental()
+--  const [status, setStatus] = useState<AutoTripPermissionStatus>('unknown')
+-+  const status = useAutoTripTrackingStore((s) => s.status)
+-+  const setStatus = useAutoTripTrackingStore((s) => s.setStatus)
+- 
+-   const carId = activeRental?.car_id
+-   const applicationId = activeRental?.id
+-diff --git a/mobile/src/hooks/useCarReferencePhotos.ts b/mobile/src/hooks/useCarReferencePhotos.ts
+-index 85c7e880..dec8ba20 100644
+---- a/mobile/src/hooks/useCarReferencePhotos.ts
+-+++ b/mobile/src/hooks/useCarReferencePhotos.ts
+-@@ -51,6 +51,11 @@ export function useSubmitReferencePhotos() {
+-     },
+-     onSuccess: (_data, variables) => {
+-       queryClient.invalidateQueries({ queryKey: ['car-reference-photos', variables.carId] })
+-+      // The uploaded photo overwrites the same storage path (upsert), so the
+-+      // cached signed URL for that path is now pointing at stale bytes — bust
+-+      // it so the next render signs a fresh URL and the Image component
+-+      // actually re-fetches instead of showing the old cached photo.
+-+      queryClient.invalidateQueries({ queryKey: ['signed-photo-url', 'car-reference-photos'] })
+-     },
+-   })
+- }
+-diff --git a/mobile/src/stores/autoTripTrackingStore.ts b/mobile/src/stores/autoTripTrackingStore.ts
+-new file mode 100644
+-index 00000000..842807c1
+---- /dev/null
+-+++ b/mobile/src/stores/autoTripTrackingStore.ts
+-@@ -0,0 +1,17 @@
+-+import { create } from 'zustand'
+-+
+-+export type AutoTripPermissionStatus = 'unknown' | 'granted' | 'denied'
+-+
+-+type AutoTripTrackingState = {
+-+  status: AutoTripPermissionStatus
+-+  setStatus: (status: AutoTripPermissionStatus) => void
+-+}
+-+
+-+// useAutoTripTracking's permission result is mounted once at the app-shell
+-+// layout, but the driver needs to see (and act on) a denial from screens
+-+// further down the tree — a store lets any screen read it without
+-+// re-invoking the permission-request side effects.
+-+export const useAutoTripTrackingStore = create<AutoTripTrackingState>((set) => ({
+-+  status: 'unknown',
+-+  setStatus: (status) => set({ status }),
+-+}))
+--- 
+-2.43.0
+-
+-
+-From 7755045aa34d7db5d41cbd2bd864c0bed520855e Mon Sep 17 00:00:00 2001
+-From: Claude <noreply@anthropic.com>
+-Date: Wed, 22 Jul 2026 05:09:00 +0000
+-Subject: [PATCH 5/5] Remove stray patch file
+-
+-This patch was uploaded directly to GitHub without being applied; the
+-real-time photo-check feature it contains still needs to be applied via
+-git am, same as noted previously.
+----
+- realtimephotocheckbatch8.patch | 453 ---------------------------------
+- 1 file changed, 453 deletions(-)
+- delete mode 100644 realtimephotocheckbatch8.patch
+-
+-diff --git a/realtimephotocheckbatch8.patch b/realtimephotocheckbatch8.patch
+-deleted file mode 100644
+-index 8a83fabf..00000000
+---- a/realtimephotocheckbatch8.patch
+-+++ /dev/null
+-@@ -1,453 +0,0 @@
+--From 45c6dfe8d798adce9095aebbce2d29e0fa1920a9 Mon Sep 17 00:00:00 2001
+--From: Claude <noreply@anthropic.com>
+--Date: Mon, 20 Jul 2026 20:18:39 +0000
+--Subject: [PATCH 1/3] Add missing expo-font peer dependency
+--MIME-Version: 1.0
+--Content-Type: text/plain; charset=UTF-8
+--Content-Transfer-Encoding: 8bit
+--
+--expo doctor flagged this during a local EAS build: @expo/vector-icons
+--(used throughout the app for every icon — tab bar, badges, buttons)
+--requires expo-font as a peer dependency, which was never installed. It
+--went unnoticed because Expo Go bundles its own fonts, but a standalone
+--build doesn't, and could crash or render icons incorrectly without it.
+-----
+-- mobile/package-lock.json | 7 ++++---
+-- mobile/package.json      | 1 +
+-- 2 files changed, 5 insertions(+), 3 deletions(-)
+--
+--diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+--index 111923a0..19cd9e04 100644
+----- a/mobile/package-lock.json
+--+++ b/mobile/package-lock.json
+--@@ -17,6 +17,7 @@
+--         "expo-constants": "~57.0.3",
+--         "expo-device": "~57.0.0",
+--         "expo-document-picker": "~57.0.0",
+--+        "expo-font": "~57.0.0",
+--         "expo-image-picker": "~57.0.2",
+--         "expo-linking": "~57.0.2",
+--         "expo-location": "~57.0.2",
+--@@ -3686,9 +3687,9 @@
+--       }
+--     },
+--     "node_modules/expo-font": {
+---      "version": "57.0.0",
+---      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.0.tgz",
+---      "integrity": "sha512-zF+J7WrNFjqyAADwdvDgkFEoIQv9DqcjJ57HVstNEH7/7Tx1ThPEhKraodEQOwSjMYWirP+4BYsVbdb+/Zr4QQ==",
+--+      "version": "57.0.1",
+--+      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.1.tgz",
+--+      "integrity": "sha512-QyS9L1Kh9sKJg4gfU6rdbpxpmH+DyzBX8z6jVvXMUDoqLr1GqmkO/Wu379KCXjL///kWbhpNlbi7AgBuj4VdIQ==",
+--       "license": "MIT",
+--       "dependencies": {
+--         "fontfaceobserver": "^2.1.0"
+--diff --git a/mobile/package.json b/mobile/package.json
+--index 1caa0b8a..1a56c3d0 100644
+----- a/mobile/package.json
+--+++ b/mobile/package.json
+--@@ -12,6 +12,7 @@
+--     "expo-constants": "~57.0.3",
+--     "expo-device": "~57.0.0",
+--     "expo-document-picker": "~57.0.0",
+--+    "expo-font": "~57.0.0",
+--     "expo-image-picker": "~57.0.2",
+--     "expo-linking": "~57.0.2",
+--     "expo-location": "~57.0.2",
+---- 
+--2.43.0
+--
+--
+--From 4006bd8e33a054612be3862bc87f0afd0a49ef70 Mon Sep 17 00:00:00 2001
+--From: Claude <noreply@anthropic.com>
+--Date: Tue, 21 Jul 2026 12:46:03 +0000
+--Subject: [PATCH 2/3] Add real-time per-photo quality/match gate during
+-- inspection capture
+--
+--Adds a check-inspection-photo edge function (Gemini vision, called once
+--per shot right after capture) that rejects blurry photos or photos that
+--clearly show a different vehicle than the owner's reference, mirroring
+--the reference "scans.ai" UX. Rejections hard-block the driver until they
+--retake the shot; a broken check fails open so infra issues never
+--permanently block submission.
+-----
+-- mobile/app/(app)/rental/inspections/new.tsx |  15 ++-
+-- mobile/src/components/PhotoReviewModal.tsx  | 112 ++++++++++++++++++--
+-- mobile/src/hooks/usePhotoQualityCheck.ts    |  64 +++++++++++
+-- 3 files changed, 178 insertions(+), 13 deletions(-)
+-- create mode 100644 mobile/src/hooks/usePhotoQualityCheck.ts
+--
+--diff --git a/mobile/app/(app)/rental/inspections/new.tsx b/mobile/app/(app)/rental/inspections/new.tsx
+--index 81cd5f97..0320ff00 100644
+----- a/mobile/app/(app)/rental/inspections/new.tsx
+--+++ b/mobile/app/(app)/rental/inspections/new.tsx
+--@@ -42,7 +42,12 @@ export default function NewInspectionScreen() {
+--   const [shots, setShots] = useState<Record<InspectionShotKey, string | null>>(
+--     Object.fromEntries(ALL_SHOTS.map((key) => [key, null])) as Record<InspectionShotKey, string | null>,
+--   )
+---  const [pendingReview, setPendingReview] = useState<{ key: InspectionShotKey; uri: string } | null>(null)
+--+  const [pendingReview, setPendingReview] = useState<{
+--+    key: InspectionShotKey
+--+    uri: string
+--+    base64: string | null
+--+    mimeType: string | null
+--+  } | null>(null)
+-- 
+--   const capturedCount = ALL_SHOTS.filter((key) => shots[key] !== null).length
+--   const allShotsCaptured = capturedCount === ALL_SHOTS.length
+--@@ -53,9 +58,10 @@ export default function NewInspectionScreen() {
+--       Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
+--       return
+--     }
+---    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
+--+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true })
+--     if (!result.canceled) {
+---      setPendingReview({ key, uri: result.assets[0].uri })
+--+      const asset = result.assets[0]
+--+      setPendingReview({ key, uri: asset.uri, base64: asset.base64 ?? null, mimeType: asset.mimeType ?? null })
+--     }
+--   }
+-- 
+--@@ -143,8 +149,11 @@ export default function NewInspectionScreen() {
+--       <PhotoReviewModal
+--         visible={!!pendingReview}
+--         photoUri={pendingReview?.uri ?? null}
+--+        photoBase64={pendingReview?.base64 ?? null}
+--+        photoMimeType={pendingReview?.mimeType ?? null}
+--         shotKey={pendingReview?.key ?? 'front'}
+--         label={pendingReview ? SHOT_LABELS[pendingReview.key] : ''}
+--+        carId={activeRental?.car_id ?? null}
+--         referencePhotoPath={pendingReview ? (referencePhotoByShotKey[pendingReview.key] ?? null) : null}
+--         onRetake={() => {
+--           const key = pendingReview?.key
+--diff --git a/mobile/src/components/PhotoReviewModal.tsx b/mobile/src/components/PhotoReviewModal.tsx
+--index ca462aec..e7f30d3c 100644
+----- a/mobile/src/components/PhotoReviewModal.tsx
+--+++ b/mobile/src/components/PhotoReviewModal.tsx
+--@@ -1,15 +1,19 @@
+-- import { Modal, View, Image, StyleSheet } from 'react-native'
+---import { Text, Button } from 'react-native-paper'
+--+import { Text, Button, ActivityIndicator } from 'react-native-paper'
+-- import { InspectionShotGuide, type InspectionShotKey } from './InspectionShotGuide'
+-- import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+-- import { IconBadge } from './IconBadge'
+--+import { usePhotoQualityCheck } from '../hooks/usePhotoQualityCheck'
+-- import { brandColors } from '../theme/theme'
+-- 
+-- type PhotoReviewModalProps = {
+--   visible: boolean
+--   photoUri: string | null
+--+  photoBase64?: string | null
+--+  photoMimeType?: string | null
+--   shotKey: InspectionShotKey
+--   label: string
+--+  carId?: string | null
+--   referencePhotoPath?: string | null
+--   onRetake: () => void
+--   onConfirm: () => void
+--@@ -18,14 +22,28 @@ type PhotoReviewModalProps = {
+-- export function PhotoReviewModal({
+--   visible,
+--   photoUri,
+--+  photoBase64,
+--+  photoMimeType,
+--   shotKey,
+--   label,
+--+  carId,
+--   referencePhotoPath,
+--   onRetake,
+--   onConfirm,
+-- }: PhotoReviewModalProps) {
+--+  const check = usePhotoQualityCheck({
+--+    base64: photoUri ? photoBase64 : null,
+--+    mimeType: photoMimeType,
+--+    shotKey,
+--+    carId,
+--+    referencePhotoPath,
+--+  })
+--+
+--   if (!photoUri) return null
+-- 
+--+  const isChecking = check.status === 'checking'
+--+  const isRejected = check.status === 'rejected'
+--+
+--   return (
+--     <Modal visible={visible} transparent animationType="fade" onRequestClose={onRetake}>
+--       <View style={styles.overlay}>
+--@@ -39,7 +57,10 @@ export function PhotoReviewModal({
+--               <Text variant="labelSmall" style={styles.compareLabel}>
+--                 YOUR PHOTO
+--               </Text>
+---              <Image source={{ uri: photoUri }} style={styles.photo} />
+--+              <Image
+--+                source={{ uri: photoUri }}
+--+                style={[styles.photo, isRejected && styles.photoRejected]}
+--+              />
+--             </View>
+--             <View style={styles.compareColumn}>
+--               <Text variant="labelSmall" style={styles.compareLabel}>
+--@@ -57,19 +78,50 @@ export function PhotoReviewModal({
+--             </View>
+--           </View>
+-- 
+---          <View style={styles.tipRow}>
+---            <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
+---            <Text variant="bodySmall" style={styles.tipText}>
+---              Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
+---              if it's cut off.
+---            </Text>
+---          </View>
+--+          {isChecking ? (
+--+            <View style={styles.checkingRow}>
+--+              <ActivityIndicator size="small" color={brandColors.emerald} />
+--+              <Text variant="bodySmall" style={styles.checkingText}>
+--+                Checking photo quality…
+--+              </Text>
+--+            </View>
+--+          ) : isRejected ? (
+--+            <View style={styles.rejectRow}>
+--+              <View style={styles.rejectHeader}>
+--+                <IconBadge source="alert-circle" size={16} backgroundColor={brandColors.alert} />
+--+                <Text variant="labelMedium" style={styles.rejectTitle}>
+--+                  Photo rejected{check.issues.length > 0 ? ` (${check.issues.length} issue${check.issues.length > 1 ? 's' : ''})` : ''}
+--+                </Text>
+--+              </View>
+--+              {check.issues.map((issue, index) => (
+--+                <Text key={index} variant="bodySmall" style={styles.rejectIssue}>
+--+                  • {issue}
+--+                </Text>
+--+              ))}
+--+              <Text variant="bodySmall" style={styles.rejectHint}>
+--+                Please retake this photo — hold the camera steady and make sure the whole car is in frame.
+--+              </Text>
+--+            </View>
+--+          ) : (
+--+            <View style={styles.tipRow}>
+--+              <IconBadge source="lightbulb-on-outline" size={14} backgroundColor={brandColors.emerald} />
+--+              <Text variant="bodySmall" style={styles.tipText}>
+--+                Make sure the whole car is in frame and well-lit. Move closer if the car looks too small, or step back
+--+                if it's cut off.
+--+              </Text>
+--+            </View>
+--+          )}
+-- 
+--           <View style={styles.actionRow}>
+--             <Button mode="outlined" onPress={onRetake} style={styles.actionButton}>
+--               Retake
+--             </Button>
+---            <Button mode="contained" onPress={onConfirm} style={styles.actionButton}>
+--+            <Button
+--+              mode="contained"
+--+              onPress={onConfirm}
+--+              disabled={isChecking || isRejected}
+--+              style={styles.actionButton}
+--+            >
+--               Use This Photo
+--             </Button>
+--           </View>
+--@@ -117,6 +169,9 @@ const styles = StyleSheet.create({
+--     borderWidth: 2,
+--     borderColor: brandColors.emerald,
+--   },
+--+  photoRejected: {
+--+    borderColor: brandColors.alert,
+--+  },
+--   exampleBox: {
+--     width: '100%',
+--     minHeight: 150,
+--@@ -125,6 +180,43 @@ const styles = StyleSheet.create({
+--     alignItems: 'center',
+--     justifyContent: 'center',
+--   },
+--+  checkingRow: {
+--+    flexDirection: 'row',
+--+    alignItems: 'center',
+--+    gap: 10,
+--+    marginTop: 16,
+--+    backgroundColor: '#F4F7F5',
+--+    borderRadius: 12,
+--+    padding: 12,
+--+  },
+--+  checkingText: {
+--+    opacity: 0.8,
+--+  },
+--+  rejectRow: {
+--+    marginTop: 16,
+--+    backgroundColor: brandColors.alertSoft,
+--+    borderRadius: 12,
+--+    padding: 12,
+--+  },
+--+  rejectHeader: {
+--+    flexDirection: 'row',
+--+    alignItems: 'center',
+--+    gap: 8,
+--+    marginBottom: 6,
+--+  },
+--+  rejectTitle: {
+--+    color: brandColors.alert,
+--+    fontWeight: '700',
+--+  },
+--+  rejectIssue: {
+--+    color: brandColors.alert,
+--+    marginLeft: 2,
+--+    marginBottom: 2,
+--+  },
+--+  rejectHint: {
+--+    marginTop: 6,
+--+    opacity: 0.8,
+--+  },
+--   tipRow: {
+--     flexDirection: 'row',
+--     alignItems: 'flex-start',
+--diff --git a/mobile/src/hooks/usePhotoQualityCheck.ts b/mobile/src/hooks/usePhotoQualityCheck.ts
+--new file mode 100644
+--index 00000000..53e86ee0
+----- /dev/null
+--+++ b/mobile/src/hooks/usePhotoQualityCheck.ts
+--@@ -0,0 +1,64 @@
+--+import { useEffect, useState } from 'react'
+--+import { supabase } from '../lib/supabase'
+--+
+--+export type PhotoCheckStatus = 'idle' | 'checking' | 'passed' | 'rejected'
+--+
+--+export type PhotoCheckResult = {
+--+  status: PhotoCheckStatus
+--+  issues: string[]
+--+}
+--+
+--+type PhotoQualityCheckParams = {
+--+  base64: string | null | undefined
+--+  mimeType?: string | null
+--+  shotKey: string
+--+  carId: string | null | undefined
+--+  referencePhotoPath?: string | null
+--+}
+--+
+--+// Real-time per-photo gate: called once right after each shot is taken, so a
+--+// blurry photo or a mismatched vehicle is caught immediately instead of only
+--+// surfacing in the post-submission report. A broken check (network error,
+--+// missing config) fails open server-side, so this never gets stuck showing
+--+// "rejected" for a reason unrelated to the photo itself.
+--+export function usePhotoQualityCheck({
+--+  base64,
+--+  mimeType,
+--+  shotKey,
+--+  carId,
+--+  referencePhotoPath,
+--+}: PhotoQualityCheckParams): PhotoCheckResult {
+--+  const [result, setResult] = useState<PhotoCheckResult>({ status: 'idle', issues: [] })
+--+
+--+  useEffect(() => {
+--+    let cancelled = false
+--+    if (!base64 || !carId) {
+--+      setResult({ status: 'idle', issues: [] })
+--+      return
+--+    }
+--+    setResult({ status: 'checking', issues: [] })
+--+    supabase.functions
+--+      .invoke('check-inspection-photo', {
+--+        body: { imageBase64: base64, mimeType: mimeType ?? 'image/jpeg', shotKey, carId, referencePhotoPath },
+--+      })
+--+      .then(({ data, error }) => {
+--+        if (cancelled) return
+--+        if (error || !data) {
+--+          setResult({ status: 'passed', issues: [] })
+--+          return
+--+        }
+--+        setResult({
+--+          status: data.passed ? 'passed' : 'rejected',
+--+          issues: Array.isArray(data.issues) ? data.issues : [],
+--+        })
+--+      })
+--+      .catch(() => {
+--+        if (!cancelled) setResult({ status: 'passed', issues: [] })
+--+      })
+--+    return () => {
+--+      cancelled = true
+--+    }
+--+  }, [base64, carId, shotKey, referencePhotoPath, mimeType])
+--+
+--+  return result
+--+}
+---- 
+--2.43.0
+--
+--
+--From d48c24e6908ea761f6f824f8b9269b36b49175d7 Mon Sep 17 00:00:00 2001
+--From: Claude <noreply@anthropic.com>
+--Date: Tue, 21 Jul 2026 12:46:10 +0000
+--Subject: [PATCH 3/3] Remove stray patch file
+--
+--This patch was uploaded directly to GitHub without being applied; the
+--fix it contains was already committed as 45c6dfe8.
+-----
+-- expofontfixbatch7.patch | 58 -----------------------------------------
+-- 1 file changed, 58 deletions(-)
+-- delete mode 100644 expofontfixbatch7.patch
+--
+--diff --git a/expofontfixbatch7.patch b/expofontfixbatch7.patch
+--deleted file mode 100644
+--index 55d889c8..00000000
+----- a/expofontfixbatch7.patch
+--+++ /dev/null
+--@@ -1,58 +0,0 @@
+---From 45c6dfe8d798adce9095aebbce2d29e0fa1920a9 Mon Sep 17 00:00:00 2001
+---From: Claude <noreply@anthropic.com>
+---Date: Mon, 20 Jul 2026 20:18:39 +0000
+---Subject: [PATCH] Add missing expo-font peer dependency
+---MIME-Version: 1.0
+---Content-Type: text/plain; charset=UTF-8
+---Content-Transfer-Encoding: 8bit
+---
+---expo doctor flagged this during a local EAS build: @expo/vector-icons
+---(used throughout the app for every icon — tab bar, badges, buttons)
+---requires expo-font as a peer dependency, which was never installed. It
+---went unnoticed because Expo Go bundles its own fonts, but a standalone
+---build doesn't, and could crash or render icons incorrectly without it.
+------
+--- mobile/package-lock.json | 7 ++++---
+--- mobile/package.json      | 1 +
+--- 2 files changed, 5 insertions(+), 3 deletions(-)
+---
+---diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+---index 111923a0..19cd9e04 100644
+------ a/mobile/package-lock.json
+---+++ b/mobile/package-lock.json
+---@@ -17,6 +17,7 @@
+---         "expo-constants": "~57.0.3",
+---         "expo-device": "~57.0.0",
+---         "expo-document-picker": "~57.0.0",
+---+        "expo-font": "~57.0.0",
+---         "expo-image-picker": "~57.0.2",
+---         "expo-linking": "~57.0.2",
+---         "expo-location": "~57.0.2",
+---@@ -3686,9 +3687,9 @@
+---       }
+---     },
+---     "node_modules/expo-font": {
+----      "version": "57.0.0",
+----      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.0.tgz",
+----      "integrity": "sha512-zF+J7WrNFjqyAADwdvDgkFEoIQv9DqcjJ57HVstNEH7/7Tx1ThPEhKraodEQOwSjMYWirP+4BYsVbdb+/Zr4QQ==",
+---+      "version": "57.0.1",
+---+      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-57.0.1.tgz",
+---+      "integrity": "sha512-QyS9L1Kh9sKJg4gfU6rdbpxpmH+DyzBX8z6jVvXMUDoqLr1GqmkO/Wu379KCXjL///kWbhpNlbi7AgBuj4VdIQ==",
+---       "license": "MIT",
+---       "dependencies": {
+---         "fontfaceobserver": "^2.1.0"
+---diff --git a/mobile/package.json b/mobile/package.json
+---index 1caa0b8a..1a56c3d0 100644
+------ a/mobile/package.json
+---+++ b/mobile/package.json
+---@@ -12,6 +12,7 @@
+---     "expo-constants": "~57.0.3",
+---     "expo-device": "~57.0.0",
+---     "expo-document-picker": "~57.0.0",
+---+    "expo-font": "~57.0.0",
+---     "expo-image-picker": "~57.0.2",
+---     "expo-linking": "~57.0.2",
+---     "expo-location": "~57.0.2",
+----- 
+---2.43.0
+---
+---- 
+--2.43.0
+--
+--- 
+-2.43.0
+-
+-- 
+2.43.0
+
