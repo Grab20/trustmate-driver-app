@@ -1,4 +1,4 @@
-import { View, StyleSheet, ScrollView, Pressable } from 'react-native'
+import { View, StyleSheet, ScrollView, Pressable, Linking } from 'react-native'
 import { Text, Button } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useActiveRental } from '../../src/hooks/useActiveRental'
@@ -8,6 +8,7 @@ import { useMyLiveStatus } from '../../src/hooks/useMyLiveStatus'
 import { useTrustScoreTrend } from '../../src/hooks/useTrustScoreTrend'
 import { useRecentActivity } from '../../src/hooks/useRecentActivity'
 import { useAuthStore } from '../../src/stores/authStore'
+import { useAutoTripTrackingStore } from '../../src/stores/autoTripTrackingStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 import { TrustScoreRing } from '../../src/components/TrustScoreRing'
 import { IconBadge } from '../../src/components/IconBadge'
@@ -46,6 +47,7 @@ export default function HomeScreen() {
   const { data: trendPoints } = useTrustScoreTrend()
   const { data: recentActivity } = useRecentActivity()
   const signOut = useAuthStore((s) => s.signOut)
+  const trackingStatus = useAutoTripTrackingStore((s) => s.status)
 
   if (isLoading) return <LoadingScreen />
 
@@ -113,6 +115,22 @@ export default function HomeScreen() {
         <Button mode="outlined" onPress={() => router.push('/owner')} style={styles.switchButton}>
           Switch to Owner View
         </Button>
+      )}
+
+      {trackingStatus === 'denied' && (
+        <View style={styles.trackingBanner}>
+          <IconBadge source="map-marker-off" backgroundColor={brandColors.alert} size={16} />
+          <View style={styles.trackingBannerText}>
+            <Text style={styles.trackingBannerTitle}>Trip tracking is off</Text>
+            <Text style={styles.trackingBannerBody}>
+              Location access isn't set to "Allow all the time", so trips and live location won't be tracked. Open
+              Settings → Location and allow it.
+            </Text>
+            <Button mode="text" compact onPress={() => Linking.openSettings()} style={styles.trackingBannerButton}>
+              Open Settings
+            </Button>
+          </View>
+        </View>
       )}
 
       <View style={styles.card}>
@@ -269,6 +287,31 @@ const styles = StyleSheet.create({
   },
   switchButton: {
     marginBottom: 16,
+  },
+  trackingBanner: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: brandColors.alertSoft,
+    borderRadius: radius.lg,
+    padding: 16,
+    marginBottom: 16,
+  },
+  trackingBannerText: {
+    flex: 1,
+  },
+  trackingBannerTitle: {
+    color: brandColors.alert,
+    fontWeight: '700',
+  },
+  trackingBannerBody: {
+    color: brandColors.charcoal,
+    opacity: 0.8,
+    marginTop: 2,
+  },
+  trackingBannerButton: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginLeft: -8,
   },
   sectionLabel: {
     color: brandColors.charcoalSoft,

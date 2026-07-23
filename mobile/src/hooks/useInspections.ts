@@ -50,7 +50,11 @@ type SubmitInspectionInput = {
   applicationId: string
   odometerKm: number | null
   notes: string
-  photoUris: string[]
+  photoUris?: string[]
+  // Already-uploaded storage paths (see uploadInspectionDraftPhoto) — used
+  // instead of photoUris when the shots were uploaded immediately as they
+  // were captured, rather than all at once here.
+  draftPhotoPaths?: string[]
   inspectionType?: 'weekly_checkin' | 'proof_of_payment' | 'incident_report'
 }
 
@@ -78,9 +82,21 @@ export function useSubmitInspection() {
       if (insertError) throw insertError
 
       const photoPaths: string[] = []
-      for (let i = 0; i < input.photoUris.length; i++) {
-        const path = await uploadInspectionPhoto(driverId, inspection.id, input.photoUris[i], i)
-        photoPaths.push(path)
+      if (input.draftPhotoPaths && input.draftPhotoPaths.length > 0) {
+        for (let i = 0; i < input.draftPhotoPaths.length; i++) {
+          const draftPath = input.draftPhotoPaths[i]
+          const extensionMatch = draftPath.match(/\.(\w+)$/)
+          const extension = extensionMatch ? extensionMatch[1] : 'jpg'
+          const finalPath = `${driverId}/${inspection.id}/${i}.${extension}`
+          const { error: copyError } = await supabase.storage.from('inspection-photos').copy(draftPath, finalPath)
+          if (copyError) throw copyError
+          photoPaths.push(finalPath)
+        }
+      } else {
+        for (let i = 0; i < (input.photoUris ?? []).length; i++) {
+          const path = await uploadInspectionPhoto(driverId, inspection.id, (input.photoUris as string[])[i], i)
+          photoPaths.push(path)
+        }
       }
 
       if (photoPaths.length > 0) {

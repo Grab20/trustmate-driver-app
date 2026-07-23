@@ -7,6 +7,9 @@ import { useActiveRental } from '../../../../src/hooks/useActiveRental'
 import { useVehicleOdometer } from '../../../../src/hooks/useVehicleOdometer'
 import { useSubmitInspection } from '../../../../src/hooks/useInspections'
 import { useCarReferencePhotos } from '../../../../src/hooks/useCarReferencePhotos'
+import { useInspectionDraft } from '../../../../src/hooks/useInspectionDraft'
+import { uploadInspectionDraftPhoto } from '../../../../src/lib/uploadInspectionDraftPhoto'
+import { useAuthStore } from '../../../../src/stores/authStore'
 import { PhotoSlot } from '../../../../src/components/PhotoSlot'
 import { InspectionProgress } from '../../../../src/components/InspectionProgress'
 import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
@@ -26,10 +29,12 @@ const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_
 
 export default function NewInspectionScreen() {
   const router = useRouter()
+  const userId = useAuthStore((s) => s.session?.user.id)
   const { data: activeRental } = useActiveRental()
   const { data: odometer } = useVehicleOdometer(activeRental?.car_id ?? undefined)
   const { data: referencePhotos } = useCarReferencePhotos(activeRental?.car_id ?? undefined)
   const submitInspection = useSubmitInspection()
+  const { draft, saveShot, clear: clearDraft } = useInspectionDraft(activeRental?.car_id ?? undefined)
 
   const referencePhotoByShotKey = Object.fromEntries(
     (referencePhotos ?? []).map((row) => [row.shot_key, row.photo_path]),
@@ -39,12 +44,20 @@ export default function NewInspectionScreen() {
     odometer?.current_km != null ? String(odometer.current_km) : '',
   )
   const [notes, setNotes] = useState('')
+  // Local-session preview only — the source of truth for what's actually
+  // captured is `draft` (uploaded immediately per shot), so a shot rehydrated
+  // from a prior crashed session still counts even with no entry here.
   const [shots, setShots] = useState<Record<InspectionShotKey, string | null>>(
     Object.fromEntries(ALL_SHOTS.map((key) => [key, null])) as Record<InspectionShotKey, string | null>,
   )
-  const [pendingReview, setPendingReview] = useState<{ key: InspectionShotKey; uri: string } | null>(null)
+  const [pendingReview, setPendingReview] = useState<{
+    key: InspectionShotKey
+    uri: string
+    base64: string | null
+    mimeType: string | null
+  } | null>(null)
 
-  const capturedCount = ALL_SHOTS.filter((key) => shots[key] !== null).length
+  const capturedCount = ALL_SHOTS.filter((key) => shots[key] || draft[key]).length
   const allShotsCaptured = capturedCount === ALL_SHOTS.length
 
   async function handleCapture(key: InspectionShotKey) {
@@ -53,22 +66,54 @@ export default function NewInspectionScreen() {
       Alert.alert('Permission needed', 'Camera access is required to take inspection photos.')
       return
     }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 })
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true })
     if (!result.canceled) {
-      setPendingReview({ key, uri: result.assets[0].uri })
+      const asset = result.assets[0]
+      setPendingReview({ key, uri: asset.uri, base64: asset.base64 ?? null, mimeType: asset.mimeType ?? null })
+    }
+  }
+
+  async function handleConfirm() {
+    const review = pendingReview
+    setPendingReview(null)
+    if (!review || !activeRental?.car_id || !userId) return
+    // Show the photo immediately, then persist it to storage in the
+    // background — the native camera activity can cause Android to kill the
+    // app before Submit is reached, and an unsaved local file would be lost
+    // along with it, silently dumping the driver back at the app's home
+    // screen mid walkaround.
+    setShots((prev) => ({ ...prev, [review.key]: review.uri }))
+    try {
+      const path = await uploadInspectionDraftPhoto(userId, activeRental.car_id, review.key, review.uri)
+      saveShot(review.key, path)
+    } catch {
+      // Not fatal here — handleSubmit re-attempts the upload for any shot
+      // that never made it into the draft.
     }
   }
 
   async function handleSubmit() {
-    if (!activeRental?.car_id || !allShotsCaptured) return
+    if (!activeRental?.car_id || !userId || !allShotsCaptured) return
     try {
+      const draftPhotoPaths: string[] = []
+      for (const key of ALL_SHOTS) {
+        let path = draft[key]
+        if (!path) {
+          const localUri = shots[key]
+          if (!localUri) throw new Error(`Missing photo for ${SHOT_LABELS[key]}`)
+          path = await uploadInspectionDraftPhoto(userId, activeRental.car_id, key, localUri)
+        }
+        draftPhotoPaths.push(path)
+      }
+
       await submitInspection.mutateAsync({
         carId: activeRental.car_id,
         applicationId: activeRental.id,
         odometerKm: odometerKm.trim() ? Number(odometerKm) : null,
         notes,
-        photoUris: ALL_SHOTS.map((key) => shots[key] as string),
+        draftPhotoPaths,
       })
+      await clearDraft()
       router.back()
     } catch (err) {
       Alert.alert('Submission failed', err instanceof Error ? err.message : 'Unknown error')
@@ -110,6 +155,7 @@ export default function NewInspectionScreen() {
             label={SHOT_LABELS[key]}
             shotKey={key}
             uri={shots[key]}
+            capturedPhotoPath={draft[key] ?? null}
             onCapture={() => handleCapture(key)}
             referencePhotoPath={referencePhotoByShotKey[key] ?? null}
           />
@@ -124,6 +170,7 @@ export default function NewInspectionScreen() {
             label={SHOT_LABELS[key]}
             shotKey={key}
             uri={shots[key]}
+            capturedPhotoPath={draft[key] ?? null}
             onCapture={() => handleCapture(key)}
             referencePhotoPath={referencePhotoByShotKey[key] ?? null}
           />
@@ -143,20 +190,18 @@ export default function NewInspectionScreen() {
       <PhotoReviewModal
         visible={!!pendingReview}
         photoUri={pendingReview?.uri ?? null}
+        photoBase64={pendingReview?.base64 ?? null}
+        photoMimeType={pendingReview?.mimeType ?? null}
         shotKey={pendingReview?.key ?? 'front'}
         label={pendingReview ? SHOT_LABELS[pendingReview.key] : ''}
+        carId={activeRental?.car_id ?? null}
         referencePhotoPath={pendingReview ? (referencePhotoByShotKey[pendingReview.key] ?? null) : null}
         onRetake={() => {
           const key = pendingReview?.key
           setPendingReview(null)
           if (key) handleCapture(key)
         }}
-        onConfirm={() => {
-          if (pendingReview) {
-            setShots((prev) => ({ ...prev, [pendingReview.key]: pendingReview.uri }))
-          }
-          setPendingReview(null)
-        }}
+        onConfirm={handleConfirm}
       />
     </ScrollView>
   )

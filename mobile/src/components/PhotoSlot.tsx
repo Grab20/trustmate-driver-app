@@ -10,30 +10,40 @@ type PhotoSlotProps = {
   label: string
   shotKey: InspectionShotKey
   uri: string | null
+  // A storage path for this shot already uploaded in a prior (possibly
+  // crashed) session, used to rehydrate the preview when there's no local
+  // `uri` for the current app session — see useInspectionDraft.
+  capturedPhotoPath?: string | null
   onCapture: () => void
   referencePhotoPath?: string | null
 }
 
-export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }: PhotoSlotProps) {
+export function PhotoSlot({ label, shotKey, uri, capturedPhotoPath, onCapture, referencePhotoPath }: PhotoSlotProps) {
   const [showGuide, setShowGuide] = useState(false)
-  const scaleAnim = useRef(new Animated.Value(uri ? 1 : 0.85)).current
+  const isCaptured = !!uri || !!capturedPhotoPath
+  const { data: capturedSignedUrl } = useSignedPhotoUrl(
+    !uri && capturedPhotoPath ? capturedPhotoPath : undefined,
+    'inspection-photos',
+  )
+  const displayUri = uri ?? capturedSignedUrl ?? null
+  const scaleAnim = useRef(new Animated.Value(isCaptured ? 1 : 0.85)).current
   const { data: referenceUrl, isLoading: isReferenceLoading } = useSignedPhotoUrl(
     referencePhotoPath ?? undefined,
     'car-reference-photos',
   )
 
   useEffect(() => {
-    if (uri) {
+    if (isCaptured) {
       Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, friction: 5, tension: 80 }).start()
     }
-  }, [uri])
+  }, [isCaptured])
 
   return (
     <View style={styles.container}>
       <Pressable onPress={onCapture}>
-        {uri ? (
+        {displayUri ? (
           <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <Image source={{ uri }} style={styles.photo} />
+            <Image source={{ uri: displayUri }} style={styles.photo} />
             <View style={styles.checkBadge}>
               <IconButton icon="check-bold" size={14} iconColor="#fff" style={styles.checkIcon} />
             </View>
@@ -41,6 +51,10 @@ export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }
               <IconButton icon="camera-retake" size={16} iconColor="#fff" style={styles.retakeIcon} />
             </View>
           </Animated.View>
+        ) : isCaptured ? (
+          <View style={styles.placeholder}>
+            <ActivityIndicator size="small" color={brandColors.emerald} />
+          </View>
         ) : referenceUrl ? (
           <View style={styles.placeholder}>
             <Image source={{ uri: referenceUrl }} style={styles.referenceImage} />
@@ -61,7 +75,7 @@ export function PhotoSlot({ label, shotKey, uri, onCapture, referencePhotoPath }
         )}
       </Pressable>
       <View style={styles.labelRow}>
-        <Text variant="labelMedium" style={[styles.label, uri && styles.labelCaptured]}>
+        <Text variant="labelMedium" style={[styles.label, isCaptured && styles.labelCaptured]}>
           {label}
         </Text>
         <IconButton icon="information-outline" size={16} style={styles.infoIcon} onPress={() => setShowGuide(true)} />

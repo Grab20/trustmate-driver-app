@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import * as Location from 'expo-location'
 import { useActiveRental } from './useActiveRental'
 import { useAuthStore } from '../stores/authStore'
 import { setAutoTripContext } from '../lib/autoTripStorage'
 import { BACKGROUND_LOCATION_TASK } from '../tasks/backgroundLocationTask'
+import { useAutoTripTrackingStore, type AutoTripPermissionStatus } from '../stores/autoTripTrackingStore'
 
-export type AutoTripPermissionStatus = 'unknown' | 'granted' | 'denied'
+export type { AutoTripPermissionStatus }
 
 export function useAutoTripTracking(): AutoTripPermissionStatus {
   const userId = useAuthStore((s) => s.session?.user.id)
   const { data: activeRental } = useActiveRental()
-  const [status, setStatus] = useState<AutoTripPermissionStatus>('unknown')
+  const status = useAutoTripTrackingStore((s) => s.status)
+  const setStatus = useAutoTripTrackingStore((s) => s.setStatus)
 
   const carId = activeRental?.car_id
   const applicationId = activeRental?.id

@@ -51,6 +51,11 @@ export function useSubmitReferencePhotos() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['car-reference-photos', variables.carId] })
+      // The uploaded photo overwrites the same storage path (upsert), so the
+      // cached signed URL for that path is now pointing at stale bytes — bust
+      // it so the next render signs a fresh URL and the Image component
+      // actually re-fetches instead of showing the old cached photo.
+      queryClient.invalidateQueries({ queryKey: ['signed-photo-url', 'car-reference-photos'] })
     },
   })
 }
