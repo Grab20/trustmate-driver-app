@@ -6,60 +6,57 @@ import { brandColors } from '../theme/theme'
 export type InspectionShotKey =
   | 'front'
   | 'front_driver_side'
-  | 'driver_side'
   | 'back_driver_side'
-  | 'rear'
-  | 'back_passenger_side'
-  | 'passenger_side'
   | 'front_passenger_side'
-  | 'dashboard'
-  | 'front_seats'
-  | 'back_seats'
+  | 'back_passenger_side'
+  | 'rear'
   | 'boot'
+  | 'dashboard'
+  | 'passenger_dashboard'
+  | 'back_seats'
+  | 'front_seats'
 
-// Walkaround order: front, then clockwise around the car (driver side first,
-// front to back), ending back at the front on the passenger side.
+// Walkaround order: front, then each corner in turn, ending at the back and
+// the boot. The two full-side shots were dropped — each corner shot already
+// shows most of both flanks, so they were redundant with this corner set.
 export const EXTERIOR_SHOT_KEYS: InspectionShotKey[] = [
   'front',
   'front_driver_side',
-  'driver_side',
   'back_driver_side',
-  'rear',
-  'back_passenger_side',
-  'passenger_side',
   'front_passenger_side',
+  'back_passenger_side',
+  'rear',
+  'boot',
 ]
 
-export const INTERIOR_SHOT_KEYS: InspectionShotKey[] = ['dashboard', 'front_seats', 'back_seats', 'boot']
+export const INTERIOR_SHOT_KEYS: InspectionShotKey[] = ['dashboard', 'passenger_dashboard', 'back_seats', 'front_seats']
 
 export const SHOT_LABELS: Record<InspectionShotKey, string> = {
   front: 'Front',
   front_driver_side: 'Front Driver Side',
-  driver_side: 'Driver Side',
   back_driver_side: 'Back Driver Side',
-  rear: 'Back',
-  back_passenger_side: 'Back Passenger Side',
-  passenger_side: 'Passenger Side',
   front_passenger_side: 'Front Passenger Side',
-  dashboard: 'Dashboard',
-  front_seats: 'Front Seats',
-  back_seats: 'Back Seats',
+  back_passenger_side: 'Back Passenger Side',
+  rear: 'Back',
   boot: 'Boot / Trunk',
+  dashboard: 'Dashboard',
+  passenger_dashboard: 'Passenger Dashboard',
+  back_seats: 'Back Seats',
+  front_seats: 'Front Seats',
 }
 
 export const INSTRUCTIONS: Record<InspectionShotKey, string> = {
-  front: 'Stand back about 2m directly in front of the car, and include the full bumper and number plate.',
+  front: 'Stand back about 2m directly in front of the car, and include the full bumper, number plate, and windscreen.',
   front_driver_side: "Stand at the front corner on the driver's side, angled so both the front and driver side are visible.",
-  driver_side: "Stand to the driver's side, far enough back to fit the whole car from front to back.",
   back_driver_side: "Stand at the back corner on the driver's side, angled so both the back and driver side are visible.",
-  rear: 'Stand back about 2m directly behind the car, and include the full bumper and number plate.',
-  back_passenger_side: "Stand at the back corner on the passenger's side, angled so both the back and passenger side are visible.",
-  passenger_side: "Stand to the passenger's side, far enough back to fit the whole car from front to back.",
   front_passenger_side: "Stand at the front corner on the passenger's side, angled so both the front and passenger side are visible.",
-  dashboard: 'Sit in the driver seat and photograph the dashboard, steering wheel, and odometer.',
-  front_seats: 'Open the driver door and photograph the front seats and floor area.',
-  back_seats: 'Open a back door and photograph the back seats and floor area.',
+  back_passenger_side: "Stand at the back corner on the passenger's side, angled so both the back and passenger side are visible.",
+  rear: 'Stand back about 2m directly behind the car, and include the full bumper and number plate.',
   boot: 'Open the boot/trunk and photograph the inside, empty and clearly lit.',
+  dashboard: 'Sit in the driver seat and photograph the dashboard, steering wheel, and odometer.',
+  passenger_dashboard: 'Sit in the passenger seat and photograph the dashboard and glovebox area from that side.',
+  back_seats: 'Open a back door and photograph the back seats and floor area.',
+  front_seats: 'Open the driver door and photograph the front seats and floor area.',
 }
 
 function FrontBackDiagram() {
@@ -73,25 +70,6 @@ function FrontBackDiagram() {
       <Circle cx="42" cy="84" r={3.5} fill="#EAEAE5" />
       <Circle cx="98" cy="84" r={3.5} fill="#EAEAE5" />
       <Rect x="55" y="66" width="30" height="8" rx="2" fill="#fff" />
-    </Svg>
-  )
-}
-
-function SideDiagram() {
-  return (
-    <Svg width={140} height={110} viewBox="0 0 140 110">
-      <Ellipse cx="70" cy="92" rx="55" ry="7" fill="#00000012" />
-      <Path
-        d="M15 78 Q13 52 38 48 L52 30 L95 30 L118 48 Q127 52 125 78 Z"
-        fill={brandColors.mintGreen}
-        stroke={brandColors.darkGreen}
-        strokeWidth={2.5}
-      />
-      <Path d="M55 33 L48 48 L92 48 L88 33 Z" fill="#fff" opacity={0.85} />
-      <Circle cx="42" cy="80" r={11} fill={brandColors.darkGreen} />
-      <Circle cx="100" cy="80" r={11} fill={brandColors.darkGreen} />
-      <Circle cx="42" cy="80" r={4.5} fill="#EAEAE5" />
-      <Circle cx="100" cy="80" r={4.5} fill="#EAEAE5" />
     </Svg>
   )
 }
@@ -172,6 +150,20 @@ function DashboardDiagram() {
   )
 }
 
+// Mirror of the dashboard shot, taken from the passenger seat: the glovebox
+// (a distinct panel on the passenger side) replaces the steering wheel as the
+// focal point, since that's what this angle is meant to catch.
+function PassengerDashboardDiagram() {
+  return (
+    <Svg width={140} height={110} viewBox="0 0 140 110">
+      <Rect x="18" y="55" width="104" height="30" rx="10" fill={brandColors.darkGreen} />
+      <Rect x="22" y="60" width="42" height="20" rx="4" fill={brandColors.mintGreen} />
+      <Rect x="88" y="58" width="24" height="24" rx="3" fill="#fff" stroke={brandColors.darkGreen} strokeWidth={2.5} />
+      <Line x1="88" y1="70" x2="112" y2="70" stroke={brandColors.darkGreen} strokeWidth={1.5} opacity={0.5} />
+    </Svg>
+  )
+}
+
 function BootDiagram() {
   return (
     <Svg width={140} height={110} viewBox="0 0 140 110">
@@ -185,8 +177,6 @@ function BootDiagram() {
 const DIAGRAMS: Record<InspectionShotKey, () => React.JSX.Element> = {
   front: FrontBackDiagram,
   rear: FrontBackDiagram,
-  passenger_side: SideDiagram,
-  driver_side: SideDiagram,
   front_driver_side: FrontDriverSideDiagram,
   back_driver_side: BackDriverSideDiagram,
   back_passenger_side: BackPassengerSideDiagram,
@@ -194,6 +184,7 @@ const DIAGRAMS: Record<InspectionShotKey, () => React.JSX.Element> = {
   front_seats: InteriorDiagram,
   back_seats: BackSeatsDiagram,
   dashboard: DashboardDiagram,
+  passenger_dashboard: PassengerDashboardDiagram,
   boot: BootDiagram,
 }
 

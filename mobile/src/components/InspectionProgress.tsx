@@ -11,6 +11,7 @@ type InspectionProgressProps = {
 export function InspectionProgress({ completed, total }: InspectionProgressProps) {
   const widthAnim = useRef(new Animated.Value(0)).current
   const isComplete = completed >= total
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0
 
   useEffect(() => {
     Animated.spring(widthAnim, {
@@ -27,7 +28,7 @@ export function InspectionProgress({ completed, total }: InspectionProgressProps
           {isComplete ? 'All photos captured' : `${completed} of ${total} photos captured`}
         </Text>
         <Text variant="labelMedium" style={[styles.count, isComplete && styles.countComplete]}>
-          {completed}/{total}
+          {percent}%
         </Text>
       </View>
       <View style={styles.track}>

@@ -11,6 +11,7 @@ import { useInspectionDraft } from '../../../../src/hooks/useInspectionDraft'
 import { uploadInspectionDraftPhoto } from '../../../../src/lib/uploadInspectionDraftPhoto'
 import { useAuthStore } from '../../../../src/stores/authStore'
 import { PhotoSlot } from '../../../../src/components/PhotoSlot'
+import { InspectionCarDiagram } from '../../../../src/components/InspectionCarDiagram'
 import { InspectionProgress } from '../../../../src/components/InspectionProgress'
 import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
 import { SectionLabel } from '../../../../src/components/SectionLabel'
@@ -57,7 +58,8 @@ export default function NewInspectionScreen() {
     mimeType: string | null
   } | null>(null)
 
-  const capturedCount = ALL_SHOTS.filter((key) => shots[key] || draft[key]).length
+  const capturedKeys = new Set(ALL_SHOTS.filter((key) => shots[key] || draft[key]))
+  const capturedCount = capturedKeys.size
   const allShotsCaptured = capturedCount === ALL_SHOTS.length
 
   async function handleCapture(key: InspectionShotKey) {
@@ -148,6 +150,7 @@ export default function NewInspectionScreen() {
       />
 
       <SectionLabel icon="car" label="EXTERIOR" />
+      <InspectionCarDiagram capturedKeys={capturedKeys} onPressShot={handleCapture} />
       <View style={styles.shotsGrid}>
         {EXTERIOR_SHOT_KEYS.map((key) => (
           <PhotoSlot
