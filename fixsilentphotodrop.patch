@@ -1,0 +1,56 @@
+From 86852a820bc499ecbc0ef3f70841c67f9d057026 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 24 Jul 2026 07:56:18 +0000
+Subject: [PATCH] Fix silent photo drop when confirming before active-rental
+ data loads
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+handleConfirm returned before updating local shots state whenever
+activeRental hadn't finished loading yet, so the photo preview, progress
+bar, car-diagram ticks, and thumbnails all silently failed to update even
+though the photo was actually taken — with zero error shown to the driver.
+Local state now always updates immediately; only the background upload
+(which needs car_id/driver_id) is gated, and now surfaces an alert instead
+of failing silently if those aren't ready yet.
+---
+ mobile/app/(app)/rental/inspections/new.tsx | 21 +++++++++++++++------
+ 1 file changed, 15 insertions(+), 6 deletions(-)
+
+diff --git a/mobile/app/(app)/rental/inspections/new.tsx b/mobile/app/(app)/rental/inspections/new.tsx
+index 511554e2..42a54bc6 100644
+--- a/mobile/app/(app)/rental/inspections/new.tsx
++++ b/mobile/app/(app)/rental/inspections/new.tsx
+@@ -78,13 +78,22 @@ export default function NewInspectionScreen() {
+   async function handleConfirm() {
+     const review = pendingReview
+     setPendingReview(null)
+-    if (!review || !activeRental?.car_id || !userId) return
+-    // Show the photo immediately, then persist it to storage in the
+-    // background — the native camera activity can cause Android to kill the
+-    // app before Submit is reached, and an unsaved local file would be lost
+-    // along with it, silently dumping the driver back at the app's home
+-    // screen mid walkaround.
++    if (!review) return
++    // Show the photo immediately, regardless of whether the car/driver ids
++    // have finished loading yet — the progress bar, car diagram, and
++    // thumbnails all read from this local state, so gating it on
++    // activeRental being ready silently dropped the photo with no feedback
++    // whenever that query was still in flight.
+     setShots((prev) => ({ ...prev, [review.key]: review.uri }))
++
++    if (!activeRental?.car_id || !userId) {
++      Alert.alert('Not saved yet', 'Your vehicle details are still loading — this photo is shown but not yet backed up. It will be saved automatically once ready, or when you submit.')
++      return
++    }
++    // Persist to storage in the background — the native camera activity can
++    // cause Android to kill the app before Submit is reached, and an
++    // unsaved local file would be lost along with it, silently dumping the
++    // driver back at the app's home screen mid walkaround.
+     try {
+       const path = await uploadInspectionDraftPhoto(userId, activeRental.car_id, review.key, review.uri)
+       saveShot(review.key, path)
+-- 
+2.43.0
+
