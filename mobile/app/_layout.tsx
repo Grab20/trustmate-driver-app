@@ -6,6 +6,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { Slot } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import * as SplashScreen from 'expo-splash-screen'
+import { useFonts, PTSerif_400Regular, PTSerif_700Bold } from '@expo-google-fonts/pt-serif'
 import { queryClient } from '../src/lib/queryClient'
 import { theme } from '../src/theme/theme'
 import { useAuthStore } from '../src/stores/authStore'
@@ -17,10 +18,13 @@ SplashScreen.preventAutoHideAsync()
 
 export default function RootLayout() {
   const isInitializing = useAuthStore((s) => s.isInitializing)
+  const [fontsLoaded] = useFonts({ PTSerif_400Regular, PTSerif_700Bold })
 
   useEffect(() => {
-    if (!isInitializing) SplashScreen.hideAsync()
-  }, [isInitializing])
+    if (!isInitializing && fontsLoaded) SplashScreen.hideAsync()
+  }, [isInitializing, fontsLoaded])
+
+  if (!fontsLoaded) return null
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

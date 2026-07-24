@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   windscreenBadgeText: {
     fontSize: 8.5,
     fontWeight: '700',
-    color: '#8A5A00',
+    color: brandColors.emerald,
   },
   caption: {
     textAlign: 'center',
