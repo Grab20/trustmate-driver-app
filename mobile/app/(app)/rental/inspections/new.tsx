@@ -78,13 +78,22 @@ export default function NewInspectionScreen() {
   async function handleConfirm() {
     const review = pendingReview
     setPendingReview(null)
-    if (!review || !activeRental?.car_id || !userId) return
-    // Show the photo immediately, then persist it to storage in the
-    // background — the native camera activity can cause Android to kill the
-    // app before Submit is reached, and an unsaved local file would be lost
-    // along with it, silently dumping the driver back at the app's home
-    // screen mid walkaround.
+    if (!review) return
+    // Show the photo immediately, regardless of whether the car/driver ids
+    // have finished loading yet — the progress bar, car diagram, and
+    // thumbnails all read from this local state, so gating it on
+    // activeRental being ready silently dropped the photo with no feedback
+    // whenever that query was still in flight.
     setShots((prev) => ({ ...prev, [review.key]: review.uri }))
+
+    if (!activeRental?.car_id || !userId) {
+      Alert.alert('Not saved yet', 'Your vehicle details are still loading — this photo is shown but not yet backed up. It will be saved automatically once ready, or when you submit.')
+      return
+    }
+    // Persist to storage in the background — the native camera activity can
+    // cause Android to kill the app before Submit is reached, and an
+    // unsaved local file would be lost along with it, silently dumping the
+    // driver back at the app's home screen mid walkaround.
     try {
       const path = await uploadInspectionDraftPhoto(userId, activeRental.car_id, review.key, review.uri)
       saveShot(review.key, path)
