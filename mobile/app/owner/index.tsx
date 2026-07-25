@@ -3,6 +3,7 @@ import { Text, Button } from 'react-native-paper'
 import { useRouter } from 'expo-router'
 import { useOwnerFleetSummary } from '../../src/hooks/useOwnerFleetSummary'
 import { useOwnerFleetDistanceTotals } from '../../src/hooks/useOwnerFleetDistanceTotals'
+import { useOwnerCars } from '../../src/hooks/useOwnerCars'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { useAuthStore } from '../../src/stores/authStore'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
@@ -17,6 +18,7 @@ export default function OwnerDashboardScreen() {
   const router = useRouter()
   const { data: fleet, isLoading } = useOwnerFleetSummary()
   const { data: distanceTotals } = useOwnerFleetDistanceTotals()
+  const { data: ownerCars } = useOwnerCars()
   const { data: profile } = useMyProfile()
   const signOut = useAuthStore((s) => s.signOut)
 
@@ -56,6 +58,31 @@ export default function OwnerDashboardScreen() {
         <Button mode="outlined" onPress={() => router.push('/')} style={styles.switchButton}>
           Switch to Driver View
         </Button>
+      )}
+
+      {ownerCars && ownerCars.length > 0 && (
+        <>
+          <Text style={styles.sectionLabel}>YOUR CARS</Text>
+          <View style={styles.listCard}>
+            {ownerCars.map((car, index) => (
+              <Pressable
+                key={car.id}
+                onPress={() => router.push(`/owner/driver/reference-photos?carId=${car.id}`)}
+                style={[styles.driverRow, index === ownerCars.length - 1 && styles.driverRowLast]}
+              >
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{(car.make?.[0] ?? '') + (car.model?.[0] ?? '')}</Text>
+                </View>
+                <View style={styles.driverInfo}>
+                  <Text style={styles.driverName}>
+                    {car.make} {car.model}
+                  </Text>
+                  <Text style={styles.driverSub}>{car.status === 'rented' ? 'Rented' : 'Available'} · Manage reference photos</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </>
       )}
 
       {fleet && fleet.length > 0 ? (
