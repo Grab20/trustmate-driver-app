@@ -9,9 +9,19 @@ type ReferencePhotoSlotProps = {
   existingPath: string | null
   uploading?: boolean
   onCapture: () => void
+  damageCount?: number
+  onViewDamage?: () => void
 }
 
-export function ReferencePhotoSlot({ label, localUri, existingPath, uploading, onCapture }: ReferencePhotoSlotProps) {
+export function ReferencePhotoSlot({
+  label,
+  localUri,
+  existingPath,
+  uploading,
+  onCapture,
+  damageCount = 0,
+  onViewDamage,
+}: ReferencePhotoSlotProps) {
   return (
     <View style={styles.container}>
       {localUri ? (
@@ -25,7 +35,14 @@ export function ReferencePhotoSlot({ label, localUri, existingPath, uploading, o
         </Pressable>
       ) : existingPath ? (
         <View style={styles.existingWrap}>
-          <InspectionPhotoThumbnail path={existingPath} bucket="car-reference-photos" />
+          <Pressable onPress={damageCount > 0 ? onViewDamage : onCapture}>
+            <InspectionPhotoThumbnail path={existingPath} bucket="car-reference-photos" />
+          </Pressable>
+          {damageCount > 0 && (
+            <View style={styles.damageBadge}>
+              <Text style={styles.damageBadgeText}>{damageCount}</Text>
+            </View>
+          )}
           <Pressable onPress={onCapture} style={styles.retakeBadge}>
             <IconButton icon="camera-retake" size={16} iconColor="#fff" style={styles.retakeIcon} />
           </Pressable>
@@ -89,6 +106,25 @@ const styles = StyleSheet.create({
   },
   retakeIcon: {
     margin: 0,
+  },
+  damageBadge: {
+    position: 'absolute',
+    bottom: -6,
+    right: -6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    backgroundColor: brandColors.alert,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  damageBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   label: {
     marginTop: 4,

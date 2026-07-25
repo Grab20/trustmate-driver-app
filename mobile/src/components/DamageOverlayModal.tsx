@@ -9,10 +9,11 @@ type DamageOverlayModalProps = {
   onClose: () => void
   photoPath: string | null
   damage: DamageItem | null
+  bucket?: 'inspection-photos' | 'car-reference-photos'
 }
 
-export function DamageOverlayModal({ visible, onClose, photoPath, damage }: DamageOverlayModalProps) {
-  const { data: url } = useSignedPhotoUrl(photoPath ?? undefined, 'inspection-photos')
+export function DamageOverlayModal({ visible, onClose, photoPath, damage, bucket = 'inspection-photos' }: DamageOverlayModalProps) {
+  const { data: url } = useSignedPhotoUrl(photoPath ?? undefined, bucket)
 
   if (!damage) return null
 
@@ -89,7 +90,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderWidth: 3,
     borderColor: brandColors.alert,
-    borderRadius: 6,
+    borderRadius: 999,
     backgroundColor: 'rgba(199,67,58,0.15)',
   },
   infoCard: {

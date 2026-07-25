@@ -191,24 +191,33 @@ export type Database = {
       }
       car_reference_photos: {
         Row: {
+          analysis_error: string | null
+          analyzed_at: string | null
           car_id: string
           created_at: string
+          damage: Json
           id: string
           photo_path: string
           shot_key: string
           uploaded_by: string | null
         }
         Insert: {
+          analysis_error?: string | null
+          analyzed_at?: string | null
           car_id: string
           created_at?: string
+          damage?: Json
           id?: string
           photo_path: string
           shot_key: string
           uploaded_by?: string | null
         }
         Update: {
+          analysis_error?: string | null
+          analyzed_at?: string | null
           car_id?: string
           created_at?: string
+          damage?: Json
           id?: string
           photo_path?: string
           shot_key?: string
@@ -460,6 +469,7 @@ export type Database = {
           doc_expires_at: string | null
           doc_holding_id_url: string | null
           doc_id_url: string | null
+          doc_license_back_url: string | null
           doc_license_url: string | null
           doc_selfie_url: string | null
           doc_uploaded_at: string | null
@@ -474,6 +484,7 @@ export type Database = {
           indrive_trips: string | null
           late_payments: number | null
           license_date: string | null
+          license_expiry_date: string | null
           license_number: string | null
           license_verified: boolean | null
           license_year: number | null
@@ -482,6 +493,7 @@ export type Database = {
           missed_payments: number | null
           months_with_owner: number | null
           ontime_payments: number | null
+          pdp_expiry_date: string | null
           pdp_url: string | null
           photo_fullbody_url: string | null
           photo_headshot_url: string | null
@@ -532,6 +544,7 @@ export type Database = {
           doc_expires_at?: string | null
           doc_holding_id_url?: string | null
           doc_id_url?: string | null
+          doc_license_back_url?: string | null
           doc_license_url?: string | null
           doc_selfie_url?: string | null
           doc_uploaded_at?: string | null
@@ -546,6 +559,7 @@ export type Database = {
           indrive_trips?: string | null
           late_payments?: number | null
           license_date?: string | null
+          license_expiry_date?: string | null
           license_number?: string | null
           license_verified?: boolean | null
           license_year?: number | null
@@ -554,6 +568,7 @@ export type Database = {
           missed_payments?: number | null
           months_with_owner?: number | null
           ontime_payments?: number | null
+          pdp_expiry_date?: string | null
           pdp_url?: string | null
           photo_fullbody_url?: string | null
           photo_headshot_url?: string | null
@@ -604,6 +619,7 @@ export type Database = {
           doc_expires_at?: string | null
           doc_holding_id_url?: string | null
           doc_id_url?: string | null
+          doc_license_back_url?: string | null
           doc_license_url?: string | null
           doc_selfie_url?: string | null
           doc_uploaded_at?: string | null
@@ -618,6 +634,7 @@ export type Database = {
           indrive_trips?: string | null
           late_payments?: number | null
           license_date?: string | null
+          license_expiry_date?: string | null
           license_number?: string | null
           license_verified?: boolean | null
           license_year?: number | null
@@ -626,6 +643,7 @@ export type Database = {
           missed_payments?: number | null
           months_with_owner?: number | null
           ontime_payments?: number | null
+          pdp_expiry_date?: string | null
           pdp_url?: string | null
           photo_fullbody_url?: string | null
           photo_headshot_url?: string | null
@@ -668,6 +686,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      image_analytics: {
+        Row: {
+          bucket: string
+          created_at: string
+          id: number
+          last_seen_at: string
+          page: string
+          path: string
+          request_count: number
+        }
+        Insert: {
+          bucket: string
+          created_at?: string
+          id?: number
+          last_seen_at?: string
+          page: string
+          path: string
+          request_count?: number
+        }
+        Update: {
+          bucket?: string
+          created_at?: string
+          id?: number
+          last_seen_at?: string
+          page?: string
+          path?: string
+          request_count?: number
+        }
+        Relationships: []
       }
       incidents: {
         Row: {
@@ -914,6 +962,7 @@ export type Database = {
           created_at: string | null
           doc_id_url: string | null
           email: string | null
+          email_confirmed: boolean
           full_name: string
           id: string
           is_admin: boolean | null
@@ -946,6 +995,7 @@ export type Database = {
           created_at?: string | null
           doc_id_url?: string | null
           email?: string | null
+          email_confirmed?: boolean
           full_name: string
           id: string
           is_admin?: boolean | null
@@ -978,6 +1028,7 @@ export type Database = {
           created_at?: string | null
           doc_id_url?: string | null
           email?: string | null
+          email_confirmed?: boolean
           full_name?: string
           id?: string
           is_admin?: boolean | null
@@ -1007,9 +1058,11 @@ export type Database = {
         Row: {
           application_id: string | null
           comment: string | null
+          communication_rating: number | null
           created_at: string | null
           driver_id: string | null
           id: string
+          payment_status: string | null
           rating: number
           reviewer_id: string | null
           reviewer_name_override: string | null
@@ -1018,9 +1071,11 @@ export type Database = {
         Insert: {
           application_id?: string | null
           comment?: string | null
+          communication_rating?: number | null
           created_at?: string | null
           driver_id?: string | null
           id?: string
+          payment_status?: string | null
           rating: number
           reviewer_id?: string | null
           reviewer_name_override?: string | null
@@ -1029,9 +1084,11 @@ export type Database = {
         Update: {
           application_id?: string | null
           comment?: string | null
+          communication_rating?: number | null
           created_at?: string | null
           driver_id?: string | null
           id?: string
+          payment_status?: string | null
           rating?: number
           reviewer_id?: string | null
           reviewer_name_override?: string | null
@@ -1693,6 +1750,10 @@ export type Database = {
       }
     }
     Functions: {
+      apply_trust_action: {
+        Args: { dp_id: string; pts: number }
+        Returns: number
+      }
       award_inspection_trust_points: {
         Args: {
           p_action_type: string

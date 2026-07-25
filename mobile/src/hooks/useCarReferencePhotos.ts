@@ -17,6 +17,14 @@ export function useCarReferencePhotos(carId: string | undefined) {
       return data
     },
     enabled: !!carId,
+    // Damage analysis runs fire-and-forget after each upload, so poll briefly
+    // to pick up each shot's result as it lands rather than requiring a
+    // manual refresh — same pattern used for weekly inspection polling.
+    refetchInterval: (query) => {
+      const rows = query.state.data ?? []
+      const stillAnalyzing = rows.some((row) => !row.analyzed_at)
+      return stillAnalyzing ? 5000 : false
+    },
   })
 }
 
@@ -43,10 +51,20 @@ export function useSubmitReferencePhotos() {
             shot_key: shotKey,
             photo_path: path,
             uploaded_by: user?.id,
+            // Re-uploading a shot invalidates any previous damage analysis for
+            // it — clear it here so a stale report can't outlive its photo,
+            // then let the fire-and-forget call below refresh it.
+            damage: [],
+            analyzed_at: null,
+            analysis_error: null,
           },
           { onConflict: 'car_id,shot_key' },
         )
         if (error) throw error
+
+        // Fire-and-forget: the condition report fills in as each shot finishes
+        // analyzing, so a slow/failed check never blocks the upload itself.
+        supabase.functions.invoke('analyze-reference-photo', { body: { carId: input.carId, shotKey } }).catch(() => {})
       }
     },
     onSuccess: (_data, variables) => {
