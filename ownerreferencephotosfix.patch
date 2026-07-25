@@ -1,0 +1,115 @@
+From 6bba01275fd05a9109db59bb87ae489847b271c6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 25 Jul 2026 06:13:31 +0000
+Subject: [PATCH] Fix owner reference-photo upload being unreachable without a
+ matched driver
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Root cause: the Owner Dashboard only ever listed matched drivers (from the
+fleet summary, which requires an approved application), and both existing
+entry points to "Manage Reference Photos" lived on driver-specific screens.
+An owner with no driver matched yet — the normal state right after listing
+a car, and exactly when reference photos are meant to be taken — had no way
+to reach that screen at all. Confirmed against production data: only 1 of
+10+ owners with listed cars had ever successfully added reference photos.
+
+Adds a "Your Cars" section to the Owner Dashboard, independent of driver
+matching, so every owner can always reach reference-photo management for
+each car they own.
+---
+ mobile/app/owner/index.tsx       | 27 +++++++++++++++++++++++++++
+ mobile/src/hooks/useOwnerCars.ts | 28 ++++++++++++++++++++++++++++
+ 2 files changed, 55 insertions(+)
+ create mode 100644 mobile/src/hooks/useOwnerCars.ts
+
+diff --git a/mobile/app/owner/index.tsx b/mobile/app/owner/index.tsx
+index 83ff68e1..4d47f314 100644
+--- a/mobile/app/owner/index.tsx
++++ b/mobile/app/owner/index.tsx
+@@ -3,6 +3,7 @@ import { Text, Button } from 'react-native-paper'
+ import { useRouter } from 'expo-router'
+ import { useOwnerFleetSummary } from '../../src/hooks/useOwnerFleetSummary'
+ import { useOwnerFleetDistanceTotals } from '../../src/hooks/useOwnerFleetDistanceTotals'
++import { useOwnerCars } from '../../src/hooks/useOwnerCars'
+ import { useMyProfile } from '../../src/hooks/useMyProfile'
+ import { useAuthStore } from '../../src/stores/authStore'
+ import { LoadingScreen } from '../../src/components/LoadingScreen'
+@@ -17,6 +18,7 @@ export default function OwnerDashboardScreen() {
+   const router = useRouter()
+   const { data: fleet, isLoading } = useOwnerFleetSummary()
+   const { data: distanceTotals } = useOwnerFleetDistanceTotals()
++  const { data: ownerCars } = useOwnerCars()
+   const { data: profile } = useMyProfile()
+   const signOut = useAuthStore((s) => s.signOut)
+ 
+@@ -58,6 +60,31 @@ export default function OwnerDashboardScreen() {
+         </Button>
+       )}
+ 
++      {ownerCars && ownerCars.length > 0 && (
++        <>
++          <Text style={styles.sectionLabel}>YOUR CARS</Text>
++          <View style={styles.listCard}>
++            {ownerCars.map((car, index) => (
++              <Pressable
++                key={car.id}
++                onPress={() => router.push(`/owner/driver/reference-photos?carId=${car.id}`)}
++                style={[styles.driverRow, index === ownerCars.length - 1 && styles.driverRowLast]}
++              >
++                <View style={styles.avatar}>
++                  <Text style={styles.avatarText}>{(car.make?.[0] ?? '') + (car.model?.[0] ?? '')}</Text>
++                </View>
++                <View style={styles.driverInfo}>
++                  <Text style={styles.driverName}>
++                    {car.make} {car.model}
++                  </Text>
++                  <Text style={styles.driverSub}>{car.status === 'rented' ? 'Rented' : 'Available'} · Manage reference photos</Text>
++                </View>
++              </Pressable>
++            ))}
++          </View>
++        </>
++      )}
++
+       {fleet && fleet.length > 0 ? (
+         <>
+           {attentionItems.length > 0 && (
+diff --git a/mobile/src/hooks/useOwnerCars.ts b/mobile/src/hooks/useOwnerCars.ts
+new file mode 100644
+index 00000000..ddb10090
+--- /dev/null
++++ b/mobile/src/hooks/useOwnerCars.ts
+@@ -0,0 +1,28 @@
++import { useQuery } from '@tanstack/react-query'
++import { supabase } from '../lib/supabase'
++import { useAuthStore } from '../stores/authStore'
++import type { Tables } from '../types/database'
++
++// All of an owner's cars, independent of whether a driver has been matched
++// yet — the fleet summary (drivers list) only includes cars with an approved
++// application, which left "Manage Reference Photos" completely unreachable
++// for a car that hasn't been matched to a driver yet, even though reference
++// photos are meant to be taken before handing the car over.
++export function useOwnerCars() {
++  const userId = useAuthStore((s) => s.session?.user.id)
++
++  return useQuery({
++    queryKey: ['owner-cars', userId],
++    queryFn: async (): Promise<Tables<'cars'>[]> => {
++      const { data, error } = await supabase
++        .from('cars')
++        .select('*')
++        .eq('owner_id', userId as string)
++        .order('created_at', { ascending: false })
++
++      if (error) throw error
++      return data
++    },
++    enabled: !!userId,
++  })
++}
+-- 
+2.43.0
+
