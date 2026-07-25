@@ -43,7 +43,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#12331F"
         }
-      ]
+      ],
+      "./plugins/withLargeHeap.js"
     ],
     "experiments": {
       "typedRoutes": true
