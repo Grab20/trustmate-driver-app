@@ -1,0 +1,67 @@
+From 89c413523d8b785013f2d93fc7dc4819f3d0eb18 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 25 Jul 2026 07:03:59 +0000
+Subject: [PATCH] Reduce risk of OS killing the app during the camera activity
+ (largeHeap)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Confirmed via testing: reference-photo capture crashes to the home screen
+right at the moment the native camera hands control back to the app, before
+any JS code runs — this is Android's low-memory killer reclaiming the app's
+process while the heavy system camera activity is in the foreground, not a
+logic bug in the upload path (nothing in JS can run before the process is
+killed, so no amount of retry/draft logic on our side can recover from it).
+
+Adds a small config plugin setting android:largeHeap="true" in the manifest
+(not exposed as a plain app.json field), which raises the memory ceiling
+Android gives the app and measurably reduces — though can't fully
+eliminate — how eagerly the OS reclaims it in this exact scenario.
+---
+ mobile/app.json                 |  3 ++-
+ mobile/plugins/withLargeHeap.js | 18 ++++++++++++++++++
+ 2 files changed, 20 insertions(+), 1 deletion(-)
+ create mode 100644 mobile/plugins/withLargeHeap.js
+
+diff --git a/mobile/app.json b/mobile/app.json
+index afe5eef0..1eb378cb 100644
+--- a/mobile/app.json
++++ b/mobile/app.json
+@@ -43,7 +43,8 @@
+           "resizeMode": "contain",
+           "backgroundColor": "#12331F"
+         }
+-      ]
++      ],
++      "./plugins/withLargeHeap.js"
+     ],
+     "experiments": {
+       "typedRoutes": true
+diff --git a/mobile/plugins/withLargeHeap.js b/mobile/plugins/withLargeHeap.js
+new file mode 100644
+index 00000000..ded8695d
+--- /dev/null
++++ b/mobile/plugins/withLargeHeap.js
+@@ -0,0 +1,18 @@
++const { withAndroidManifest } = require('@expo/config-plugins')
++
++// Requests a larger memory ceiling from Android so the app is less likely to
++// be killed by the OS's low-memory process reclaim while the native camera
++// activity (launched by expo-image-picker) is in the foreground — the
++// heaviest moment in the inspection/reference-photo capture flows. This
++// reduces, but can't fully eliminate, that risk: a full process kill during
++// the camera activity happens before any JS code regains control, so no app
++// logic can recover from it.
++module.exports = function withLargeHeap(config) {
++  return withAndroidManifest(config, (config) => {
++    const application = config.modResults.manifest.application?.[0]
++    if (application) {
++      application.$['android:largeHeap'] = 'true'
++    }
++    return config
++  })
++}
+-- 
+2.43.0
+
