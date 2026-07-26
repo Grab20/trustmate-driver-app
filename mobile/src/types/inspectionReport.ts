@@ -1,13 +1,5 @@
 import type { InspectionShotKey } from '../components/InspectionShotGuide'
 
-export type ShotComparisonStatus = 'ok' | 'warning' | 'no_baseline'
-
-export type ShotComparison = {
-  shot: InspectionShotKey
-  status: ShotComparisonStatus
-  note: string | null
-}
-
 export type DamageBoundingBox = {
   x: number
   y: number
@@ -15,6 +7,10 @@ export type DamageBoundingBox = {
   height: number
 }
 
+// Used by the pre-rental reference-photo damage scan (analyze-reference-photo),
+// which has no baseline to compare against so it only ever reports damage it
+// finds, not a verified/unable-to-verify breakdown. Kept separate from the
+// weekly-inspection component findings below.
 export type DamageItem = {
   shot: InspectionShotKey
   location: string
@@ -23,6 +19,29 @@ export type DamageItem = {
   estimatedSizeCm: number | null
   description: string
   boundingBox: DamageBoundingBox | null
+}
+
+export type ComponentFindingStatus = 'verified' | 'unable_to_verify' | 'new_finding'
+
+// One named vehicle component (e.g. "Front Bumper", "Driver Seat") assessed
+// within a single shot — the unit the whole report is built from, so every
+// line the owner reads names a specific part and states exactly what was
+// checked, instead of a single pass/fail verdict for the whole photo.
+export type ComponentFinding = {
+  shot: InspectionShotKey
+  component: string
+  status: ComponentFindingStatus
+  findingType: string | null
+  confidencePercent: number
+  description: string
+  boundingBox: DamageBoundingBox | null
+}
+
+export type ShotResult = {
+  shot: InspectionShotKey
+  hasBaseline: boolean
+  overallMatchPercent: number | null
+  components: ComponentFinding[]
 }
 
 export type VehicleVerification = {
@@ -51,8 +70,11 @@ export type SummaryBullet = {
 
 export type VehicleHealthReport = {
   comparedAgainst: 'previous_inspection' | 'reference_photos' | 'none'
-  comparison: ShotComparison[]
-  damage: DamageItem[]
+  shots: ShotResult[]
+  newFindings: ComponentFinding[]
+  unableToVerify: ComponentFinding[]
+  areasInspected: number
+  areasVerified: number
   verification: VehicleVerification
   quality: InspectionQuality
   summary: SummaryBullet[]
@@ -64,5 +86,10 @@ export type VehicleHealthReport = {
 export type InspectionAnalysis = VehicleHealthReport | { error: string; raw?: string }
 
 export function isVehicleHealthReport(analysis: unknown): analysis is VehicleHealthReport {
-  return !!analysis && typeof analysis === 'object' && 'healthScore' in (analysis as Record<string, unknown>)
+  return (
+    !!analysis &&
+    typeof analysis === 'object' &&
+    'healthScore' in (analysis as Record<string, unknown>) &&
+    Array.isArray((analysis as Record<string, unknown>).shots)
+  )
 }

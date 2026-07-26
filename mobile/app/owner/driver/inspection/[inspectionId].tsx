@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLocalSearchParams } from 'expo-router'
-import { ScrollView, View, StyleSheet, Alert } from 'react-native'
+import { ScrollView, View, StyleSheet, Alert, Pressable } from 'react-native'
 import { Text, Card, Button, TextInput, Chip } from 'react-native-paper'
 import {
   useInspectionReport,
@@ -13,9 +13,10 @@ import { useCarReferencePhotos } from '../../../../src/hooks/useCarReferencePhot
 import { LoadingScreen } from '../../../../src/components/LoadingScreen'
 import { SectionLabel } from '../../../../src/components/SectionLabel'
 import { IconBadge } from '../../../../src/components/IconBadge'
-import { PhotoComparisonRow } from '../../../../src/components/PhotoComparisonRow'
-import { EXTERIOR_SHOT_KEYS, INTERIOR_SHOT_KEYS, SHOT_LABELS } from '../../../../src/components/InspectionShotGuide'
-import { isVehicleHealthReport, type DamageItem } from '../../../../src/types/inspectionReport'
+import { ShotInspectionCard } from '../../../../src/components/ShotInspectionCard'
+import { DamageOverlayModal } from '../../../../src/components/DamageOverlayModal'
+import { EXTERIOR_SHOT_KEYS, INTERIOR_SHOT_KEYS, SHOT_LABELS, type InspectionShotKey } from '../../../../src/components/InspectionShotGuide'
+import { isVehicleHealthReport, type ComponentFinding } from '../../../../src/types/inspectionReport'
 import { brandColors } from '../../../../src/theme/theme'
 import type { Tables } from '../../../../src/types/database'
 
@@ -75,6 +76,7 @@ export default function InspectionHealthReportScreen() {
 
   const [comment, setComment] = useState('')
   const [showFlagOptions, setShowFlagOptions] = useState(false)
+  const [selectedFinding, setSelectedFinding] = useState<ComponentFinding | null>(null)
 
   const referenceByShotKey = useMemo(() => {
     const map: Partial<Record<string, string>> = {}
@@ -107,13 +109,9 @@ export default function InspectionHealthReportScreen() {
   const canReview = reviewStatus === 'pending'
   const afterDecisionConfig = STATUS_AFTER_DECISION[reviewStatus]
 
-  function damageForShot(shotKey: string): DamageItem | null {
-    if (!report) return null
-    return report.damage.find((d) => d.shot === shotKey) ?? null
-  }
-
-  function statusForShot(shotKey: string) {
-    return report?.comparison.find((c) => c.shot === shotKey) ?? { status: 'no_baseline' as const, note: null }
+  function photoPathForShot(shotKey: InspectionShotKey): string {
+    const index = ALL_SHOTS.indexOf(shotKey)
+    return inspection?.photo_urls?.[index] ?? ''
   }
 
   function previousPathForShot(shotKeyIndex: number, shotKey: string): { path: string | null; bucket: 'car-reference-photos' | 'inspection-photos' } {
@@ -187,56 +185,68 @@ export default function InspectionHealthReportScreen() {
             </Card.Content>
           </Card>
 
-          <SectionLabel icon="image-multiple-outline" label="VEHICLE COMPARISON" />
+          {report.newFindings.length > 0 && (
+            <>
+              <SectionLabel icon="alert-decagram-outline" label="NEW FINDINGS" />
+              {report.newFindings.map((item, index) => (
+                <Pressable key={index} onPress={() => setSelectedFinding(item)}>
+                  <Card style={[styles.card, styles.damageCard]}>
+                    <Card.Content>
+                      <Text variant="titleMedium" style={styles.damageTitle}>
+                        {item.findingType ?? 'Finding'} — {item.component}
+                      </Text>
+                      <Text variant="bodyMedium" style={styles.detail}>
+                        {SHOT_LABELS[item.shot]} · Confidence: {item.confidencePercent}%
+                      </Text>
+                      <Text variant="bodySmall" style={styles.damageDescription}>
+                        {item.description}
+                      </Text>
+                    </Card.Content>
+                  </Card>
+                </Pressable>
+              ))}
+            </>
+          )}
+
+          {report.unableToVerify.length > 0 && (
+            <>
+              <SectionLabel icon="help-circle-outline" label="UNABLE TO VERIFY" />
+              <Card style={styles.card}>
+                <Card.Content>
+                  {report.unableToVerify.map((item, index) => (
+                    <View key={index} style={styles.summaryRow}>
+                      <IconBadge source="help-circle-outline" size={12} backgroundColor="transparent" color="#8A8A8A" />
+                      <Text variant="bodyMedium" style={styles.summaryText}>
+                        {SHOT_LABELS[item.shot]} — {item.component}: {item.description}
+                      </Text>
+                    </View>
+                  ))}
+                </Card.Content>
+              </Card>
+            </>
+          )}
+
+          <SectionLabel icon="image-multiple-outline" label="COMPONENT-BY-COMPONENT INSPECTION" />
           <Card style={styles.card}>
             <Card.Content>
               {ALL_SHOTS.map((shotKey, index) => {
                 const { path, bucket } = previousPathForShot(index, shotKey)
-                const comparison = statusForShot(shotKey)
+                const shotResult = report.shots.find((s) => s.shot === shotKey)
                 return (
-                  <PhotoComparisonRow
+                  <ShotInspectionCard
                     key={shotKey}
                     label={SHOT_LABELS[shotKey]}
-                    status={comparison.status}
-                    note={comparison.note}
+                    hasBaseline={shotResult?.hasBaseline ?? false}
+                    overallMatchPercent={shotResult?.overallMatchPercent ?? null}
+                    components={shotResult?.components ?? []}
                     previousPath={path}
                     previousBucket={bucket}
                     todayPath={inspection.photo_urls?.[index] ?? ''}
-                    damage={damageForShot(shotKey)}
                   />
                 )
               })}
             </Card.Content>
           </Card>
-
-          {report.damage.length > 0 && (
-            <>
-              <SectionLabel icon="alert-decagram-outline" label="POSSIBLE DAMAGE" />
-              {report.damage.map((item, index) => (
-                <Card key={index} style={[styles.card, styles.damageCard]}>
-                  <Card.Content>
-                    <Text variant="titleMedium" style={styles.damageTitle}>
-                      {item.type}
-                    </Text>
-                    <Text variant="bodyMedium" style={styles.detail}>
-                      Location: {item.location}
-                    </Text>
-                    <Text variant="bodyMedium" style={styles.detail}>
-                      Confidence: {item.confidencePercent}%
-                    </Text>
-                    {item.estimatedSizeCm != null && (
-                      <Text variant="bodyMedium" style={styles.detail}>
-                        Estimated size: {item.estimatedSizeCm} cm
-                      </Text>
-                    )}
-                    <Text variant="bodySmall" style={styles.damageDescription}>
-                      {item.description}
-                    </Text>
-                  </Card.Content>
-                </Card>
-              ))}
-            </>
-          )}
 
           <Card style={styles.card}>
             <Card.Content>
@@ -318,16 +328,16 @@ export default function InspectionHealthReportScreen() {
               ? item.ai_analyzed_at != null
                 ? 'AI review unavailable'
                 : 'Awaiting AI review'
-              : itemReport.damage.length > 0
-                ? `Possible ${itemReport.damage.length === 1 ? 'issue' : 'issues'} detected${item.owner_review_status === 'pending' ? ' — awaiting owner review' : ''}`
-                : 'No changes detected'
+              : itemReport.newFindings.length > 0
+                ? `${itemReport.newFindings.length} new ${itemReport.newFindings.length === 1 ? 'finding' : 'findings'}${item.owner_review_status === 'pending' ? ' — awaiting owner review' : ''}`
+                : 'No new findings'
             return (
               <View key={item.id} style={styles.historyRow}>
                 <IconBadge
-                  source={!itemReport ? 'clock-outline' : itemReport.damage.length > 0 ? 'alert' : 'check'}
+                  source={!itemReport ? 'clock-outline' : itemReport.newFindings.length > 0 ? 'alert' : 'check'}
                   size={11}
                   backgroundColor="transparent"
-                  color={!itemReport ? '#8A8A8A' : itemReport.damage.length > 0 ? '#B5651D' : brandColors.emerald}
+                  color={!itemReport ? '#8A8A8A' : itemReport.newFindings.length > 0 ? '#B5651D' : brandColors.emerald}
                 />
                 <Text variant="bodyMedium" style={[styles.historyLabel, isCurrent && styles.historyLabelCurrent]}>
                   Week {index + 1}: {label}
@@ -466,6 +476,25 @@ export default function InspectionHealthReportScreen() {
           </Card>
         )
       )}
+
+      <DamageOverlayModal
+        visible={!!selectedFinding}
+        onClose={() => setSelectedFinding(null)}
+        photoPath={selectedFinding ? photoPathForShot(selectedFinding.shot) : null}
+        damage={
+          selectedFinding
+            ? {
+                shot: selectedFinding.shot,
+                location: selectedFinding.component,
+                type: selectedFinding.findingType ?? 'Finding',
+                confidencePercent: selectedFinding.confidencePercent,
+                estimatedSizeCm: null,
+                description: selectedFinding.description,
+                boundingBox: selectedFinding.boundingBox,
+              }
+            : null
+        }
+      />
     </ScrollView>
   )
 }
