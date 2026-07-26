@@ -1,7 +1,7 @@
 import { FlatList, View, StyleSheet } from 'react-native'
 import { Text, Card, Button, Chip } from 'react-native-paper'
 import { useRouter } from 'expo-router'
-import { useInspectionHistory } from '../../../../src/hooks/useInspections'
+import { useInspectionHistory, useRetryPendingAnalysis } from '../../../../src/hooks/useInspections'
 import { InspectionPhotoThumbnail } from '../../../../src/components/InspectionPhotoThumbnail'
 import { LoadingScreen } from '../../../../src/components/LoadingScreen'
 import { IconBadge } from '../../../../src/components/IconBadge'
@@ -24,6 +24,11 @@ const REVIEW_CONFIG: Record<string, { label: string; icon: string; color: string
 
 function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspections'> }) {
   const reviewConfig = REVIEW_CONFIG[inspection.owner_review_status ?? '']
+  // The driver's own history is often the only screen anyone opens after
+  // submitting — without this, a failed analysis only ever retries if the
+  // owner happens to open their report, which can leave "in progress" stuck
+  // indefinitely for a driver checking their own inspection.
+  useRetryPendingAnalysis(inspection)
 
   return (
     <Card style={styles.card}>
