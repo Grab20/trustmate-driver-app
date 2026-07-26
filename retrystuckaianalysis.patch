@@ -1,0 +1,40 @@
+From 8e4aea336c14aeaa7ce6b4b8d05116c1c3cac6df Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 26 Jul 2026 12:21:12 +0000
+Subject: [PATCH] Retry stuck AI analysis from the driver's own inspection list
+
+Previously only the owner's report screen retried a failed/pending
+analyze-inspection call. A driver who only checks their own inspection
+history had no path to self-heal a stuck 'AI review in progress' state.
+---
+ mobile/app/(app)/rental/inspections/index.tsx | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/mobile/app/(app)/rental/inspections/index.tsx b/mobile/app/(app)/rental/inspections/index.tsx
+index 3436c363..08525204 100644
+--- a/mobile/app/(app)/rental/inspections/index.tsx
++++ b/mobile/app/(app)/rental/inspections/index.tsx
+@@ -1,7 +1,7 @@
+ import { FlatList, View, StyleSheet } from 'react-native'
+ import { Text, Card, Button, Chip } from 'react-native-paper'
+ import { useRouter } from 'expo-router'
+-import { useInspectionHistory } from '../../../../src/hooks/useInspections'
++import { useInspectionHistory, useRetryPendingAnalysis } from '../../../../src/hooks/useInspections'
+ import { InspectionPhotoThumbnail } from '../../../../src/components/InspectionPhotoThumbnail'
+ import { LoadingScreen } from '../../../../src/components/LoadingScreen'
+ import { IconBadge } from '../../../../src/components/IconBadge'
+@@ -24,6 +24,11 @@ const REVIEW_CONFIG: Record<string, { label: string; icon: string; color: string
+ 
+ function InspectionCard({ inspection }: { inspection: Tables<'vehicle_inspections'> }) {
+   const reviewConfig = REVIEW_CONFIG[inspection.owner_review_status ?? '']
++  // The driver's own history is often the only screen anyone opens after
++  // submitting — without this, a failed analysis only ever retries if the
++  // owner happens to open their report, which can leave "in progress" stuck
++  // indefinitely for a driver checking their own inspection.
++  useRetryPendingAnalysis(inspection)
+ 
+   return (
+     <Card style={styles.card}>
+-- 
+2.43.0
+
