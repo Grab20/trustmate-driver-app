@@ -15,6 +15,13 @@ async function fetchActiveRental(driverId: string): Promise<ActiveRental | null>
     .eq('driver_id', driverId)
     .eq('status', 'approved')
     .is('unmatched_at', null)
+    // A match approved on the website without a car attached (car_id null)
+    // isn't a usable rental — excluding it here means the driver correctly
+    // sees "No Active Rental Yet" instead of a car-less rental that silently
+    // can't upload photos or submit anything.
+    .not('car_id', 'is', null)
+    .order('matched_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   if (error) throw error

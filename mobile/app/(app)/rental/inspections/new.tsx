@@ -15,6 +15,7 @@ import { InspectionCarDiagram } from '../../../../src/components/InspectionCarDi
 import { InspectionProgress } from '../../../../src/components/InspectionProgress'
 import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
 import { SectionLabel } from '../../../../src/components/SectionLabel'
+import { LoadingScreen } from '../../../../src/components/LoadingScreen'
 import {
   EXTERIOR_SHOT_KEYS,
   INTERIOR_SHOT_KEYS,
@@ -31,7 +32,7 @@ const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_
 export default function NewInspectionScreen() {
   const router = useRouter()
   const userId = useAuthStore((s) => s.session?.user.id)
-  const { data: activeRental } = useActiveRental()
+  const { data: activeRental, isLoading: isRentalLoading } = useActiveRental()
   const { data: odometer } = useVehicleOdometer(activeRental?.car_id ?? undefined)
   const { data: referencePhotos } = useCarReferencePhotos(activeRental?.car_id ?? undefined)
   const submitInspection = useSubmitInspection()
@@ -87,7 +88,9 @@ export default function NewInspectionScreen() {
     setShots((prev) => ({ ...prev, [review.key]: review.uri }))
 
     if (!activeRental?.car_id || !userId) {
-      Alert.alert('Not saved yet', 'Your vehicle details are still loading — this photo is shown but not yet backed up. It will be saved automatically once ready, or when you submit.')
+      // The screen itself is gated on having an active rental before it renders,
+      // so this can only fire if the rental gets unmatched mid-inspection.
+      Alert.alert('Rental no longer active', 'This photo is shown but was not saved — your active rental ended while inspecting. Go back and check your rental status.')
       return
     }
     // Persist to storage in the background — the native camera activity can
@@ -129,6 +132,24 @@ export default function NewInspectionScreen() {
     } catch (err) {
       Alert.alert('Submission failed', err instanceof Error ? err.message : 'Unknown error')
     }
+  }
+
+  if (isRentalLoading) return <LoadingScreen />
+
+  if (!activeRental?.car_id) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text variant="titleMedium" style={styles.emptyTitle}>
+          No Active Rental
+        </Text>
+        <Text variant="bodyMedium" style={styles.emptyBody}>
+          You need an active rental matched to a vehicle before you can submit an inspection.
+        </Text>
+        <Button mode="outlined" onPress={() => router.back()} style={styles.emptyButton}>
+          Go Back
+        </Button>
+      </View>
+    )
   }
 
   return (
@@ -225,6 +246,25 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 24,
+  },
+  emptyContainer: {
+    flex: 1,
+    backgroundColor: brandColors.paper,
+    padding: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    opacity: 0.7,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  emptyButton: {
+    minWidth: 160,
   },
   heading: {
     marginBottom: 4,
