@@ -1,0 +1,121 @@
+From 92dc3421b517cd9d4fab17daf24f6db1026d1e61 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 26 Jul 2026 08:01:22 +0000
+Subject: [PATCH] Fix car-less approved matches breaking driver inspection flow
+
+An owner re-match on the website can approve a driver without a car_id
+attached. useActiveRental was treating that as a valid active rental,
+so the inspection screen showed a permanent 'still loading' message
+and Submit stayed disabled forever with no way out. Now excluded from
+the active-rental query, and the New Inspection screen shows a clear
+'No Active Rental' state instead of letting the driver take photos
+into a rental that can't actually save them.
+---
+ mobile/app/(app)/rental/inspections/new.tsx | 44 ++++++++++++++++++++-
+ mobile/src/hooks/useActiveRental.ts         |  7 ++++
+ 2 files changed, 49 insertions(+), 2 deletions(-)
+
+diff --git a/mobile/app/(app)/rental/inspections/new.tsx b/mobile/app/(app)/rental/inspections/new.tsx
+index 42a54bc6..8630d970 100644
+--- a/mobile/app/(app)/rental/inspections/new.tsx
++++ b/mobile/app/(app)/rental/inspections/new.tsx
+@@ -15,6 +15,7 @@ import { InspectionCarDiagram } from '../../../../src/components/InspectionCarDi
+ import { InspectionProgress } from '../../../../src/components/InspectionProgress'
+ import { PhotoReviewModal } from '../../../../src/components/PhotoReviewModal'
+ import { SectionLabel } from '../../../../src/components/SectionLabel'
++import { LoadingScreen } from '../../../../src/components/LoadingScreen'
+ import {
+   EXTERIOR_SHOT_KEYS,
+   INTERIOR_SHOT_KEYS,
+@@ -31,7 +32,7 @@ const ALL_SHOTS: InspectionShotKey[] = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_
+ export default function NewInspectionScreen() {
+   const router = useRouter()
+   const userId = useAuthStore((s) => s.session?.user.id)
+-  const { data: activeRental } = useActiveRental()
++  const { data: activeRental, isLoading: isRentalLoading } = useActiveRental()
+   const { data: odometer } = useVehicleOdometer(activeRental?.car_id ?? undefined)
+   const { data: referencePhotos } = useCarReferencePhotos(activeRental?.car_id ?? undefined)
+   const submitInspection = useSubmitInspection()
+@@ -87,7 +88,9 @@ export default function NewInspectionScreen() {
+     setShots((prev) => ({ ...prev, [review.key]: review.uri }))
+ 
+     if (!activeRental?.car_id || !userId) {
+-      Alert.alert('Not saved yet', 'Your vehicle details are still loading — this photo is shown but not yet backed up. It will be saved automatically once ready, or when you submit.')
++      // The screen itself is gated on having an active rental before it renders,
++      // so this can only fire if the rental gets unmatched mid-inspection.
++      Alert.alert('Rental no longer active', 'This photo is shown but was not saved — your active rental ended while inspecting. Go back and check your rental status.')
+       return
+     }
+     // Persist to storage in the background — the native camera activity can
+@@ -131,6 +134,24 @@ export default function NewInspectionScreen() {
+     }
+   }
+ 
++  if (isRentalLoading) return <LoadingScreen />
++
++  if (!activeRental?.car_id) {
++    return (
++      <View style={styles.emptyContainer}>
++        <Text variant="titleMedium" style={styles.emptyTitle}>
++          No Active Rental
++        </Text>
++        <Text variant="bodyMedium" style={styles.emptyBody}>
++          You need an active rental matched to a vehicle before you can submit an inspection.
++        </Text>
++        <Button mode="outlined" onPress={() => router.back()} style={styles.emptyButton}>
++          Go Back
++        </Button>
++      </View>
++    )
++  }
++
+   return (
+     <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+       <Text variant="headlineSmall" style={styles.heading}>
+@@ -226,6 +247,25 @@ const styles = StyleSheet.create({
+   container: {
+     padding: 24,
+   },
++  emptyContainer: {
++    flex: 1,
++    backgroundColor: brandColors.paper,
++    padding: 24,
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  emptyTitle: {
++    marginBottom: 8,
++    textAlign: 'center',
++  },
++  emptyBody: {
++    opacity: 0.7,
++    textAlign: 'center',
++    marginBottom: 24,
++  },
++  emptyButton: {
++    minWidth: 160,
++  },
+   heading: {
+     marginBottom: 4,
+   },
+diff --git a/mobile/src/hooks/useActiveRental.ts b/mobile/src/hooks/useActiveRental.ts
+index 2b66afa4..3a85e586 100644
+--- a/mobile/src/hooks/useActiveRental.ts
++++ b/mobile/src/hooks/useActiveRental.ts
+@@ -15,6 +15,13 @@ async function fetchActiveRental(driverId: string): Promise<ActiveRental | null>
+     .eq('driver_id', driverId)
+     .eq('status', 'approved')
+     .is('unmatched_at', null)
++    // A match approved on the website without a car attached (car_id null)
++    // isn't a usable rental — excluding it here means the driver correctly
++    // sees "No Active Rental Yet" instead of a car-less rental that silently
++    // can't upload photos or submit anything.
++    .not('car_id', 'is', null)
++    .order('matched_at', { ascending: false })
++    .limit(1)
+     .maybeSingle()
+ 
+   if (error) throw error
+-- 
+2.43.0
+
