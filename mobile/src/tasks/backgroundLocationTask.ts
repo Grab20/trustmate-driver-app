@@ -17,6 +17,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       longitude: location.coords.longitude,
       speedMs: location.coords.speed,
       accuracyM: location.coords.accuracy,
+      heading: location.coords.heading,
       timestamp: location.timestamp,
     })
   }

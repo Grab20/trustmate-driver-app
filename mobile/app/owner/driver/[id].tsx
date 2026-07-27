@@ -9,6 +9,8 @@ import { useDriverLifetimeStats } from '../../../src/hooks/useDriverLifetimeStat
 import { useDriverDistanceTotals } from '../../../src/hooks/useDriverDistanceTotals'
 import { useDriverProfileForOwner } from '../../../src/hooks/useDriverProfileForOwner'
 import { useDriverTrafficOffencesForOwner } from '../../../src/hooks/useTrafficOffences'
+import { useDrivingSafetySummary } from '../../../src/hooks/useDrivingSafety'
+import { DrivingSafetyCard } from '../../../src/components/DrivingSafetyCard'
 import { useCar, useUpdateNextServiceDate } from '../../../src/hooks/useCar'
 import { useProfile } from '../../../src/hooks/useProfile'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
@@ -52,6 +54,7 @@ export default function OwnerDriverDetailScreen() {
   const { data: distanceTotals } = useDriverDistanceTotals(id)
   const { data: driverProfile } = useDriverProfileForOwner(id)
   const { data: offences } = useDriverTrafficOffencesForOwner(id)
+  const { data: safetySummary } = useDrivingSafetySummary(id)
   const { data: profile } = useProfile(id)
   const { data: car } = useCar(carId || undefined)
   const updateNextServiceDate = useUpdateNextServiceDate(carId || undefined)
@@ -167,6 +170,8 @@ export default function OwnerDriverDetailScreen() {
           style={styles.tripleStat}
         />
       </View>
+
+      {safetySummary && <DrivingSafetyCard summary={safetySummary} variant="owner" />}
 
       <Card style={[styles.card, paymentsUpToDate && inspectionCompleted && !hasIncidents && styles.goodStandingCard]}>
         <Card.Content>

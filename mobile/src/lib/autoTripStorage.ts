@@ -25,6 +25,10 @@ export type AutoTripState = {
   maxSpeedKmh: number
   lastPoint: AutoTripPoint | null
   lastSpeedMs: number | null
+  // Compass course in degrees (0-360) from the last usable fix — used to derive
+  // a lateral-acceleration estimate for harsh-cornering detection, since we
+  // have no accelerometer/gyroscope access in a background task.
+  lastHeadingDeg: number | null
   consecutiveMovingSamples: number
   lastSpeedKmh: number | null
   crashPendingAt: number | null
@@ -40,6 +44,7 @@ const EMPTY_STATE: AutoTripState = {
   maxSpeedKmh: 0,
   lastPoint: null,
   lastSpeedMs: null,
+  lastHeadingDeg: null,
   consecutiveMovingSamples: 0,
   lastSpeedKmh: null,
   crashPendingAt: null,

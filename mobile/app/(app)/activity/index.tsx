@@ -4,9 +4,12 @@ import { useRouter } from 'expo-router'
 import { useDistanceTotals } from '../../../src/hooks/useDistanceTotals'
 import { useTodayTrips } from '../../../src/hooks/useTodayTrips'
 import { useRecentActivity } from '../../../src/hooks/useRecentActivity'
+import { useDrivingSafetySummary } from '../../../src/hooks/useDrivingSafety'
+import { useAuthStore } from '../../../src/stores/authStore'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
 import { TripRouteRow } from '../../../src/components/TripRouteRow'
 import { ActivityRow } from '../../../src/components/ActivityRow'
+import { DrivingSafetyCard } from '../../../src/components/DrivingSafetyCard'
 import { brandColors, radius, cardShadow } from '../../../src/theme/theme'
 
 function formatDrivingTime(seconds: number): string {
@@ -18,9 +21,11 @@ function formatDrivingTime(seconds: number): string {
 
 export default function ActivityScreen() {
   const router = useRouter()
+  const userId = useAuthStore((s) => s.session?.user.id)
   const { data: distanceTotals, isLoading: isTotalsLoading } = useDistanceTotals()
   const { data: todayTrips, isLoading: isTripsLoading } = useTodayTrips()
   const { data: recentActivity, isLoading: isRecentLoading } = useRecentActivity()
+  const { data: safetySummary } = useDrivingSafetySummary(userId)
 
   if (isTotalsLoading || isTripsLoading || isRecentLoading) return <LoadingScreen />
 
@@ -38,6 +43,8 @@ export default function ActivityScreen() {
           <Text style={styles.statSub}>{formatDrivingTime(distanceTotals?.durationWeekSeconds ?? 0)} driving</Text>
         </View>
       </View>
+
+      {safetySummary && <DrivingSafetyCard summary={safetySummary} variant="driver" />}
 
       <Text variant="labelMedium" style={styles.sectionLabel}>
         TODAY'S TRIPS

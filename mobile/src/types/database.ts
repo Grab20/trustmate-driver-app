@@ -456,6 +456,8 @@ export type Database = {
           accidents: number | null
           admin_note: string | null
           age: number | null
+          applications_paused: boolean | null
+          approved_at: string | null
           bio: string | null
           bolt_rating: string | null
           bolt_trips: string | null
@@ -503,6 +505,8 @@ export type Database = {
           reckless_driving: number | null
           rejected_at: string | null
           rejection_reason: string | null
+          removal_reason: string | null
+          removed_at: string | null
           rentals_completed: number | null
           safe_parking: boolean | null
           screenshot_bolt_url: string | null
@@ -516,6 +520,7 @@ export type Database = {
           self_uber_trips: number | null
           status: string | null
           suspended: boolean | null
+          suspension_reason: string | null
           trust_score: number | null
           uber_rating: string | null
           uber_trips: string | null
@@ -531,6 +536,8 @@ export type Database = {
           accidents?: number | null
           admin_note?: string | null
           age?: number | null
+          applications_paused?: boolean | null
+          approved_at?: string | null
           bio?: string | null
           bolt_rating?: string | null
           bolt_trips?: string | null
@@ -578,6 +585,8 @@ export type Database = {
           reckless_driving?: number | null
           rejected_at?: string | null
           rejection_reason?: string | null
+          removal_reason?: string | null
+          removed_at?: string | null
           rentals_completed?: number | null
           safe_parking?: boolean | null
           screenshot_bolt_url?: string | null
@@ -591,6 +600,7 @@ export type Database = {
           self_uber_trips?: number | null
           status?: string | null
           suspended?: boolean | null
+          suspension_reason?: string | null
           trust_score?: number | null
           uber_rating?: string | null
           uber_trips?: string | null
@@ -606,6 +616,8 @@ export type Database = {
           accidents?: number | null
           admin_note?: string | null
           age?: number | null
+          applications_paused?: boolean | null
+          approved_at?: string | null
           bio?: string | null
           bolt_rating?: string | null
           bolt_trips?: string | null
@@ -653,6 +665,8 @@ export type Database = {
           reckless_driving?: number | null
           rejected_at?: string | null
           rejection_reason?: string | null
+          removal_reason?: string | null
+          removed_at?: string | null
           rentals_completed?: number | null
           safe_parking?: boolean | null
           screenshot_bolt_url?: string | null
@@ -666,6 +680,7 @@ export type Database = {
           self_uber_trips?: number | null
           status?: string | null
           suspended?: boolean | null
+          suspension_reason?: string | null
           trust_score?: number | null
           uber_rating?: string | null
           uber_trips?: string | null
@@ -683,6 +698,70 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: true
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      driving_events: {
+        Row: {
+          car_id: string
+          created_at: string
+          driver_id: string
+          event_type: string
+          id: string
+          lat: number | null
+          lng: number | null
+          occurred_at: string
+          severity: number
+          speed_kmh: number | null
+          trip_id: string
+        }
+        Insert: {
+          car_id: string
+          created_at?: string
+          driver_id: string
+          event_type: string
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          occurred_at?: string
+          severity: number
+          speed_kmh?: number | null
+          trip_id: string
+        }
+        Update: {
+          car_id?: string
+          created_at?: string
+          driver_id?: string
+          event_type?: string
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          occurred_at?: string
+          severity?: number
+          speed_kmh?: number | null
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driving_events_car_id_fkey"
+            columns: ["car_id"]
+            isOneToOne: false
+            referencedRelation: "cars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driving_events_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driving_events_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_trips"
             referencedColumns: ["id"]
           },
         ]
@@ -957,6 +1036,7 @@ export type Database = {
           admin_note: string | null
           admin_reviewed_at: string | null
           admin_status: string | null
+          applications_paused: boolean | null
           avatar_url: string | null
           bio: string | null
           created_at: string | null
@@ -966,6 +1046,7 @@ export type Database = {
           full_name: string
           id: string
           is_admin: boolean | null
+          is_removed: boolean | null
           is_suspended: boolean | null
           location: string | null
           phone: string | null
@@ -975,6 +1056,8 @@ export type Database = {
           popia_accepted: boolean | null
           popia_accepted_at: string | null
           preferred_contact: string | null
+          removal_reason: string | null
+          removed_at: string | null
           role: string
           suspended_at: string | null
           suspension_reason: string | null
@@ -990,6 +1073,7 @@ export type Database = {
           admin_note?: string | null
           admin_reviewed_at?: string | null
           admin_status?: string | null
+          applications_paused?: boolean | null
           avatar_url?: string | null
           bio?: string | null
           created_at?: string | null
@@ -999,6 +1083,7 @@ export type Database = {
           full_name: string
           id: string
           is_admin?: boolean | null
+          is_removed?: boolean | null
           is_suspended?: boolean | null
           location?: string | null
           phone?: string | null
@@ -1008,6 +1093,8 @@ export type Database = {
           popia_accepted?: boolean | null
           popia_accepted_at?: string | null
           preferred_contact?: string | null
+          removal_reason?: string | null
+          removed_at?: string | null
           role: string
           suspended_at?: string | null
           suspension_reason?: string | null
@@ -1023,6 +1110,7 @@ export type Database = {
           admin_note?: string | null
           admin_reviewed_at?: string | null
           admin_status?: string | null
+          applications_paused?: boolean | null
           avatar_url?: string | null
           bio?: string | null
           created_at?: string | null
@@ -1032,6 +1120,7 @@ export type Database = {
           full_name?: string
           id?: string
           is_admin?: boolean | null
+          is_removed?: boolean | null
           is_suspended?: boolean | null
           location?: string | null
           phone?: string | null
@@ -1041,6 +1130,8 @@ export type Database = {
           popia_accepted?: boolean | null
           popia_accepted_at?: string | null
           preferred_contact?: string | null
+          removal_reason?: string | null
+          removed_at?: string | null
           role?: string
           suspended_at?: string | null
           suspension_reason?: string | null
@@ -1711,6 +1802,7 @@ export type Database = {
         Row: {
           accidents: number | null
           age: number | null
+          applications_paused: boolean | null
           bolt_rating: string | null
           bolt_trips: string | null
           damage_incidents: number | null
@@ -1762,6 +1854,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      award_weekly_safety_trust_points: { Args: never; Returns: undefined }
       calculate_trust_score: { Args: { dp_id: string }; Returns: number }
       complete_driver_registration: {
         Args: { payload: Json }
