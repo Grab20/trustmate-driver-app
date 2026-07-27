@@ -15,9 +15,16 @@ export type AutoTripState = {
   activeTripId: string | null
   startedAt: number | null
   lastMovingAt: number | null
+  // The GPS fix timestamp (not processing wall-clock time) of the last sample
+  // seen, moving or not — needed to compute correct elapsed time between
+  // samples when Android delivers a batch of queued locations all at once
+  // after a background/Doze gap, which would otherwise make Date.now() look
+  // like every location in the batch happened simultaneously.
+  lastSampleAt: number | null
   distanceKm: number
   maxSpeedKmh: number
   lastPoint: AutoTripPoint | null
+  lastSpeedMs: number | null
   consecutiveMovingSamples: number
   lastSpeedKmh: number | null
   crashPendingAt: number | null
@@ -28,9 +35,11 @@ const EMPTY_STATE: AutoTripState = {
   activeTripId: null,
   startedAt: null,
   lastMovingAt: null,
+  lastSampleAt: null,
   distanceKm: 0,
   maxSpeedKmh: 0,
   lastPoint: null,
+  lastSpeedMs: null,
   consecutiveMovingSamples: 0,
   lastSpeedKmh: null,
   crashPendingAt: null,

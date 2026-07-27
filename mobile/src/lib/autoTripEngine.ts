@@ -18,6 +18,12 @@ const MOVEMENT_THRESHOLD_KMH = 8
 const MOVING_SAMPLES_TO_START = 1
 // A trip ends once the vehicle has been below the movement threshold for this long.
 const IDLE_THRESHOLD_MS = 7 * 60 * 1000
+// A GPS fix worse than this is too imprecise to trust for distance/speed accumulation
+// (still fine for a coarse moving/stationary check, just not for the running totals).
+const MAX_USABLE_ACCURACY_M = 50
+// Anything faster than this on a public road is virtually certain to be a GPS glitch
+// (a jump to a distant point, or a corrupted Doppler speed reading), not a real speed.
+const MAX_PLAUSIBLE_SPEED_KMH = 220
 
 // Crash heuristic: highway-ish speed followed by the vehicle staying near-stationary for
 // two consecutive samples (~60s). Requiring two samples (not one) filters out ordinary
@@ -82,11 +88,18 @@ async function startTrip(sample: LocationSample) {
 
   await setAutoTripState({
     activeTripId: trip.id,
-    startedAt: Date.now(),
-    lastMovingAt: Date.now(),
+    // Anchor timing to the GPS fix's own timestamp, not the moment this code
+    // happens to run — Android can queue several locations under Doze/battery
+    // restrictions and deliver them as one batch, in which case Date.now()
+    // would be identical for all of them and corrupt every duration/idle
+    // calculation that follows.
+    startedAt: sample.timestamp,
+    lastMovingAt: sample.timestamp,
+    lastSampleAt: sample.timestamp,
     distanceKm: 0,
     maxSpeedKmh: 0,
     lastPoint: { latitude: sample.latitude, longitude: sample.longitude },
+    lastSpeedMs: sample.speedMs,
     consecutiveMovingSamples: 0,
     lastSpeedKmh: null,
     crashPendingAt: null,
@@ -97,7 +110,12 @@ async function startTrip(sample: LocationSample) {
 }
 
 async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
-  const durationSeconds = state.startedAt ? (Date.now() - state.startedAt) / 1000 : 0
+  // Duration is the span the vehicle was actually moving (startedAt to the
+  // last sample that counted as moving) — not startedAt to now, which would
+  // also bill the trailing IDLE_THRESHOLD_MS wait used only to detect that
+  // the trip had ended, inflating every trip's recorded driving time by up
+  // to 7 minutes.
+  const durationSeconds = state.startedAt && state.lastMovingAt ? (state.lastMovingAt - state.startedAt) / 1000 : 0
   const avgSpeedKmh = durationSeconds > 0 ? state.distanceKm / (durationSeconds / 3600) : null
   const endLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
 
@@ -131,7 +149,10 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
   if (!context) return
 
   const state = await getAutoTripState()
-  const lastTimestamp = state.lastMovingAt ?? state.startedAt
+  // The last sample's own GPS-fix time, not the last time it was moving — using
+  // lastMovingAt here understated elapsed time (and so overstated speed) across
+  // any stationary gap, since it wouldn't advance while the vehicle was stopped.
+  const lastTimestamp = state.lastSampleAt ?? state.startedAt
   const speedKmh = speedKmhFromSample(sample, state.lastPoint, lastTimestamp)
   const isMoving = speedKmh >= MOVEMENT_THRESHOLD_KMH
 
@@ -158,7 +179,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     if (isMoving) {
       // Driver resumed normal driving — treat the earlier stop as a false alarm.
       crashPendingAt = null
-    } else if (Date.now() - crashPendingAt >= CRASH_CONFIRM_WINDOW_MS) {
+    } else if (sample.timestamp - crashPendingAt >= CRASH_CONFIRM_WINDOW_MS) {
       await reportPossibleCrash(context, state.lastSpeedKmh ?? 0, sample)
       crashPendingAt = null
     }
@@ -169,7 +190,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
       crashCandidateCount > 0 || (state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH ? crashCandidateCount + 1 : 0
 
     if (crashCandidateCount >= CRASH_CANDIDATE_SAMPLES) {
-      crashPendingAt = Date.now()
+      crashPendingAt = sample.timestamp
       crashCandidateCount = 0
       await notify(
         'Possible crash detected',
@@ -190,22 +211,43 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
   })
   if (waypointError) console.warn('Auto-trip: failed to save waypoint', waypointError.message)
 
-  const segmentKm = state.lastPoint
-    ? haversineDistanceKm(state.lastPoint.latitude, state.lastPoint.longitude, sample.latitude, sample.longitude)
-    : 0
+  // A fix this imprecise, or a speed this implausible, isn't trustworthy enough to
+  // fold into the running distance/top-speed totals — but it still counts for the
+  // moving/idle check above, since even a rough fix tells you the car is moving.
+  const accuracyOk = sample.accuracyM == null || sample.accuracyM <= MAX_USABLE_ACCURACY_M
+  const speedPlausible = speedKmh <= MAX_PLAUSIBLE_SPEED_KMH
+  const isSampleUsable = accuracyOk && speedPlausible
+
+  let segmentKm = 0
+  if (isSampleUsable && state.lastPoint) {
+    const currentSpeedMs = sample.speedMs
+    const previousSpeedMs = state.lastSpeedMs
+    const dtHours = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 3_600_000 : 0
+    if (currentSpeedMs != null && currentSpeedMs >= 0 && previousSpeedMs != null && previousSpeedMs >= 0 && dtHours > 0) {
+      // Integrating the GPS chip's own Doppler-derived speed over elapsed time follows
+      // the actual road distance far better than summing straight-line hops between
+      // sparse fixes, which visibly cuts every corner on anything but a dead-straight road.
+      const avgSpeedKmh = ((currentSpeedMs + previousSpeedMs) / 2) * 3.6
+      segmentKm = avgSpeedKmh * dtHours
+    } else {
+      segmentKm = haversineDistanceKm(state.lastPoint.latitude, state.lastPoint.longitude, sample.latitude, sample.longitude)
+    }
+  }
 
   const updatedState = {
     ...state,
     distanceKm: state.distanceKm + segmentKm,
-    maxSpeedKmh: Math.max(state.maxSpeedKmh, speedKmh),
+    maxSpeedKmh: isSampleUsable ? Math.max(state.maxSpeedKmh, speedKmh) : state.maxSpeedKmh,
     lastPoint: { latitude: sample.latitude, longitude: sample.longitude } satisfies AutoTripPoint,
-    lastMovingAt: isMoving ? Date.now() : state.lastMovingAt,
+    lastSampleAt: sample.timestamp,
+    lastSpeedMs: sample.speedMs ?? null,
+    lastMovingAt: isMoving ? sample.timestamp : state.lastMovingAt,
     lastSpeedKmh: speedKmh,
     crashPendingAt,
     crashCandidateCount,
   }
 
-  const idleSince = Date.now() - (updatedState.lastMovingAt ?? Date.now())
+  const idleSince = sample.timestamp - (updatedState.lastMovingAt ?? sample.timestamp)
   if (idleSince > IDLE_THRESHOLD_MS) {
     await endTrip(state.activeTripId, updatedState, sample)
   } else {

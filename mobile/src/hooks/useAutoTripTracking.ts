@@ -51,10 +51,18 @@ export function useAutoTripTracking(): AutoTripPermissionStatus {
       )
       if (!isRegistered) {
         await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 30000,
-          distanceInterval: 30,
+          // Balanced accuracy (~100m) can fall back to network/cell-tower positioning
+          // instead of the GPS chip, which frequently omits real speed/heading data —
+          // exactly the fields distance, top speed, and (later) harsh-driving detection
+          // depend on. BestForNavigation forces GPS-grade fixes with that data included.
+          accuracy: Location.Accuracy.BestForNavigation,
+          // A sample every 30s / 30m is too sparse to follow a curved road or catch a
+          // brief harsh-braking event — 5s / 15m is still light on battery but frequent
+          // enough for both distance accuracy and driving-behaviour detection.
+          timeInterval: 5000,
+          distanceInterval: 15,
           pausesUpdatesAutomatically: false,
+          activityType: Location.ActivityType.AutomotiveNavigation,
           foregroundService: {
             notificationTitle: 'TrustMate Driver',
             notificationBody: 'Monitoring your rental for automatic trip tracking.',
