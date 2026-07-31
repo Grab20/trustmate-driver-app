@@ -1,6 +1,8 @@
-import { View, StyleSheet, ScrollView, Pressable, Linking } from 'react-native'
+import { useEffect, useState } from 'react'
+import { View, StyleSheet, ScrollView, Pressable, Linking, Platform } from 'react-native'
 import { Text, Button } from 'react-native-paper'
 import { useRouter } from 'expo-router'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useActiveRental } from '../../src/hooks/useActiveRental'
 import { useDriverProfile } from '../../src/hooks/useDriverProfile'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
@@ -9,12 +11,15 @@ import { useTrustScoreTrend } from '../../src/hooks/useTrustScoreTrend'
 import { useRecentActivity } from '../../src/hooks/useRecentActivity'
 import { useAuthStore } from '../../src/stores/authStore'
 import { useAutoTripTrackingStore } from '../../src/stores/autoTripTrackingStore'
+import { requestIgnoreBatteryOptimizations } from '../../src/lib/batteryOptimization'
 import { LoadingScreen } from '../../src/components/LoadingScreen'
 import { TrustScoreRing } from '../../src/components/TrustScoreRing'
 import { IconBadge } from '../../src/components/IconBadge'
 import { getNextOccurrence, formatShortDate } from '../../src/utils/schedule'
 import { computePaymentRecord } from '../../src/utils/paymentRecord'
 import { brandColors, radius, cardShadow } from '../../src/theme/theme'
+
+const BATTERY_PROMPT_DISMISSED_KEY = 'battery-optimization-prompt-dismissed'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -48,6 +53,20 @@ export default function HomeScreen() {
   const { data: recentActivity } = useRecentActivity()
   const signOut = useAuthStore((s) => s.signOut)
   const trackingStatus = useAutoTripTrackingStore((s) => s.status)
+  const [showBatteryPrompt, setShowBatteryPrompt] = useState(false)
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || trackingStatus !== 'granted') return
+    AsyncStorage.getItem(BATTERY_PROMPT_DISMISSED_KEY).then((dismissed) => {
+      if (!dismissed) setShowBatteryPrompt(true)
+    })
+  }, [trackingStatus])
+
+  async function handleFixBatterySettings() {
+    await requestIgnoreBatteryOptimizations()
+    setShowBatteryPrompt(false)
+    await AsyncStorage.setItem(BATTERY_PROMPT_DISMISSED_KEY, '1')
+  }
 
   if (isLoading) return <LoadingScreen />
 
@@ -128,6 +147,22 @@ export default function HomeScreen() {
             </Text>
             <Button mode="text" compact onPress={() => Linking.openSettings()} style={styles.trackingBannerButton}>
               Open Settings
+            </Button>
+          </View>
+        </View>
+      )}
+
+      {showBatteryPrompt && (
+        <View style={styles.trackingBanner}>
+          <IconBadge source="battery-alert" backgroundColor="#B5651D" size={16} />
+          <View style={styles.trackingBannerText}>
+            <Text style={styles.trackingBannerTitle}>Improve trip tracking reliability</Text>
+            <Text style={styles.trackingBannerBody}>
+              Some phones stop tracking in the background to save battery. Allow TrustMate Driver to run without
+              battery restrictions so trips and distance are recorded reliably.
+            </Text>
+            <Button mode="text" compact onPress={handleFixBatterySettings} style={styles.trackingBannerButton}>
+              Fix Battery Settings
             </Button>
           </View>
         </View>

@@ -44,7 +44,8 @@
           "backgroundColor": "#12331F"
         }
       ],
-      "./plugins/withLargeHeap.js"
+      "./plugins/withLargeHeap.js",
+      "./plugins/withBatteryOptimizationPermission.js"
     ],
     "experiments": {
       "typedRoutes": true

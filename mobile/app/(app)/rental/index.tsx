@@ -8,9 +8,12 @@ import { useMyProfile } from '../../../src/hooks/useMyProfile'
 import { useInspectionHistory } from '../../../src/hooks/useInspections'
 import { useMyTrafficOffences } from '../../../src/hooks/useTrafficOffences'
 import { useMyLiveStatus } from '../../../src/hooks/useMyLiveStatus'
+import { useDrivingSafetySummary } from '../../../src/hooks/useDrivingSafety'
+import { useAuthStore } from '../../../src/stores/authStore'
 import { LoadingScreen } from '../../../src/components/LoadingScreen'
 import { RentalTimeline, type TimelineEvent } from '../../../src/components/RentalTimeline'
 import { LiveStatusMap } from '../../../src/components/LiveStatusMap'
+import { DrivingSafetyCard } from '../../../src/components/DrivingSafetyCard'
 import { SectionLabel } from '../../../src/components/SectionLabel'
 import { ChecklistRow } from '../../../src/components/ChecklistRow'
 import { reverseGeocodeLabel } from '../../../src/lib/reverseGeocode'
@@ -25,6 +28,8 @@ export default function RentalScreen() {
   const { data: trafficOffences } = useMyTrafficOffences()
   const { data: liveStatus } = useMyLiveStatus()
   const { data: myProfile } = useMyProfile()
+  const userId = useAuthStore((s) => s.session?.user.id)
+  const { data: safetySummary } = useDrivingSafetySummary(userId)
   const [addressLabel, setAddressLabel] = useState<string | null>(null)
 
   useEffect(() => {
@@ -132,6 +137,8 @@ export default function RentalScreen() {
           )}
         </Card.Content>
       </Card>
+
+      {safetySummary && <DrivingSafetyCard summary={safetySummary} variant="driver" />}
 
       <Card style={[styles.card, isGoodStanding && styles.goodStandingCard]}>
         <Card.Content>
