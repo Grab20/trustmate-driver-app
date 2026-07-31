@@ -8,10 +8,13 @@ const { AndroidConfig, withAndroidManifest } = require('@expo/config-plugins')
 // which looks exactly like "trip tracking doesn't work" to the driver.
 module.exports = function withBatteryOptimizationPermission(config) {
   return withAndroidManifest(config, (config) => {
-    config.modResults = AndroidConfig.Permissions.addPermission(
-      config.modResults,
+    // ensurePermissions mutates config.modResults in place and returns a
+    // results map, not the manifest — reassigning modResults to that (or to
+    // addPermission's undefined return) corrupts the manifest and breaks
+    // prebuild entirely.
+    AndroidConfig.Permissions.ensurePermissions(config.modResults, [
       'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
-    )
+    ])
     return config
   })
 }
