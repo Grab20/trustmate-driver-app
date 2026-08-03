@@ -25,6 +25,24 @@ const MAX_USABLE_ACCURACY_M = 50
 // Anything faster than this on a public road is virtually certain to be a GPS glitch
 // (a jump to a distant point, or a corrupted Doppler speed reading), not a real speed.
 const MAX_PLAUSIBLE_SPEED_KMH = 220
+// Real fixes can't legitimately arrive faster than this given the ~5s sample interval
+// requested from the OS. A gap smaller than this is the signature of a post-Doze/
+// background-backlog flush: the OS hands back a batch of buffered fixes all at once,
+// each carrying its own valid-looking historical speed/accuracy, but compressed into
+// a few milliseconds of processing time instead of the real minutes or hours between
+// them. Trusting that timing corrupts everything downstream — it lets "moving" time
+// balloon for hours (each fix looks like a plausible speed reading) while the actual
+// distance/duration math, which divides by that near-zero elapsed time, collapses
+// toward zero. Below this floor a sample is still logged as a waypoint, but it's not
+// trusted to move the live map, extend moving time, or shift the reference point used
+// to measure the next sample.
+const MIN_SAMPLE_GAP_S = 1
+// Above this gap between two otherwise-trusted samples, don't integrate "average of
+// the two endpoint speeds x elapsed time" — a real multi-hour tracking gap (phone
+// backgrounded, Doze, etc.) would extrapolate to an absurd distance if treated as
+// constant-speed travel for the whole gap. Fall back to the straight-line distance
+// between the two points instead, same as when speed data is missing entirely.
+const MAX_SEGMENT_INTEGRATION_GAP_S = 60
 
 // Driver Safety event thresholds. There's no accelerometer/gyroscope access in a
 // background task, so these are all derived purely from consecutive GPS fixes:
@@ -241,11 +259,23 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
   const lastTimestamp = state.lastSampleAt ?? state.startedAt
   const speedKmh = speedKmhFromSample(sample, state.lastPoint, lastTimestamp)
   const isMoving = speedKmh >= MOVEMENT_THRESHOLD_KMH
+  const dtSeconds = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 1000 : 0
+
+  // A fix this imprecise, a speed this implausible, or a gap this small since the last
+  // sample isn't trustworthy enough to move the live map, extend moving time, or shift
+  // the reference point used to measure the next sample — see MIN_SAMPLE_GAP_S above.
+  const accuracyOk = sample.accuracyM == null || sample.accuracyM <= MAX_USABLE_ACCURACY_M
+  const speedPlausible = speedKmh <= MAX_PLAUSIBLE_SPEED_KMH
+  const gapLooksReal = lastTimestamp == null || dtSeconds >= MIN_SAMPLE_GAP_S
+  const isSampleUsable = accuracyOk && speedPlausible && gapLooksReal
 
   // Live status is independent of trip state — owners need to see this even while parked.
-  await upsertLiveStatus(context, isMoving, speedKmh, sample)
+  if (isSampleUsable) {
+    await upsertLiveStatus(context, isMoving, speedKmh, sample)
+  }
 
   if (!state.activeTripId) {
+    if (!isSampleUsable) return
     if (isMoving) {
       const consecutive = state.consecutiveMovingSamples + 1
       if (consecutive >= MOVING_SAMPLES_TO_START) {
@@ -261,31 +291,33 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
 
   let crashPendingAt = state.crashPendingAt
   let crashCandidateCount = state.crashCandidateCount
-  if (crashPendingAt) {
-    if (isMoving) {
-      // Driver resumed normal driving — treat the earlier stop as a false alarm.
-      crashPendingAt = null
-    } else if (sample.timestamp - crashPendingAt >= CRASH_CONFIRM_WINDOW_MS) {
-      await reportPossibleCrash(context, state.lastSpeedKmh ?? 0, sample)
-      crashPendingAt = null
-    }
-  } else if (speedKmh <= CRASH_SPEED_AFTER_KMH) {
-    // Only start (or continue) counting candidate samples if the vehicle was going fast
-    // just before this streak began, or is already mid-streak from a prior fast reading.
-    crashCandidateCount =
-      crashCandidateCount > 0 || (state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH ? crashCandidateCount + 1 : 0
+  if (isSampleUsable) {
+    if (crashPendingAt) {
+      if (isMoving) {
+        // Driver resumed normal driving — treat the earlier stop as a false alarm.
+        crashPendingAt = null
+      } else if (sample.timestamp - crashPendingAt >= CRASH_CONFIRM_WINDOW_MS) {
+        await reportPossibleCrash(context, state.lastSpeedKmh ?? 0, sample)
+        crashPendingAt = null
+      }
+    } else if (speedKmh <= CRASH_SPEED_AFTER_KMH) {
+      // Only start (or continue) counting candidate samples if the vehicle was going fast
+      // just before this streak began, or is already mid-streak from a prior fast reading.
+      crashCandidateCount =
+        crashCandidateCount > 0 || (state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH ? crashCandidateCount + 1 : 0
 
-    if (crashCandidateCount >= CRASH_CANDIDATE_SAMPLES) {
-      crashPendingAt = sample.timestamp
+      if (crashCandidateCount >= CRASH_CANDIDATE_SAMPLES) {
+        crashPendingAt = sample.timestamp
+        crashCandidateCount = 0
+        await notify(
+          'Possible crash detected',
+          "Tap to confirm you're OK. TrustMate admin will be alerted if you don't respond.",
+        )
+      }
+    } else {
+      // Moving at a normal pace again — clear any in-progress candidate streak.
       crashCandidateCount = 0
-      await notify(
-        'Possible crash detected',
-        "Tap to confirm you're OK. TrustMate admin will be alerted if you don't respond.",
-      )
     }
-  } else {
-    // Moving at a normal pace again — clear any in-progress candidate streak.
-    crashCandidateCount = 0
   }
 
   const { error: waypointError } = await supabase.from('trip_waypoints').insert({
@@ -297,38 +329,40 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
   })
   if (waypointError) console.warn('Auto-trip: failed to save waypoint', waypointError.message)
 
-  // A fix this imprecise, or a speed this implausible, isn't trustworthy enough to
-  // fold into the running distance/top-speed totals — but it still counts for the
-  // moving/idle check above, since even a rough fix tells you the car is moving.
-  const accuracyOk = sample.accuracyM == null || sample.accuracyM <= MAX_USABLE_ACCURACY_M
-  const speedPlausible = speedKmh <= MAX_PLAUSIBLE_SPEED_KMH
-  const isSampleUsable = accuracyOk && speedPlausible
-  const dtSeconds = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 1000 : 0
+  if (!isSampleUsable) {
+    // Logged above for later debugging, but not trusted for anything state-changing —
+    // leave everything as-is and wait for the next sample that looks real.
+    return
+  }
 
-  if (isSampleUsable) {
-    const events = detectDrivingEvents(sample, state, speedKmh, dtSeconds)
-    for (const event of events) {
-      const { error: eventError } = await supabase.from('driving_events').insert({
-        trip_id: state.activeTripId,
-        driver_id: context.driverId,
-        car_id: context.carId,
-        event_type: event.eventType,
-        severity: event.severity,
-        speed_kmh: event.speedKmh,
-        lat: sample.latitude,
-        lng: sample.longitude,
-        occurred_at: new Date(sample.timestamp).toISOString(),
-      })
-      if (eventError) console.warn('Auto-trip: failed to save driving event', eventError.message)
-    }
+  const events = detectDrivingEvents(sample, state, speedKmh, dtSeconds)
+  for (const event of events) {
+    const { error: eventError } = await supabase.from('driving_events').insert({
+      trip_id: state.activeTripId,
+      driver_id: context.driverId,
+      car_id: context.carId,
+      event_type: event.eventType,
+      severity: event.severity,
+      speed_kmh: event.speedKmh,
+      lat: sample.latitude,
+      lng: sample.longitude,
+      occurred_at: new Date(sample.timestamp).toISOString(),
+    })
+    if (eventError) console.warn('Auto-trip: failed to save driving event', eventError.message)
   }
 
   let segmentKm = 0
-  if (isSampleUsable && state.lastPoint) {
+  if (state.lastPoint) {
     const currentSpeedMs = sample.speedMs
     const previousSpeedMs = state.lastSpeedMs
     const dtHours = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 3_600_000 : 0
-    if (currentSpeedMs != null && currentSpeedMs >= 0 && previousSpeedMs != null && previousSpeedMs >= 0 && dtHours > 0) {
+    const gapShortEnoughToIntegrate = dtSeconds > 0 && dtSeconds <= MAX_SEGMENT_INTEGRATION_GAP_S
+    if (
+      gapShortEnoughToIntegrate &&
+      currentSpeedMs != null && currentSpeedMs >= 0 &&
+      previousSpeedMs != null && previousSpeedMs >= 0 &&
+      dtHours > 0
+    ) {
       // Integrating the GPS chip's own Doppler-derived speed over elapsed time follows
       // the actual road distance far better than summing straight-line hops between
       // sparse fixes, which visibly cuts every corner on anything but a dead-straight road.
@@ -342,7 +376,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
   const updatedState = {
     ...state,
     distanceKm: state.distanceKm + segmentKm,
-    maxSpeedKmh: isSampleUsable ? Math.max(state.maxSpeedKmh, speedKmh) : state.maxSpeedKmh,
+    maxSpeedKmh: Math.max(state.maxSpeedKmh, speedKmh),
     lastPoint: { latitude: sample.latitude, longitude: sample.longitude } satisfies AutoTripPoint,
     lastSampleAt: sample.timestamp,
     lastSpeedMs: sample.speedMs ?? null,
