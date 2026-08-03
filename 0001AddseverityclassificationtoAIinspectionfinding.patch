@@ -1,0 +1,414 @@
+From cad58a59ae393187b6ae53e66764c3985df9daa1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 3 Aug 2026 11:16:22 +0000
+Subject: [PATCH 1/2] Add severity classification to AI inspection findings
+
+Every new_finding is now classified major (structural/safety damage:
+dents, cracks, broken lights/mirrors, torn seats), minor (cosmetic:
+scratches, paint chips, stone chips) or dirty (cleanliness: mud,
+stains, dirty carpets/boot). The analyze-inspection edge function's
+prompt now works through an exhaustive per-category defect checklist
+covering exterior, windscreen, interior and boot instead of relying
+on the model to notice issues unprompted, and severity feeds into
+the condition score (major damage weighs far more than a dirty seat)
+and the owner-facing summary/recommendation text.
+
+The mobile app colour-codes findings by severity end to end: red for
+major, orange for minor, yellow for dirty, matching the same key on
+both the per-shot bounding-box overlay and the top-level new-findings
+list on the owner's Vehicle Health Report.
+---
+ .../driver/inspection/[inspectionId].tsx      | 84 ++++++++++++++-----
+ mobile/src/components/DamageOverlayModal.tsx  | 55 ++++++++++--
+ mobile/src/components/ShotInspectionCard.tsx  | 82 +++++++++++++-----
+ mobile/src/types/inspectionReport.ts          |  8 ++
+ 4 files changed, 182 insertions(+), 47 deletions(-)
+
+diff --git a/mobile/app/owner/driver/inspection/[inspectionId].tsx b/mobile/app/owner/driver/inspection/[inspectionId].tsx
+index 7492bbae..13c40fb4 100644
+--- a/mobile/app/owner/driver/inspection/[inspectionId].tsx
++++ b/mobile/app/owner/driver/inspection/[inspectionId].tsx
+@@ -16,12 +16,27 @@ import { IconBadge } from '../../../../src/components/IconBadge'
+ import { ShotInspectionCard } from '../../../../src/components/ShotInspectionCard'
+ import { DamageOverlayModal } from '../../../../src/components/DamageOverlayModal'
+ import { EXTERIOR_SHOT_KEYS, INTERIOR_SHOT_KEYS, SHOT_LABELS, type InspectionShotKey } from '../../../../src/components/InspectionShotGuide'
+-import { isVehicleHealthReport, type ComponentFinding } from '../../../../src/types/inspectionReport'
++import { isVehicleHealthReport, type ComponentFinding, type FindingSeverity } from '../../../../src/types/inspectionReport'
+ import { brandColors } from '../../../../src/theme/theme'
+ import type { Tables } from '../../../../src/types/database'
+ 
+ const ALL_SHOTS = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_KEYS]
+ 
++// Red = major (structural/safety), Orange = minor (cosmetic), Yellow = dirty
++// (cleanliness) — matches the bounding-box colour key in DamageOverlayModal.
++function severityColor(severity: FindingSeverity | null): string {
++  if (severity === 'minor') return '#C2701A'
++  if (severity === 'dirty') return '#B8960C'
++  return brandColors.alert
++}
++
++function severityLabel(severity: FindingSeverity | null): string {
++  if (severity === 'minor') return 'Minor'
++  if (severity === 'dirty') return 'Dirty'
++  if (severity === 'major') return 'Major'
++  return ''
++}
++
+ const VERIFICATION_ROWS: { key: 'plateMatch' | 'colorMatch' | 'modelMatch' | 'interiorMatch' | 'dashboardMatch'; label: string }[] = [
+   { key: 'plateMatch', label: 'Registration Plate' },
+   { key: 'colorMatch', label: 'Vehicle Colour' },
+@@ -188,23 +203,35 @@ export default function InspectionHealthReportScreen() {
+           {report.newFindings.length > 0 && (
+             <>
+               <SectionLabel icon="alert-decagram-outline" label="NEW FINDINGS" />
+-              {report.newFindings.map((item, index) => (
+-                <Pressable key={index} onPress={() => setSelectedFinding(item)}>
+-                  <Card style={[styles.card, styles.damageCard]}>
+-                    <Card.Content>
+-                      <Text variant="titleMedium" style={styles.damageTitle}>
+-                        {item.findingType ?? 'Finding'} — {item.component}
+-                      </Text>
+-                      <Text variant="bodyMedium" style={styles.detail}>
+-                        {SHOT_LABELS[item.shot]} · Confidence: {item.confidencePercent}%
+-                      </Text>
+-                      <Text variant="bodySmall" style={styles.damageDescription}>
+-                        {item.description}
+-                      </Text>
+-                    </Card.Content>
+-                  </Card>
+-                </Pressable>
+-              ))}
++              {report.newFindings.map((item, index) => {
++                const color = severityColor(item.severity)
++                return (
++                  <Pressable key={index} onPress={() => setSelectedFinding(item)}>
++                    <Card style={[styles.card, styles.damageCard, { borderColor: color }]}>
++                      <Card.Content>
++                        <View style={styles.damageTitleRow}>
++                          <Text variant="titleMedium" style={[styles.damageTitle, { color }]}>
++                            {item.findingType ?? 'Finding'} — {item.component}
++                          </Text>
++                          {item.severity && (
++                            <View style={[styles.severityPill, { backgroundColor: color }]}>
++                              <Text variant="labelSmall" style={styles.severityPillText}>
++                                {severityLabel(item.severity)}
++                              </Text>
++                            </View>
++                          )}
++                        </View>
++                        <Text variant="bodyMedium" style={styles.detail}>
++                          {SHOT_LABELS[item.shot]} · Confidence: {item.confidencePercent}%
++                        </Text>
++                        <Text variant="bodySmall" style={styles.damageDescription}>
++                          {item.description}
++                        </Text>
++                      </Card.Content>
++                    </Card>
++                  </Pressable>
++                )
++              })}
+             </>
+           )}
+ 
+@@ -491,6 +518,7 @@ export default function InspectionHealthReportScreen() {
+                 estimatedSizeCm: null,
+                 description: selectedFinding.description,
+                 boundingBox: selectedFinding.boundingBox,
++                severity: selectedFinding.severity,
+               }
+             : null
+         }
+@@ -557,13 +585,27 @@ const styles = StyleSheet.create({
+     fontWeight: '600',
+   },
+   damageCard: {
+-    borderColor: brandColors.alert,
+     borderWidth: 1,
+   },
+-  damageTitle: {
+-    color: brandColors.alert,
++  damageTitleRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    flexWrap: 'wrap',
++    gap: 8,
+     marginBottom: 8,
+   },
++  damageTitle: {
++    flexShrink: 1,
++  },
++  severityPill: {
++    paddingHorizontal: 10,
++    paddingVertical: 3,
++    borderRadius: 999,
++  },
++  severityPillText: {
++    color: '#FFFFFF',
++    fontWeight: '700',
++  },
+   damageDescription: {
+     marginTop: 8,
+     opacity: 0.7,
+diff --git a/mobile/src/components/DamageOverlayModal.tsx b/mobile/src/components/DamageOverlayModal.tsx
+index 77a798e2..aa9d857e 100644
+--- a/mobile/src/components/DamageOverlayModal.tsx
++++ b/mobile/src/components/DamageOverlayModal.tsx
+@@ -12,11 +12,28 @@ type DamageOverlayModalProps = {
+   bucket?: 'inspection-photos' | 'car-reference-photos'
+ }
+ 
++// Red = major (structural/safety), Orange = minor (cosmetic), Yellow = dirty
++// (cleanliness). Falls back to red when severity is unset — preserves the
++// reference-photo damage scan, which doesn't classify severity.
++function severityColor(severity: DamageItem['severity']): string {
++  if (severity === 'minor') return '#C2701A'
++  if (severity === 'dirty') return '#B8960C'
++  return brandColors.alert
++}
++
++function severityTint(color: string): string {
++  if (color === '#C2701A') return 'rgba(194,112,26,0.15)'
++  if (color === '#B8960C') return 'rgba(184,150,12,0.15)'
++  return 'rgba(199,67,58,0.15)'
++}
++
+ export function DamageOverlayModal({ visible, onClose, photoPath, damage, bucket = 'inspection-photos' }: DamageOverlayModalProps) {
+   const { data: url } = useSignedPhotoUrl(photoPath ?? undefined, bucket)
+ 
+   if (!damage) return null
+ 
++  const markerColor = severityColor(damage.severity)
++
+   return (
+     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+       <View style={styles.overlay}>
+@@ -35,15 +52,26 @@ export function DamageOverlayModal({ visible, onClose, photoPath, damage, bucket
+                   top: `${damage.boundingBox.y * 100}%`,
+                   width: `${damage.boundingBox.width * 100}%`,
+                   height: `${damage.boundingBox.height * 100}%`,
++                  borderColor: markerColor,
++                  backgroundColor: severityTint(markerColor),
+                 },
+               ]}
+             />
+           )}
+         </View>
+         <View style={styles.infoCard}>
+-          <Text variant="titleMedium" style={styles.infoTitle}>
+-            {damage.type}
+-          </Text>
++          <View style={styles.infoTitleRow}>
++            <Text variant="titleMedium" style={[styles.infoTitle, { color: markerColor }]}>
++              {damage.type}
++            </Text>
++            {damage.severity && (
++              <View style={[styles.severityPill, { backgroundColor: markerColor }]}>
++                <Text variant="labelSmall" style={styles.severityPillText}>
++                  {damage.severity === 'dirty' ? 'Dirty' : damage.severity === 'major' ? 'Major' : 'Minor'}
++                </Text>
++              </View>
++            )}
++          </View>
+           <Text variant="bodyMedium" style={styles.infoRow}>
+             Location: {damage.location}
+           </Text>
+@@ -89,9 +117,7 @@ const styles = StyleSheet.create({
+   marker: {
+     position: 'absolute',
+     borderWidth: 3,
+-    borderColor: brandColors.alert,
+     borderRadius: 999,
+-    backgroundColor: 'rgba(199,67,58,0.15)',
+   },
+   infoCard: {
+     marginTop: 20,
+@@ -99,10 +125,25 @@ const styles = StyleSheet.create({
+     borderRadius: 16,
+     padding: 20,
+   },
+-  infoTitle: {
+-    color: brandColors.alert,
++  infoTitleRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    flexWrap: 'wrap',
++    gap: 8,
+     marginBottom: 8,
+   },
++  infoTitle: {
++    flexShrink: 1,
++  },
++  severityPill: {
++    paddingHorizontal: 10,
++    paddingVertical: 3,
++    borderRadius: 999,
++  },
++  severityPillText: {
++    color: '#FFFFFF',
++    fontWeight: '700',
++  },
+   infoRow: {
+     marginBottom: 4,
+   },
+diff --git a/mobile/src/components/ShotInspectionCard.tsx b/mobile/src/components/ShotInspectionCard.tsx
+index 030f1644..c938ec40 100644
+--- a/mobile/src/components/ShotInspectionCard.tsx
++++ b/mobile/src/components/ShotInspectionCard.tsx
+@@ -4,7 +4,7 @@ import { Text } from 'react-native-paper'
+ import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
+ import { IconBadge } from './IconBadge'
+ import { DamageOverlayModal } from './DamageOverlayModal'
+-import type { ComponentFinding } from '../types/inspectionReport'
++import type { ComponentFinding, FindingSeverity } from '../types/inspectionReport'
+ import { brandColors, radius } from '../theme/theme'
+ 
+ type ShotInspectionCardProps = {
+@@ -23,6 +23,20 @@ function matchColor(percent: number): string {
+   return brandColors.alert
+ }
+ 
++// Red = major (structural/safety), Orange = minor (cosmetic), Yellow = dirty
++// (cleanliness) — matches the bounding-box colour key shown in DamageOverlayModal.
++function severityColor(severity: FindingSeverity | null): string {
++  if (severity === 'minor') return '#C2701A'
++  if (severity === 'dirty') return '#B8960C'
++  return brandColors.alert
++}
++
++function severityBackgroundColor(severity: FindingSeverity | null): string {
++  if (severity === 'minor') return '#FCEEE0'
++  if (severity === 'dirty') return '#FBF3D9'
++  return '#FDEDEC'
++}
++
+ export function ShotInspectionCard({
+   label,
+   hasBaseline,
+@@ -81,22 +95,38 @@ export function ShotInspectionCard({
+           <Text variant="labelSmall" style={[styles.sectionLabel, styles.sectionLabelAlert]}>
+             NEW FINDINGS
+           </Text>
+-          {newFindings.map((finding, index) => (
+-            <Pressable key={index} onPress={() => setSelectedFinding(finding)} style={styles.findingRow}>
+-              <IconBadge source="alert" size={11} backgroundColor="transparent" color={brandColors.alert} />
+-              <View style={styles.findingTextColumn}>
+-                <Text variant="bodyMedium" style={styles.findingTitle}>
+-                  {finding.findingType ?? 'Finding'} — {finding.component}
+-                </Text>
+-                <Text variant="bodySmall" style={styles.findingDescription}>
+-                  {finding.description}
+-                </Text>
+-                <Text variant="labelSmall" style={styles.findingConfidence}>
+-                  Confidence: {finding.confidencePercent}%{finding.boundingBox ? ' · Tap to view' : ''}
+-                </Text>
+-              </View>
+-            </Pressable>
+-          ))}
++          {newFindings.map((finding, index) => {
++            const color = severityColor(finding.severity)
++            return (
++              <Pressable
++                key={index}
++                onPress={() => setSelectedFinding(finding)}
++                style={[styles.findingRow, { backgroundColor: severityBackgroundColor(finding.severity) }]}
++              >
++                <IconBadge source="alert" size={11} backgroundColor="transparent" color={color} />
++                <View style={styles.findingTextColumn}>
++                  <View style={styles.findingTitleRow}>
++                    <Text variant="bodyMedium" style={[styles.findingTitle, { color }]}>
++                      {finding.findingType ?? 'Finding'} — {finding.component}
++                    </Text>
++                    {finding.severity && (
++                      <View style={[styles.severityPill, { backgroundColor: color }]}>
++                        <Text variant="labelSmall" style={styles.severityPillText}>
++                          {finding.severity === 'dirty' ? 'Dirty' : finding.severity === 'major' ? 'Major' : 'Minor'}
++                        </Text>
++                      </View>
++                    )}
++                  </View>
++                  <Text variant="bodySmall" style={styles.findingDescription}>
++                    {finding.description}
++                  </Text>
++                  <Text variant="labelSmall" style={[styles.findingConfidence, { color }]}>
++                    Confidence: {finding.confidencePercent}%{finding.boundingBox ? ' · Tap to view' : ''}
++                  </Text>
++                </View>
++              </Pressable>
++            )
++          })}
+         </View>
+       )}
+ 
+@@ -154,6 +184,7 @@ export function ShotInspectionCard({
+                 estimatedSizeCm: null,
+                 description: selectedFinding.description,
+                 boundingBox: selectedFinding.boundingBox,
++                severity: selectedFinding.severity,
+               }
+             : null
+         }
+@@ -236,8 +267,22 @@ const styles = StyleSheet.create({
+   findingTextColumn: {
+     flex: 1,
+   },
++  findingTitleRow: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    flexWrap: 'wrap',
++    gap: 6,
++  },
+   findingTitle: {
+-    color: brandColors.alert,
++    fontWeight: '700',
++  },
++  severityPill: {
++    paddingHorizontal: 8,
++    paddingVertical: 2,
++    borderRadius: 999,
++  },
++  severityPillText: {
++    color: '#FFFFFF',
+     fontWeight: '700',
+   },
+   findingDescription: {
+@@ -246,7 +291,6 @@ const styles = StyleSheet.create({
+   },
+   findingConfidence: {
+     marginTop: 4,
+-    color: brandColors.alert,
+     opacity: 0.8,
+   },
+   checkRow: {
+diff --git a/mobile/src/types/inspectionReport.ts b/mobile/src/types/inspectionReport.ts
+index 24ad217a..4dcc077e 100644
+--- a/mobile/src/types/inspectionReport.ts
++++ b/mobile/src/types/inspectionReport.ts
+@@ -19,10 +19,17 @@ export type DamageItem = {
+   estimatedSizeCm: number | null
+   description: string
+   boundingBox: DamageBoundingBox | null
++  severity?: FindingSeverity | null
+ }
+ 
+ export type ComponentFindingStatus = 'verified' | 'unable_to_verify' | 'new_finding'
+ 
++// Only set on new_finding components — distinguishes actual damage from a
++// cleanliness issue, and structural/safety damage from cosmetic damage, so
++// the report and its bounding boxes can be colour-coded (red/orange/yellow)
++// instead of treating every finding as equally serious.
++export type FindingSeverity = 'major' | 'minor' | 'dirty'
++
+ // One named vehicle component (e.g. "Front Bumper", "Driver Seat") assessed
+ // within a single shot — the unit the whole report is built from, so every
+ // line the owner reads names a specific part and states exactly what was
+@@ -32,6 +39,7 @@ export type ComponentFinding = {
+   component: string
+   status: ComponentFindingStatus
+   findingType: string | null
++  severity: FindingSeverity | null
+   confidencePercent: number
+   description: string
+   boundingBox: DamageBoundingBox | null
+-- 
+2.43.0
+
