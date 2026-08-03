@@ -67,6 +67,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "application_reminders_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       application_views: {
@@ -92,6 +99,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "application_views_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -181,11 +195,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "applications_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "applications_owner_id_fkey"
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -238,6 +266,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "car_reference_photos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       cars: {
@@ -252,6 +287,7 @@ export type Database = {
           description: string | null
           fuel_policy: string | null
           id: string
+          ideal_driver_prefs: Json | null
           image_url: string | null
           insurance: boolean | null
           location: string
@@ -291,6 +327,7 @@ export type Database = {
           description?: string | null
           fuel_policy?: string | null
           id?: string
+          ideal_driver_prefs?: Json | null
           image_url?: string | null
           insurance?: boolean | null
           location: string
@@ -330,6 +367,7 @@ export type Database = {
           description?: string | null
           fuel_policy?: string | null
           id?: string
+          ideal_driver_prefs?: Json | null
           image_url?: string | null
           insurance?: boolean | null
           location?: string
@@ -366,6 +404,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cars_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       device_push_tokens: {
@@ -400,6 +445,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_push_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -449,6 +501,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "driver_live_status_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: true
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       driver_profiles: {
@@ -461,11 +520,13 @@ export type Database = {
           bio: string | null
           bolt_rating: string | null
           bolt_trips: string | null
+          citizenship: string | null
           consecutive_payments: number | null
           created_at: string | null
           criminal_check_submitted: boolean | null
           criminal_check_url: string | null
           damage_incidents: number | null
+          date_of_birth: string | null
           deposit_amount: number | null
           doc_car_url: string | null
           doc_expires_at: string | null
@@ -476,7 +537,9 @@ export type Database = {
           doc_selfie_url: string | null
           doc_uploaded_at: string | null
           docs_verified: boolean | null
+          e_hailing_registration_date: string | null
           excellent_care: number | null
+          gender: string | null
           has_1yr_experience: boolean | null
           has_pdp: boolean | null
           id: string
@@ -541,11 +604,13 @@ export type Database = {
           bio?: string | null
           bolt_rating?: string | null
           bolt_trips?: string | null
+          citizenship?: string | null
           consecutive_payments?: number | null
           created_at?: string | null
           criminal_check_submitted?: boolean | null
           criminal_check_url?: string | null
           damage_incidents?: number | null
+          date_of_birth?: string | null
           deposit_amount?: number | null
           doc_car_url?: string | null
           doc_expires_at?: string | null
@@ -556,7 +621,9 @@ export type Database = {
           doc_selfie_url?: string | null
           doc_uploaded_at?: string | null
           docs_verified?: boolean | null
+          e_hailing_registration_date?: string | null
           excellent_care?: number | null
+          gender?: string | null
           has_1yr_experience?: boolean | null
           has_pdp?: boolean | null
           id?: string
@@ -621,11 +688,13 @@ export type Database = {
           bio?: string | null
           bolt_rating?: string | null
           bolt_trips?: string | null
+          citizenship?: string | null
           consecutive_payments?: number | null
           created_at?: string | null
           criminal_check_submitted?: boolean | null
           criminal_check_url?: string | null
           damage_incidents?: number | null
+          date_of_birth?: string | null
           deposit_amount?: number | null
           doc_car_url?: string | null
           doc_expires_at?: string | null
@@ -636,7 +705,9 @@ export type Database = {
           doc_selfie_url?: string | null
           doc_uploaded_at?: string | null
           docs_verified?: boolean | null
+          e_hailing_registration_date?: string | null
           excellent_care?: number | null
+          gender?: string | null
           has_1yr_experience?: boolean | null
           has_pdp?: boolean | null
           id?: string
@@ -700,6 +771,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "driver_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       driving_events: {
@@ -756,6 +834,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driving_events_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "driving_events_trip_id_fkey"
@@ -850,6 +935,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "incidents_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       login_events: {
@@ -878,6 +970,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "login_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1145,6 +1244,33 @@ export type Database = {
         }
         Relationships: []
       }
+      registration_otps: {
+        Row: {
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          otp_code: string
+          used: boolean
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          otp_code: string
+          used?: boolean
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          otp_code?: string
+          used?: boolean
+        }
+        Relationships: []
+      }
       reviews: {
         Row: {
           application_id: string | null
@@ -1228,6 +1354,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       traffic_offences: {
@@ -1303,11 +1436,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "traffic_offences_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "traffic_offences_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "traffic_offences_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1428,6 +1575,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trust_actions_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1580,11 +1734,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "vehicle_inspections_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "vehicle_inspections_reviewed_by_fkey"
             columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_inspections_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1626,6 +1794,7 @@ export type Database = {
           end_location: string | null
           ended_at: string | null
           id: string
+          idle_seconds: number | null
           max_speed_kmh: number | null
           odometer_end_km: number | null
           odometer_start_km: number | null
@@ -1644,6 +1813,7 @@ export type Database = {
           end_location?: string | null
           ended_at?: string | null
           id?: string
+          idle_seconds?: number | null
           max_speed_kmh?: number | null
           odometer_end_km?: number | null
           odometer_start_km?: number | null
@@ -1662,6 +1832,7 @@ export type Database = {
           end_location?: string | null
           ended_at?: string | null
           id?: string
+          idle_seconds?: number | null
           max_speed_kmh?: number | null
           odometer_end_km?: number | null
           odometer_start_km?: number | null
@@ -1697,6 +1868,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_trips_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1743,11 +1921,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "applications_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "applications_owner_id_fkey"
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1796,6 +1988,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "driver_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       v_driver_listing: {
@@ -1805,16 +2004,21 @@ export type Database = {
           applications_paused: boolean | null
           bolt_rating: string | null
           bolt_trips: string | null
+          citizenship: string | null
           damage_incidents: number | null
+          date_of_birth: string | null
           deposit_amount: number | null
           doc_id_url: string | null
           doc_license_url: string | null
+          e_hailing_registration_date: string | null
           full_name: string | null
+          gender: string | null
           id: string | null
           indrive_rating: string | null
           indrive_trips: string | null
           is_matched: boolean | null
           late_payments: number | null
+          license_date: string | null
           location: string | null
           missed_payments: number | null
           ontime_payments: number | null
@@ -1838,7 +2042,27 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "driver_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
         ]
+      }
+      v_user_last_login: {
+        Row: {
+          admin_status: string | null
+          email: string | null
+          full_name: string | null
+          last_login_at: string | null
+          login_count: number | null
+          registered_at: string | null
+          role: string | null
+          user_id: string | null
+        }
+        Relationships: []
       }
     }
     Functions: {
@@ -1856,6 +2080,7 @@ export type Database = {
       }
       award_weekly_safety_trust_points: { Args: never; Returns: undefined }
       calculate_trust_score: { Args: { dp_id: string }; Returns: number }
+      cleanup_expired_otps: { Args: never; Returns: undefined }
       complete_driver_registration: {
         Args: { payload: Json }
         Returns: undefined

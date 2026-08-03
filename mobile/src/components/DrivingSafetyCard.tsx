@@ -2,7 +2,8 @@ import { View, StyleSheet } from 'react-native'
 import { Text, Card } from 'react-native-paper'
 import { IconBadge } from './IconBadge'
 import { SectionLabel } from './SectionLabel'
-import type { DrivingSafetySummary } from '../hooks/useDrivingSafety'
+import type { DrivingSafetySummary, EventHistoryItem, SafetyEventCounts, TripMetrics } from '../hooks/useDrivingSafety'
+import { scoreBandFor } from '../hooks/useDrivingSafety'
 import { brandColors, radius } from '../theme/theme'
 
 type MetricRowConfig = {
@@ -22,12 +23,52 @@ const METRIC_ROWS: MetricRowConfig[] = [
   { key: 'harshCornering', cleanLabel: 'No harsh cornering detected', issueLabel: (n) => `${n} harsh cornering ${n === 1 ? 'event' : 'events'}` },
 ]
 
-function buildTips(counts: DrivingSafetySummary['counts']): string[] {
+const TIP_CONFIG: Record<keyof SafetyEventCounts, { noun: string; action: string }> = {
+  speeding: { noun: 'speeding', action: 'Watch your speed on faster roads.' },
+  harshBraking: { noun: 'harsh braking', action: 'Brake more smoothly — ease onto the brake earlier instead of braking hard.' },
+  harshAcceleration: { noun: 'harsh acceleration', action: 'Reduce harsh acceleration by easing onto the throttle.' },
+  harshCornering: { noun: 'harsh cornering', action: 'Take corners a little slower for a smoother, safer ride.' },
+}
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  harsh_braking: 'Harsh Braking',
+  harsh_acceleration: 'Harsh Acceleration',
+  harsh_cornering: 'Harsh Cornering',
+  speeding: 'Speeding',
+}
+
+function formatHoursMinutes(totalSeconds: number): string {
+  const totalMinutes = Math.round(totalSeconds / 60)
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
+function formatSpeed(kmh: number | null): string {
+  return kmh != null ? `${Math.round(kmh)} km/h` : '—'
+}
+
+// Quantifies each tip against last week's count where the comparison is
+// meaningful (last week wasn't zero) — praise for genuine improvement,
+// otherwise the plain coaching tip.
+function buildTips(counts: SafetyEventCounts, previousCounts: SafetyEventCounts): string[] {
   const tips: string[] = []
-  if (counts.harshBraking > 0) tips.push('Brake more smoothly — ease onto the brake earlier instead of braking hard.')
-  if (counts.harshAcceleration > 0) tips.push('Reduce harsh acceleration by easing onto the throttle.')
-  if (counts.harshCornering > 0) tips.push('Take corners a little slower for a smoother, safer ride.')
-  if (counts.speeding > 0) tips.push('Watch your speed on faster roads.')
+  ;(Object.keys(TIP_CONFIG) as (keyof SafetyEventCounts)[]).forEach((key) => {
+    const count = counts[key]
+    if (count === 0) return
+    const prev = previousCounts[key]
+    const { noun, action } = TIP_CONFIG[key]
+    if (prev > count) {
+      const percent = Math.round(((prev - count) / prev) * 100)
+      tips.push(`Nice work — ${noun} is down ${percent}% vs last week. ${action}`)
+    } else if (prev > 0 && count > prev) {
+      const percent = Math.round(((count - prev) / prev) * 100)
+      tips.push(`${action} (${noun} up ${percent}% vs last week.)`)
+    } else {
+      tips.push(action)
+    }
+  })
   if (tips.length === 0) tips.push('Keep it up — no risky driving detected this week.')
   return tips
 }
@@ -42,6 +83,88 @@ function trendDescription(score: number, previousScore: number): { text: string;
     : { text: `Dropped by ${percent}${unit}`, icon: 'arrow-down-bold', color: brandColors.alert }
 }
 
+function ScoreBadge({ score }: { score: number }) {
+  const band = scoreBandFor(score)
+  return (
+    <View style={styles.scoreRow}>
+      <View style={{ flex: 1 }}>
+        <Text variant="labelSmall" style={styles.scoreLabel}>
+          SAFETY SCORE
+        </Text>
+        <Text variant="displaySmall" style={styles.scoreValue}>
+          {score}
+          <Text variant="titleMedium" style={styles.scoreOutOf}>
+            {' '}
+            / 100
+          </Text>
+        </Text>
+      </View>
+      <View style={[styles.bandPill, { backgroundColor: `${band.color}1A` }]}>
+        <Text style={styles.bandEmoji}>{band.emoji}</Text>
+        <Text variant="labelMedium" style={[styles.bandLabel, { color: band.color }]}>
+          {band.label}
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+function TripMetricsGrid({ metrics }: { metrics: TripMetrics }) {
+  const cells: { label: string; value: string }[] = [
+    { label: 'Distance', value: `${metrics.totalDistanceKm.toFixed(1)} km` },
+    { label: 'Trips', value: `${metrics.totalTrips}` },
+    { label: 'Driving Time', value: formatHoursMinutes(metrics.totalDurationSeconds) },
+    { label: 'Idle Time', value: formatHoursMinutes(metrics.idleSeconds) },
+    { label: 'Avg Speed', value: formatSpeed(metrics.avgSpeedKmh) },
+    { label: 'Max Speed', value: formatSpeed(metrics.maxSpeedKmh) },
+    { label: 'Night Trips', value: `${metrics.nightTrips}` },
+    { label: 'Weekend Trips', value: `${metrics.weekendTrips}` },
+  ]
+
+  return (
+    <View style={styles.metricsBlock}>
+      <Text variant="labelSmall" style={styles.sectionSubLabel}>
+        THIS WEEK'S TRIP METRICS
+      </Text>
+      <View style={styles.grid}>
+        {cells.map((cell) => (
+          <View key={cell.label} style={styles.gridCell}>
+            <Text variant="titleMedium" style={styles.gridValue}>
+              {cell.value}
+            </Text>
+            <Text variant="bodySmall" style={styles.gridLabel}>
+              {cell.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  )
+}
+
+function EventHistoryList({ events }: { events: EventHistoryItem[] }) {
+  if (events.length === 0) return null
+  return (
+    <View style={styles.assessmentBlock}>
+      <Text variant="labelSmall" style={styles.sectionSubLabel}>
+        EVENT HISTORY
+      </Text>
+      {events.map((event) => (
+        <View key={event.id} style={styles.historyRow}>
+          <IconBadge source="alert-circle" size={12} backgroundColor="transparent" color="#B5651D" />
+          <Text variant="bodyMedium" style={styles.historyText}>
+            {EVENT_TYPE_LABELS[event.eventType] ?? event.eventType}
+            {event.speedKmh != null ? ` — ${Math.round(event.speedKmh)} km/h` : ''}
+          </Text>
+          <Text variant="bodySmall" style={styles.historyDate}>
+            {new Date(event.occurredAt).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
 export function DrivingSafetyCard({
   summary,
   variant,
@@ -50,24 +173,22 @@ export function DrivingSafetyCard({
   variant: 'owner' | 'driver'
 }) {
   if (variant === 'owner') {
+    const trend = trendDescription(summary.score, summary.previousScore)
     return (
       <>
         <SectionLabel icon="shield-car" label="DRIVER SAFETY" />
         <Card style={styles.card}>
           <Card.Content>
-            <View style={styles.scoreRow}>
-              <View>
-                <Text variant="labelSmall" style={styles.scoreLabel}>
-                  SAFETY SCORE
-                </Text>
-                <Text variant="displaySmall" style={styles.scoreValue}>
-                  {summary.score}
-                  <Text variant="titleMedium" style={styles.scoreOutOf}>
-                    {' '}
-                    / 100
-                  </Text>
-                </Text>
-              </View>
+            <ScoreBadge score={summary.score} />
+
+            <View style={styles.trendRow}>
+              <IconBadge source={trend.icon} size={12} backgroundColor="transparent" color={trend.color} />
+              <Text variant="bodyMedium" style={[styles.trendText, { color: trend.color }]}>
+                {trend.text}
+              </Text>
+              <Text variant="bodySmall" style={styles.trendSub}>
+                vs last week
+              </Text>
             </View>
 
             <Text variant="labelSmall" style={styles.sectionSubLabel}>
@@ -91,6 +212,8 @@ export function DrivingSafetyCard({
               )
             })}
 
+            <TripMetricsGrid metrics={summary.tripMetrics} />
+
             <View style={styles.assessmentBlock}>
               <Text variant="labelSmall" style={styles.sectionSubLabel}>
                 OVERALL ASSESSMENT
@@ -99,6 +222,8 @@ export function DrivingSafetyCard({
                 {summary.label}
               </Text>
             </View>
+
+            <EventHistoryList events={summary.eventHistory} />
           </Card.Content>
         </Card>
       </>
@@ -106,27 +231,14 @@ export function DrivingSafetyCard({
   }
 
   const trend = trendDescription(summary.score, summary.previousScore)
-  const tips = buildTips(summary.counts)
+  const tips = buildTips(summary.counts, summary.previousCounts)
 
   return (
     <>
       <SectionLabel icon="shield-car" label="DRIVING BEHAVIOUR" />
       <Card style={styles.card}>
         <Card.Content>
-          <View style={styles.scoreRow}>
-            <View>
-              <Text variant="labelSmall" style={styles.scoreLabel}>
-                SAFETY SCORE
-              </Text>
-              <Text variant="displaySmall" style={styles.scoreValue}>
-                {summary.score}
-                <Text variant="titleMedium" style={styles.scoreOutOf}>
-                  {' '}
-                  / 100
-                </Text>
-              </Text>
-            </View>
-          </View>
+          <ScoreBadge score={summary.score} />
 
           <View style={styles.trendRow}>
             <IconBadge source={trend.icon} size={12} backgroundColor="transparent" color={trend.color} />
@@ -137,6 +249,8 @@ export function DrivingSafetyCard({
               vs last week
             </Text>
           </View>
+
+          <TripMetricsGrid metrics={summary.tripMetrics} />
 
           <View style={styles.assessmentBlock}>
             <Text variant="labelSmall" style={styles.sectionSubLabel}>
@@ -162,6 +276,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
   scoreLabel: {
@@ -174,6 +290,20 @@ const styles = StyleSheet.create({
   },
   scoreOutOf: {
     color: brandColors.charcoalSoft,
+  },
+  bandPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.sm,
+  },
+  bandEmoji: {
+    fontSize: 14,
+  },
+  bandLabel: {
+    fontWeight: '700',
   },
   sectionSubLabel: {
     color: brandColors.charcoalSoft,
@@ -195,6 +325,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     opacity: 1,
   },
+  metricsBlock: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E3E3DD',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -6,
+  },
+  gridCell: {
+    width: '50%',
+    paddingHorizontal: 6,
+    marginBottom: 12,
+  },
+  gridValue: {
+    color: brandColors.deep,
+  },
+  gridLabel: {
+    color: brandColors.charcoalSoft,
+    opacity: 0.85,
+  },
   assessmentBlock: {
     marginTop: 12,
     paddingTop: 12,
@@ -212,6 +365,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     paddingVertical: 8,
     paddingHorizontal: 12,
+    marginBottom: 16,
   },
   trendText: {
     fontWeight: '700',
@@ -219,6 +373,20 @@ const styles = StyleSheet.create({
   trendSub: {
     opacity: 0.5,
     marginLeft: 'auto',
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  historyText: {
+    flex: 1,
+    opacity: 0.85,
+  },
+  historyDate: {
+    color: brandColors.charcoalSoft,
+    opacity: 0.7,
   },
   tipRow: {
     flexDirection: 'row',

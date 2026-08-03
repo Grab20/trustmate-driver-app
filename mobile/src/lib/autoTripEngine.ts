@@ -187,6 +187,7 @@ async function startTrip(sample: LocationSample) {
     lastSpeedKmh: null,
     crashPendingAt: null,
     crashCandidateCount: 0,
+    movingSeconds: 0,
   })
 
   await notify('Trip started', 'TrustMate Driver is tracking your route.')
@@ -200,6 +201,7 @@ async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoT
   // to 7 minutes.
   const durationSeconds = state.startedAt && state.lastMovingAt ? (state.lastMovingAt - state.startedAt) / 1000 : 0
   const avgSpeedKmh = durationSeconds > 0 ? state.distanceKm / (durationSeconds / 3600) : null
+  const idleSeconds = Math.max(0, durationSeconds - state.movingSeconds)
   const endLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
 
   const { error } = await supabase
@@ -210,6 +212,7 @@ async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoT
       distance_km: state.distanceKm,
       avg_speed_kmh: avgSpeedKmh,
       max_speed_kmh: state.maxSpeedKmh || null,
+      idle_seconds: Math.round(idleSeconds),
       end_location: endLabel,
       status: 'completed',
     })
@@ -300,9 +303,9 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
   const accuracyOk = sample.accuracyM == null || sample.accuracyM <= MAX_USABLE_ACCURACY_M
   const speedPlausible = speedKmh <= MAX_PLAUSIBLE_SPEED_KMH
   const isSampleUsable = accuracyOk && speedPlausible
+  const dtSeconds = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 1000 : 0
 
   if (isSampleUsable) {
-    const dtSeconds = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 1000 : 0
     const events = detectDrivingEvents(sample, state, speedKmh, dtSeconds)
     for (const event of events) {
       const { error: eventError } = await supabase.from('driving_events').insert({
@@ -348,6 +351,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     lastSpeedKmh: speedKmh,
     crashPendingAt,
     crashCandidateCount,
+    movingSeconds: state.movingSeconds + (isMoving && dtSeconds > 0 ? dtSeconds : 0),
   }
 
   const idleSince = sample.timestamp - (updatedState.lastMovingAt ?? sample.timestamp)

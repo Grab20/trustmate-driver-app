@@ -33,6 +33,11 @@ export type AutoTripState = {
   lastSpeedKmh: number | null
   crashPendingAt: number | null
   crashCandidateCount: number
+  // Total elapsed time (seconds) across samples classified as "moving" —
+  // duration_seconds minus this gives idle time spent stopped *within* the
+  // trip (traffic lights, waiting), without counting the trailing
+  // idle-detection window used only to decide the trip had ended.
+  movingSeconds: number
 }
 
 const EMPTY_STATE: AutoTripState = {
@@ -49,6 +54,7 @@ const EMPTY_STATE: AutoTripState = {
   lastSpeedKmh: null,
   crashPendingAt: null,
   crashCandidateCount: 0,
+  movingSeconds: 0,
 }
 
 export async function getAutoTripContext(): Promise<AutoTripContext | null> {
