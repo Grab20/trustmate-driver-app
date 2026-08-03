@@ -7,6 +7,7 @@ import { useActiveRental } from '../../src/hooks/useActiveRental'
 import { useDriverProfile } from '../../src/hooks/useDriverProfile'
 import { useMyProfile } from '../../src/hooks/useMyProfile'
 import { useMyLiveStatus } from '../../src/hooks/useMyLiveStatus'
+import { useActiveTripLiveStats } from '../../src/hooks/useActiveTripLiveStats'
 import { useTrustScoreTrend } from '../../src/hooks/useTrustScoreTrend'
 import { useRecentActivity } from '../../src/hooks/useRecentActivity'
 import { useAuthStore } from '../../src/stores/authStore'
@@ -26,6 +27,14 @@ function getGreeting(): string {
   if (hour < 12) return 'Good Morning'
   if (hour < 18) return 'Good Afternoon'
   return 'Good Evening'
+}
+
+function formatTripElapsed(totalSeconds: number): string {
+  const totalMinutes = Math.round(totalSeconds / 60)
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
 }
 
 function trustScoreLabel(score: number | null | undefined): string {
@@ -51,6 +60,7 @@ export default function HomeScreen() {
   const { data: liveStatus } = useMyLiveStatus()
   const { data: trendPoints } = useTrustScoreTrend()
   const { data: recentActivity } = useRecentActivity()
+  const liveTrip = useActiveTripLiveStats()
   const signOut = useAuthStore((s) => s.signOut)
   const trackingStatus = useAutoTripTrackingStore((s) => s.status)
   const [showBatteryPrompt, setShowBatteryPrompt] = useState(false)
@@ -194,6 +204,14 @@ export default function HomeScreen() {
             </View>
           )}
         </View>
+        {liveTrip && (
+          <View style={styles.liveTripRow}>
+            <IconBadge source="map-marker-distance" backgroundColor="rgba(255,255,255,0.15)" size={14} />
+            <Text style={styles.liveTripText}>
+              {liveTrip.distanceKm.toFixed(1)} km this trip · {formatTripElapsed(liveTrip.elapsedSeconds)}
+            </Text>
+          </View>
+        )}
       </View>
 
       {attentionItems.length > 0 && (
@@ -396,6 +414,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 24,
     marginTop: 16,
+  },
+  liveTripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.15)',
+  },
+  liveTripText: {
+    color: brandColors.inkOnCard,
+    fontWeight: '700',
   },
   metaItem: {},
   metaLabel: {
