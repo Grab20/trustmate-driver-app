@@ -16,11 +16,26 @@ import { IconBadge } from '../../../../src/components/IconBadge'
 import { ShotInspectionCard } from '../../../../src/components/ShotInspectionCard'
 import { DamageOverlayModal } from '../../../../src/components/DamageOverlayModal'
 import { EXTERIOR_SHOT_KEYS, INTERIOR_SHOT_KEYS, SHOT_LABELS, type InspectionShotKey } from '../../../../src/components/InspectionShotGuide'
-import { isVehicleHealthReport, type ComponentFinding } from '../../../../src/types/inspectionReport'
+import { isVehicleHealthReport, type ComponentFinding, type FindingSeverity } from '../../../../src/types/inspectionReport'
 import { brandColors } from '../../../../src/theme/theme'
 import type { Tables } from '../../../../src/types/database'
 
 const ALL_SHOTS = [...EXTERIOR_SHOT_KEYS, ...INTERIOR_SHOT_KEYS]
+
+// Red = major (structural/safety), Orange = minor (cosmetic), Yellow = dirty
+// (cleanliness) — matches the bounding-box colour key in DamageOverlayModal.
+function severityColor(severity: FindingSeverity | null): string {
+  if (severity === 'minor') return '#C2701A'
+  if (severity === 'dirty') return '#B8960C'
+  return brandColors.alert
+}
+
+function severityLabel(severity: FindingSeverity | null): string {
+  if (severity === 'minor') return 'Minor'
+  if (severity === 'dirty') return 'Dirty'
+  if (severity === 'major') return 'Major'
+  return ''
+}
 
 const VERIFICATION_ROWS: { key: 'plateMatch' | 'colorMatch' | 'modelMatch' | 'interiorMatch' | 'dashboardMatch'; label: string }[] = [
   { key: 'plateMatch', label: 'Registration Plate' },
@@ -188,23 +203,35 @@ export default function InspectionHealthReportScreen() {
           {report.newFindings.length > 0 && (
             <>
               <SectionLabel icon="alert-decagram-outline" label="NEW FINDINGS" />
-              {report.newFindings.map((item, index) => (
-                <Pressable key={index} onPress={() => setSelectedFinding(item)}>
-                  <Card style={[styles.card, styles.damageCard]}>
-                    <Card.Content>
-                      <Text variant="titleMedium" style={styles.damageTitle}>
-                        {item.findingType ?? 'Finding'} — {item.component}
-                      </Text>
-                      <Text variant="bodyMedium" style={styles.detail}>
-                        {SHOT_LABELS[item.shot]} · Confidence: {item.confidencePercent}%
-                      </Text>
-                      <Text variant="bodySmall" style={styles.damageDescription}>
-                        {item.description}
-                      </Text>
-                    </Card.Content>
-                  </Card>
-                </Pressable>
-              ))}
+              {report.newFindings.map((item, index) => {
+                const color = severityColor(item.severity)
+                return (
+                  <Pressable key={index} onPress={() => setSelectedFinding(item)}>
+                    <Card style={[styles.card, styles.damageCard, { borderColor: color }]}>
+                      <Card.Content>
+                        <View style={styles.damageTitleRow}>
+                          <Text variant="titleMedium" style={[styles.damageTitle, { color }]}>
+                            {item.findingType ?? 'Finding'} — {item.component}
+                          </Text>
+                          {item.severity && (
+                            <View style={[styles.severityPill, { backgroundColor: color }]}>
+                              <Text variant="labelSmall" style={styles.severityPillText}>
+                                {severityLabel(item.severity)}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text variant="bodyMedium" style={styles.detail}>
+                          {SHOT_LABELS[item.shot]} · Confidence: {item.confidencePercent}%
+                        </Text>
+                        <Text variant="bodySmall" style={styles.damageDescription}>
+                          {item.description}
+                        </Text>
+                      </Card.Content>
+                    </Card>
+                  </Pressable>
+                )
+              })}
             </>
           )}
 
@@ -491,6 +518,7 @@ export default function InspectionHealthReportScreen() {
                 estimatedSizeCm: null,
                 description: selectedFinding.description,
                 boundingBox: selectedFinding.boundingBox,
+                severity: selectedFinding.severity,
               }
             : null
         }
@@ -557,12 +585,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   damageCard: {
-    borderColor: brandColors.alert,
     borderWidth: 1,
   },
-  damageTitle: {
-    color: brandColors.alert,
+  damageTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 8,
+  },
+  damageTitle: {
+    flexShrink: 1,
+  },
+  severityPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  severityPillText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   damageDescription: {
     marginTop: 8,

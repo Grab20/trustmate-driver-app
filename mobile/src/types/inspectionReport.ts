@@ -19,9 +19,16 @@ export type DamageItem = {
   estimatedSizeCm: number | null
   description: string
   boundingBox: DamageBoundingBox | null
+  severity?: FindingSeverity | null
 }
 
 export type ComponentFindingStatus = 'verified' | 'unable_to_verify' | 'new_finding'
+
+// Only set on new_finding components — distinguishes actual damage from a
+// cleanliness issue, and structural/safety damage from cosmetic damage, so
+// the report and its bounding boxes can be colour-coded (red/orange/yellow)
+// instead of treating every finding as equally serious.
+export type FindingSeverity = 'major' | 'minor' | 'dirty'
 
 // One named vehicle component (e.g. "Front Bumper", "Driver Seat") assessed
 // within a single shot — the unit the whole report is built from, so every
@@ -32,6 +39,7 @@ export type ComponentFinding = {
   component: string
   status: ComponentFindingStatus
   findingType: string | null
+  severity: FindingSeverity | null
   confidencePercent: number
   description: string
   boundingBox: DamageBoundingBox | null

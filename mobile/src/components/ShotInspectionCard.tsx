@@ -4,7 +4,7 @@ import { Text } from 'react-native-paper'
 import { InspectionPhotoThumbnail } from './InspectionPhotoThumbnail'
 import { IconBadge } from './IconBadge'
 import { DamageOverlayModal } from './DamageOverlayModal'
-import type { ComponentFinding } from '../types/inspectionReport'
+import type { ComponentFinding, FindingSeverity } from '../types/inspectionReport'
 import { brandColors, radius } from '../theme/theme'
 
 type ShotInspectionCardProps = {
@@ -21,6 +21,20 @@ function matchColor(percent: number): string {
   if (percent >= 85) return brandColors.emerald
   if (percent >= 60) return '#B5651D'
   return brandColors.alert
+}
+
+// Red = major (structural/safety), Orange = minor (cosmetic), Yellow = dirty
+// (cleanliness) — matches the bounding-box colour key shown in DamageOverlayModal.
+function severityColor(severity: FindingSeverity | null): string {
+  if (severity === 'minor') return '#C2701A'
+  if (severity === 'dirty') return '#B8960C'
+  return brandColors.alert
+}
+
+function severityBackgroundColor(severity: FindingSeverity | null): string {
+  if (severity === 'minor') return '#FCEEE0'
+  if (severity === 'dirty') return '#FBF3D9'
+  return '#FDEDEC'
 }
 
 export function ShotInspectionCard({
@@ -81,22 +95,38 @@ export function ShotInspectionCard({
           <Text variant="labelSmall" style={[styles.sectionLabel, styles.sectionLabelAlert]}>
             NEW FINDINGS
           </Text>
-          {newFindings.map((finding, index) => (
-            <Pressable key={index} onPress={() => setSelectedFinding(finding)} style={styles.findingRow}>
-              <IconBadge source="alert" size={11} backgroundColor="transparent" color={brandColors.alert} />
-              <View style={styles.findingTextColumn}>
-                <Text variant="bodyMedium" style={styles.findingTitle}>
-                  {finding.findingType ?? 'Finding'} — {finding.component}
-                </Text>
-                <Text variant="bodySmall" style={styles.findingDescription}>
-                  {finding.description}
-                </Text>
-                <Text variant="labelSmall" style={styles.findingConfidence}>
-                  Confidence: {finding.confidencePercent}%{finding.boundingBox ? ' · Tap to view' : ''}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
+          {newFindings.map((finding, index) => {
+            const color = severityColor(finding.severity)
+            return (
+              <Pressable
+                key={index}
+                onPress={() => setSelectedFinding(finding)}
+                style={[styles.findingRow, { backgroundColor: severityBackgroundColor(finding.severity) }]}
+              >
+                <IconBadge source="alert" size={11} backgroundColor="transparent" color={color} />
+                <View style={styles.findingTextColumn}>
+                  <View style={styles.findingTitleRow}>
+                    <Text variant="bodyMedium" style={[styles.findingTitle, { color }]}>
+                      {finding.findingType ?? 'Finding'} — {finding.component}
+                    </Text>
+                    {finding.severity && (
+                      <View style={[styles.severityPill, { backgroundColor: color }]}>
+                        <Text variant="labelSmall" style={styles.severityPillText}>
+                          {finding.severity === 'dirty' ? 'Dirty' : finding.severity === 'major' ? 'Major' : 'Minor'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text variant="bodySmall" style={styles.findingDescription}>
+                    {finding.description}
+                  </Text>
+                  <Text variant="labelSmall" style={[styles.findingConfidence, { color }]}>
+                    Confidence: {finding.confidencePercent}%{finding.boundingBox ? ' · Tap to view' : ''}
+                  </Text>
+                </View>
+              </Pressable>
+            )
+          })}
         </View>
       )}
 
@@ -154,6 +184,7 @@ export function ShotInspectionCard({
                 estimatedSizeCm: null,
                 description: selectedFinding.description,
                 boundingBox: selectedFinding.boundingBox,
+                severity: selectedFinding.severity,
               }
             : null
         }
@@ -236,8 +267,22 @@ const styles = StyleSheet.create({
   findingTextColumn: {
     flex: 1,
   },
+  findingTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   findingTitle: {
-    color: brandColors.alert,
+    fontWeight: '700',
+  },
+  severityPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  severityPillText: {
+    color: '#FFFFFF',
     fontWeight: '700',
   },
   findingDescription: {
@@ -246,7 +291,6 @@ const styles = StyleSheet.create({
   },
   findingConfidence: {
     marginTop: 4,
-    color: brandColors.alert,
     opacity: 0.8,
   },
   checkRow: {
