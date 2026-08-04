@@ -26,11 +26,14 @@ export function useDriverDistanceTotals(driverId: string | undefined) {
   return useQuery({
     queryKey: ['driver-distance-totals', driverId],
     queryFn: async (): Promise<DistanceTotals> => {
+      // Includes the currently in-progress trip (if any) — see useDistanceTotals,
+      // which this mirrors for the owner viewing a specific driver. Without this,
+      // the owner's totals would lag the driver's own screen until each trip ends.
       const { data, error } = await supabase
         .from('vehicle_trips')
         .select('distance_km, duration_seconds, started_at')
         .eq('driver_id', driverId as string)
-        .eq('status', 'completed')
+        .in('status', ['completed', 'active'])
         .gte('started_at', startOfMonthIso())
 
       if (error) throw error

@@ -37,11 +37,15 @@ export function useDistanceTotals() {
   return useQuery({
     queryKey: ['distance-totals', userId],
     queryFn: async (): Promise<DistanceTotals> => {
+      // Includes the currently in-progress trip (if any) — autoTripEngine writes its
+      // running distance/duration to the still-'active' row on every sample, so a
+      // trip that hasn't ended yet already counts toward today's total instead of
+      // only appearing once it's done.
       const { data, error } = await supabase
         .from('vehicle_trips')
         .select('distance_km, duration_seconds, started_at')
         .eq('driver_id', userId as string)
-        .eq('status', 'completed')
+        .in('status', ['completed', 'active'])
         .gte('started_at', startOfMonthIso())
 
       if (error) throw error

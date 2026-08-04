@@ -65,11 +65,13 @@ export function useOwnerFleetDistanceTotals() {
           .map((a) => [a.driver_id, a.driver?.full_name ?? 'Driver']),
       )
 
+      // Includes each driver's currently in-progress trip (if any) — see
+      // useDistanceTotals for why.
       const { data: trips, error: tripsError } = await supabase
         .from('vehicle_trips')
         .select('driver_id, distance_km, duration_seconds, started_at')
         .in('driver_id', driverIds)
-        .eq('status', 'completed')
+        .in('status', ['completed', 'active'])
         .gte('started_at', startOfMonthIso())
 
       if (tripsError) throw tripsError

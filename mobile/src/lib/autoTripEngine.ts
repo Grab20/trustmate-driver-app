@@ -211,15 +211,47 @@ async function startTrip(sample: LocationSample) {
   await notify('Trip started', 'TrustMate Driver is tracking your route.')
 }
 
-async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
-  // Duration is the span the vehicle was actually moving (startedAt to the
-  // last sample that counted as moving) — not startedAt to now, which would
-  // also bill the trailing IDLE_THRESHOLD_MS wait used only to detect that
-  // the trip had ended, inflating every trip's recorded driving time by up
-  // to 7 minutes.
+// Duration is the span the vehicle was actually moving (startedAt to the last
+// sample that counted as moving) — not startedAt to now, which would also bill
+// the trailing IDLE_THRESHOLD_MS wait used only to detect that the trip had
+// ended (or, for a still-active trip, however long it's simply been since the
+// last sample), inflating recorded driving time.
+function computeTripSnapshot(state: {
+  startedAt: number | null
+  lastMovingAt: number | null
+  movingSeconds: number
+  distanceKm: number
+}) {
   const durationSeconds = state.startedAt && state.lastMovingAt ? (state.lastMovingAt - state.startedAt) / 1000 : 0
   const avgSpeedKmh = durationSeconds > 0 ? state.distanceKm / (durationSeconds / 3600) : null
   const idleSeconds = Math.max(0, durationSeconds - state.movingSeconds)
+  return { durationSeconds, avgSpeedKmh, idleSeconds }
+}
+
+// The owner's app can't see the driver's local AsyncStorage trip state, so without
+// this a trip in progress is invisible to them — their distance/duration totals only
+// count trips that have already ended, while the driver's own screen shows live
+// progress. Writing the running snapshot to the still-'active' trip row on every
+// usable sample keeps both sides reading the same numbers from the same place.
+async function updateActiveTripProgress(tripId: string, state: AutoTripState): Promise<void> {
+  const { durationSeconds, avgSpeedKmh, idleSeconds } = computeTripSnapshot(state)
+
+  const { error } = await supabase
+    .from('vehicle_trips')
+    .update({
+      distance_km: state.distanceKm,
+      duration_seconds: Math.round(durationSeconds),
+      avg_speed_kmh: avgSpeedKmh,
+      max_speed_kmh: state.maxSpeedKmh || null,
+      idle_seconds: Math.round(idleSeconds),
+    })
+    .eq('id', tripId)
+
+  if (error) console.warn('Auto-trip: failed to update live trip progress', error.message)
+}
+
+async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
+  const { durationSeconds, avgSpeedKmh, idleSeconds } = computeTripSnapshot(state)
   const endLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
 
   const { error } = await supabase
@@ -393,5 +425,6 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     await endTrip(state.activeTripId, updatedState, sample)
   } else {
     await setAutoTripState(updatedState)
+    await updateActiveTripProgress(state.activeTripId, updatedState)
   }
 }
