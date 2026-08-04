@@ -78,5 +78,23 @@ export function useAutoTripTracking(): AutoTripPermissionStatus {
     }
   }, [userId, carId, applicationId])
 
+  // This hook is only mounted from the driver tab layout, so tearing down here
+  // means the signed-in user has navigated out of the driver section entirely
+  // (signed out, or — for a dual driver+owner account — switched to Owner
+  // view). Without this, a dual-role account's background tracking kept
+  // running while they browsed as the owner, attributing that movement to
+  // the driver profile: the app should only ever track the driver, not
+  // whoever happens to be holding the phone. Deliberately a separate effect
+  // with an empty dependency array — it must fire only on true unmount, not
+  // on every rental-detail change the sync effect above already handles.
+  useEffect(() => {
+    return () => {
+      Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
+        .then((isRegistered) => (isRegistered ? Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK) : undefined))
+        .catch(() => {})
+      setAutoTripContext(null)
+    }
+  }, [])
+
   return status
 }
