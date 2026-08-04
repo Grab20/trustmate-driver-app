@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { View, StyleSheet, ScrollView, Alert } from 'react-native'
 import { Text, TextInput, Button } from 'react-native-paper'
 import * as ImagePicker from 'expo-image-picker'
@@ -106,8 +106,18 @@ export default function NewInspectionScreen() {
     }
   }
 
+  // A ref, not state — the uploads below happen before submitInspection.isPending
+  // ever flips true (that only starts once mutateAsync itself fires), so a second
+  // tap landing during that window wasn't blocked by the button's disabled prop
+  // and could fire a full second submission, producing two near-duplicate
+  // inspection rows a fraction of a second apart. A ref guard is set synchronously
+  // on the very first call, before any await, so it can't be raced the same way.
+  const isSubmittingRef = useRef(false)
+
   async function handleSubmit() {
     if (!activeRental?.car_id || !userId || !allShotsCaptured) return
+    if (isSubmittingRef.current) return
+    isSubmittingRef.current = true
     try {
       const draftPhotoPaths: string[] = []
       for (const key of ALL_SHOTS) {
@@ -131,6 +141,8 @@ export default function NewInspectionScreen() {
       router.back()
     } catch (err) {
       Alert.alert('Submission failed', err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      isSubmittingRef.current = false
     }
   }
 
