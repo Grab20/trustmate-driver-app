@@ -1,0 +1,158 @@
+From 371c03136f643294d9752093aadfb5a357473b27 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 4 Aug 2026 08:45:11 +0000
+Subject: [PATCH 3/5] Make distance/duration/speed totals live on the owner
+ side too
+
+The owner's app has no access to the driver's local AsyncStorage trip
+state, which is where the driver's own live in-progress-trip readout gets
+its numbers from. So while a trip was still running, the driver saw live
+progress but the owner's distance/duration totals only counted trips that
+had already ended, making the owner's numbers lag behind (and look wrong
+by comparison) until each trip finished.
+
+- autoTripEngine: write the running trip's distance/duration/avg-speed/
+  max-speed/idle-time to its still-'active' vehicle_trips row on every
+  usable sample, not just once the trip ends. Refactored the shared
+  duration/avg-speed/idle math out of endTrip into computeTripSnapshot so
+  both paths use identical formulas.
+- useDistanceTotals / useDriverDistanceTotals / useOwnerFleetDistanceTotals:
+  include 'active' trips alongside 'completed' ones, so a trip in progress
+  now counts toward today's total on both the driver's own screen and the
+  owner's view of that driver (and the owner's fleet-wide totals), reading
+  from the same source instead of the driver-only local one.
+---
+ mobile/src/hooks/useDistanceTotals.ts         |  6 ++-
+ mobile/src/hooks/useDriverDistanceTotals.ts   |  5 ++-
+ .../src/hooks/useOwnerFleetDistanceTotals.ts  |  4 +-
+ mobile/src/lib/autoTripEngine.ts              | 45 ++++++++++++++++---
+ 4 files changed, 51 insertions(+), 9 deletions(-)
+
+diff --git a/mobile/src/hooks/useDistanceTotals.ts b/mobile/src/hooks/useDistanceTotals.ts
+index add97302..44ba41e4 100644
+--- a/mobile/src/hooks/useDistanceTotals.ts
++++ b/mobile/src/hooks/useDistanceTotals.ts
+@@ -37,11 +37,15 @@ export function useDistanceTotals() {
+   return useQuery({
+     queryKey: ['distance-totals', userId],
+     queryFn: async (): Promise<DistanceTotals> => {
++      // Includes the currently in-progress trip (if any) — autoTripEngine writes its
++      // running distance/duration to the still-'active' row on every sample, so a
++      // trip that hasn't ended yet already counts toward today's total instead of
++      // only appearing once it's done.
+       const { data, error } = await supabase
+         .from('vehicle_trips')
+         .select('distance_km, duration_seconds, started_at')
+         .eq('driver_id', userId as string)
+-        .eq('status', 'completed')
++        .in('status', ['completed', 'active'])
+         .gte('started_at', startOfMonthIso())
+ 
+       if (error) throw error
+diff --git a/mobile/src/hooks/useDriverDistanceTotals.ts b/mobile/src/hooks/useDriverDistanceTotals.ts
+index f6435e83..f92eaf35 100644
+--- a/mobile/src/hooks/useDriverDistanceTotals.ts
++++ b/mobile/src/hooks/useDriverDistanceTotals.ts
+@@ -26,11 +26,14 @@ export function useDriverDistanceTotals(driverId: string | undefined) {
+   return useQuery({
+     queryKey: ['driver-distance-totals', driverId],
+     queryFn: async (): Promise<DistanceTotals> => {
++      // Includes the currently in-progress trip (if any) — see useDistanceTotals,
++      // which this mirrors for the owner viewing a specific driver. Without this,
++      // the owner's totals would lag the driver's own screen until each trip ends.
+       const { data, error } = await supabase
+         .from('vehicle_trips')
+         .select('distance_km, duration_seconds, started_at')
+         .eq('driver_id', driverId as string)
+-        .eq('status', 'completed')
++        .in('status', ['completed', 'active'])
+         .gte('started_at', startOfMonthIso())
+ 
+       if (error) throw error
+diff --git a/mobile/src/hooks/useOwnerFleetDistanceTotals.ts b/mobile/src/hooks/useOwnerFleetDistanceTotals.ts
+index 0e135f83..cf5ca0fb 100644
+--- a/mobile/src/hooks/useOwnerFleetDistanceTotals.ts
++++ b/mobile/src/hooks/useOwnerFleetDistanceTotals.ts
+@@ -65,11 +65,13 @@ export function useOwnerFleetDistanceTotals() {
+           .map((a) => [a.driver_id, a.driver?.full_name ?? 'Driver']),
+       )
+ 
++      // Includes each driver's currently in-progress trip (if any) — see
++      // useDistanceTotals for why.
+       const { data: trips, error: tripsError } = await supabase
+         .from('vehicle_trips')
+         .select('driver_id, distance_km, duration_seconds, started_at')
+         .in('driver_id', driverIds)
+-        .eq('status', 'completed')
++        .in('status', ['completed', 'active'])
+         .gte('started_at', startOfMonthIso())
+ 
+       if (tripsError) throw tripsError
+diff --git a/mobile/src/lib/autoTripEngine.ts b/mobile/src/lib/autoTripEngine.ts
+index 41b51e83..d9cd5f8c 100644
+--- a/mobile/src/lib/autoTripEngine.ts
++++ b/mobile/src/lib/autoTripEngine.ts
+@@ -211,15 +211,47 @@ async function startTrip(sample: LocationSample) {
+   await notify('Trip started', 'TrustMate Driver is tracking your route.')
+ }
+ 
+-async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
+-  // Duration is the span the vehicle was actually moving (startedAt to the
+-  // last sample that counted as moving) — not startedAt to now, which would
+-  // also bill the trailing IDLE_THRESHOLD_MS wait used only to detect that
+-  // the trip had ended, inflating every trip's recorded driving time by up
+-  // to 7 minutes.
++// Duration is the span the vehicle was actually moving (startedAt to the last
++// sample that counted as moving) — not startedAt to now, which would also bill
++// the trailing IDLE_THRESHOLD_MS wait used only to detect that the trip had
++// ended (or, for a still-active trip, however long it's simply been since the
++// last sample), inflating recorded driving time.
++function computeTripSnapshot(state: {
++  startedAt: number | null
++  lastMovingAt: number | null
++  movingSeconds: number
++  distanceKm: number
++}) {
+   const durationSeconds = state.startedAt && state.lastMovingAt ? (state.lastMovingAt - state.startedAt) / 1000 : 0
+   const avgSpeedKmh = durationSeconds > 0 ? state.distanceKm / (durationSeconds / 3600) : null
+   const idleSeconds = Math.max(0, durationSeconds - state.movingSeconds)
++  return { durationSeconds, avgSpeedKmh, idleSeconds }
++}
++
++// The owner's app can't see the driver's local AsyncStorage trip state, so without
++// this a trip in progress is invisible to them — their distance/duration totals only
++// count trips that have already ended, while the driver's own screen shows live
++// progress. Writing the running snapshot to the still-'active' trip row on every
++// usable sample keeps both sides reading the same numbers from the same place.
++async function updateActiveTripProgress(tripId: string, state: AutoTripState): Promise<void> {
++  const { durationSeconds, avgSpeedKmh, idleSeconds } = computeTripSnapshot(state)
++
++  const { error } = await supabase
++    .from('vehicle_trips')
++    .update({
++      distance_km: state.distanceKm,
++      duration_seconds: Math.round(durationSeconds),
++      avg_speed_kmh: avgSpeedKmh,
++      max_speed_kmh: state.maxSpeedKmh || null,
++      idle_seconds: Math.round(idleSeconds),
++    })
++    .eq('id', tripId)
++
++  if (error) console.warn('Auto-trip: failed to update live trip progress', error.message)
++}
++
++async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
++  const { durationSeconds, avgSpeedKmh, idleSeconds } = computeTripSnapshot(state)
+   const endLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
+ 
+   const { error } = await supabase
+@@ -393,5 +425,6 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
+     await endTrip(state.activeTripId, updatedState, sample)
+   } else {
+     await setAutoTripState(updatedState)
++    await updateActiveTripProgress(state.activeTripId, updatedState)
+   }
+ }
+-- 
+2.43.0
+
