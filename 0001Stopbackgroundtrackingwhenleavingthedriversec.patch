@@ -1,4 +1,4 @@
-From 448a8ca3456c0ea227f025b9b1b23f7c8d4dd2df Mon Sep 17 00:00:00 2001
+From f5b21ce08f39feca1fa9de646274d51f42464c10 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Tue, 4 Aug 2026 14:18:47 +0000
 Subject: [PATCH] Stop background tracking when leaving the driver section
