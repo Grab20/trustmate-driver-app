@@ -1,7 +1,7 @@
 From 1db56d57458d415f3b798079bbf61cc23e058b9b Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Mon, 3 Aug 2026 15:57:33 +0000
-Subject: [PATCH] Add live in-progress trip km/time readout to driver Home
+Subject: [PATCH 1/5] Add live in-progress trip km/time readout to driver Home
  screen
 
 Reads the local auto-trip state (AsyncStorage, written by the background
