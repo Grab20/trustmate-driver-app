@@ -1,7 +1,7 @@
 From 5f1e3bdabab007bba62c98a926759cee5d7e0028 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Wed, 19 Aug 2026 09:33:55 +0000
-Subject: [PATCH] Add Damoov telematics data model (Phase 1 of approved
+Subject: [PATCH 1/2] Add Damoov telematics data model (Phase 1 of approved
  blueprint)
 
 Creates driver_telematics_accounts, telematics_trips, telematics_events,
