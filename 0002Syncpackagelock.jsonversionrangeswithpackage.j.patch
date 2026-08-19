@@ -1,0 +1,35 @@
+From 77f61bb6055d63f9f529e7e60aa2212ed710cf5b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 19 Aug 2026 09:34:38 +0000
+Subject: [PATCH 2/2] Sync package-lock.json version ranges with package.json
+
+npm install normalized two stale ^-range lockfile entries
+(expo-application, expo-intent-launcher) to match the ~-range
+already declared in package.json.
+---
+ mobile/package-lock.json | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+index f6fcb75..1546484 100644
+--- a/mobile/package-lock.json
++++ b/mobile/package-lock.json
+@@ -15,13 +15,13 @@
+         "@supabase/supabase-js": "^2.110.1",
+         "@tanstack/react-query": "^5.101.2",
+         "expo": "~57.0.4",
+-        "expo-application": "^57.0.2",
++        "expo-application": "~57.0.2",
+         "expo-constants": "~57.0.3",
+         "expo-device": "~57.0.0",
+         "expo-document-picker": "~57.0.0",
+         "expo-font": "~57.0.0",
+         "expo-image-picker": "~57.0.2",
+-        "expo-intent-launcher": "^57.0.1",
++        "expo-intent-launcher": "~57.0.1",
+         "expo-linking": "~57.0.2",
+         "expo-location": "~57.0.2",
+         "expo-notifications": "~57.0.3",
+-- 
+2.43.0
+
