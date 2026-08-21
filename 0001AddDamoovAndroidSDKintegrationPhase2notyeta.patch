@@ -1,0 +1,584 @@
+From 13fd3849ceff4f8d42327149ecdbb853b139673a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 21 Aug 2026 17:12:13 +0000
+Subject: [PATCH] Add Damoov Android SDK integration (Phase 2, not yet
+ activated)
+
+Adds react-native-telematics and the native/config layer needed to build
+it into the Expo-managed Android project: expo-build-properties overrides
+(compileSdk 37, Kotlin 2.3.21, Damoov's Maven repo) and a small config
+plugin removing android:allowBackup, plus the two extra manifest
+permissions Damoov's own integration guide requires. Validated with a
+real `expo prebuild --platform android` against a scratch copy of this
+exact repo state before committing -- confirmed Expo 57/RN 0.86's actual
+defaults (minSdk 24, targetSdk 36, AGP 8.12.0, Gradle 9.3.1) already
+match Damoov's requirements with no override, autolinking correctly
+discovers the package end-to-end, and none of the existing config
+plugins or permissions regressed.
+
+Adds a thin src/lib/damoov/telematicsSdk.ts re-export and
+useDamoovTelemetry.ts, a driver-tab lifecycle hook mirroring
+useAutoTripTracking's active-rental-gated start/stop and dual-role
+teardown safety net. Wires the three listeners with a documented,
+verified event schema (location, tracking-state, speed-violation) into
+telematics_live_status/telematics_events, and upserts
+driver_telematics_accounts through the SDK's own init -> device id ->
+permission wizard -> enable -> start-tracking sequence.
+
+The hook is NOT mounted into the driver layout yet -- deliberately left
+inactive pending Damoov InstanceId/InstanceKey native configuration,
+which this package's own docs don't expose a JS-level API for and which
+needs Damoov's Android integration guide (docs.damoov.com, unreachable
+from this environment) to resolve correctly. Mounting it before that's
+confirmed risks a real SDK-init failure path for every driver on the
+next build.
+
+Also fixes a Phase 1 bug: the four telematics_* tables' driver_id
+columns pointed at driver_profiles.id, but every existing table with a
+driver_id column (applications, vehicle_trips, driving_events)
+references profiles.id instead -- the id every RLS policy and app query
+already treats as auth.uid(). Corrected directly on the Supabase project
+(all four tables were still empty) and regenerated types to match.
+
+Zero changes to any AI Inspection file, table, or edge function --
+confirmed via diff against HEAD before and after this commit.
+---
+ mobile/app.json                        |  19 ++-
+ mobile/package-lock.json               |  32 +++-
+ mobile/package.json                    |   2 +
+ mobile/plugins/withDamoovManifest.js   |  16 ++
+ mobile/src/hooks/useDamoovTelemetry.ts | 196 +++++++++++++++++++++++++
+ mobile/src/lib/damoov/telematicsSdk.ts |  12 ++
+ mobile/src/types/database.ts           |  91 +++++++-----
+ 7 files changed, 323 insertions(+), 45 deletions(-)
+ create mode 100644 mobile/plugins/withDamoovManifest.js
+ create mode 100644 mobile/src/hooks/useDamoovTelemetry.ts
+ create mode 100644 mobile/src/lib/damoov/telematicsSdk.ts
+
+diff --git a/mobile/app.json b/mobile/app.json
+index 591ef20..9de3768 100644
+--- a/mobile/app.json
++++ b/mobile/app.json
+@@ -45,7 +45,20 @@
+         }
+       ],
+       "./plugins/withLargeHeap.js",
+-      "./plugins/withBatteryOptimizationPermission.js"
++      "./plugins/withBatteryOptimizationPermission.js",
++      "./plugins/withDamoovManifest.js",
++      [
++        "expo-build-properties",
++        {
++          "android": {
++            "compileSdkVersion": 37,
++            "kotlinVersion": "2.3.21",
++            "extraMavenRepos": [
++              "https://s3.us-east-2.amazonaws.com/android.telematics.sdk.production/"
++            ]
++          }
++        }
++      ]
+     ],
+     "experiments": {
+       "typedRoutes": true
+@@ -71,7 +84,9 @@
+       },
+       "permissions": [
+         "android.permission.ACCESS_COARSE_LOCATION",
+-        "android.permission.ACCESS_FINE_LOCATION"
++        "android.permission.ACCESS_FINE_LOCATION",
++        "android.permission.ACCESS_NETWORK_STATE",
++        "android.permission.ACCESS_WIFI_STATE"
+       ]
+     },
+     "web": {
+diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+index 1546484..0f6ae5d 100644
+--- a/mobile/package-lock.json
++++ b/mobile/package-lock.json
+@@ -16,6 +16,7 @@
+         "@tanstack/react-query": "^5.101.2",
+         "expo": "~57.0.4",
+         "expo-application": "~57.0.2",
++        "expo-build-properties": "^57.0.13",
+         "expo-constants": "~57.0.3",
+         "expo-device": "~57.0.0",
+         "expo-document-picker": "~57.0.0",
+@@ -39,6 +40,7 @@
+         "react-native-safe-area-context": "~5.7.0",
+         "react-native-screens": "^4.25.2",
+         "react-native-svg": "^15.15.4",
++        "react-native-telematics": "^3.1.0",
+         "react-native-url-polyfill": "^3.0.0",
+         "react-native-worklets": "^0.10.0",
+         "zustand": "^5.0.14"
+@@ -1534,9 +1536,9 @@
+       }
+     },
+     "node_modules/@expo/schema-utils": {
+-      "version": "57.0.1",
+-      "resolved": "https://registry.npmjs.org/@expo/schema-utils/-/schema-utils-57.0.1.tgz",
+-      "integrity": "sha512-IVdaqtP3+iHFRE/y22mKijQtZanLcB18q1zi2kfN6RINTCryyzM7qHGsWHc5LBJbOuj1G4avCOECs97hOJm0GQ==",
++      "version": "57.0.2",
++      "resolved": "https://registry.npmjs.org/@expo/schema-utils/-/schema-utils-57.0.2.tgz",
++      "integrity": "sha512-fMu/jyN0l1Wzv7XkeWR4IYCx1M8ryui3FdBNGrWwbRgJ7EhxXxK8E2jxP2W3pbgUwUY0V3hG8+GyfCZwny+Lxw==",
+       "license": "MIT"
+     },
+     "node_modules/@expo/sdk-runtime-versions": {
+@@ -3661,6 +3663,20 @@
+         "expo": "*"
+       }
+     },
++    "node_modules/expo-build-properties": {
++      "version": "57.0.13",
++      "resolved": "https://registry.npmjs.org/expo-build-properties/-/expo-build-properties-57.0.13.tgz",
++      "integrity": "sha512-8lpBDTKJd7qGyvGdPS/CWW0ZR0GYMHBlLbSN9lL57JT6XLetDjnOZC0nBV4iOm7UKArNVYtvLIgzEeH1OfnEOQ==",
++      "license": "MIT",
++      "dependencies": {
++        "@expo/schema-utils": "^57.0.2",
++        "resolve-from": "^5.0.0",
++        "semver": "^7.6.0"
++      },
++      "peerDependencies": {
++        "expo": "*"
++      }
++    },
+     "node_modules/expo-constants": {
+       "version": "57.0.3",
+       "resolved": "https://registry.npmjs.org/expo-constants/-/expo-constants-57.0.3.tgz",
+@@ -6646,6 +6662,16 @@
+         "react-native": "*"
+       }
+     },
++    "node_modules/react-native-telematics": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmjs.org/react-native-telematics/-/react-native-telematics-3.1.0.tgz",
++      "integrity": "sha512-SVIOGhesNIJYocr0W5p+gJG3IkJsEhRrLzJtNyOknbfkzWv4J/yNbxmZDBqB2RvWXtrK40NsPYx6s3/iZQ1+4A==",
++      "license": "SEE LICENSE IN LICENSE",
++      "peerDependencies": {
++        "react": "*",
++        "react-native": ">=0.86.0"
++      }
++    },
+     "node_modules/react-native-url-polyfill": {
+       "version": "3.0.0",
+       "resolved": "https://registry.npmjs.org/react-native-url-polyfill/-/react-native-url-polyfill-3.0.0.tgz",
+diff --git a/mobile/package.json b/mobile/package.json
+index 0186362..e55b574 100644
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -11,6 +11,7 @@
+     "@tanstack/react-query": "^5.101.2",
+     "expo": "~57.0.4",
+     "expo-application": "~57.0.2",
++    "expo-build-properties": "~57.0.13",
+     "expo-constants": "~57.0.3",
+     "expo-device": "~57.0.0",
+     "expo-document-picker": "~57.0.0",
+@@ -34,6 +35,7 @@
+     "react-native-safe-area-context": "~5.7.0",
+     "react-native-screens": "^4.25.2",
+     "react-native-svg": "^15.15.4",
++    "react-native-telematics": "^3.1.0",
+     "react-native-url-polyfill": "^3.0.0",
+     "react-native-worklets": "^0.10.0",
+     "zustand": "^5.0.14"
+diff --git a/mobile/plugins/withDamoovManifest.js b/mobile/plugins/withDamoovManifest.js
+new file mode 100644
+index 0000000..20b06b4
+--- /dev/null
++++ b/mobile/plugins/withDamoovManifest.js
+@@ -0,0 +1,16 @@
++const { withAndroidManifest } = require('@expo/config-plugins')
++
++// The Damoov Telematics SDK's own integration guide requires removing
++// android:allowBackup="true" from <application> — Expo's own template sets
++// it to true by default, and Damoov's SDK relies on that being off (its
++// background-service/permission state isn't meant to survive an Android
++// auto-backup/restore cycle onto a different device).
++module.exports = function withDamoovManifest(config) {
++  return withAndroidManifest(config, (config) => {
++    const application = config.modResults.manifest.application?.[0]
++    if (application?.$?.['android:allowBackup'] !== undefined) {
++      delete application.$['android:allowBackup']
++    }
++    return config
++  })
++}
+diff --git a/mobile/src/hooks/useDamoovTelemetry.ts b/mobile/src/hooks/useDamoovTelemetry.ts
+new file mode 100644
+index 0000000..bff4907
+--- /dev/null
++++ b/mobile/src/hooks/useDamoovTelemetry.ts
+@@ -0,0 +1,196 @@
++import { useEffect } from 'react'
++import { Platform } from 'react-native'
++import { useActiveRental } from './useActiveRental'
++import { useAuthStore } from '../stores/authStore'
++import { supabase } from '../lib/supabase'
++import {
++  telematicsSdk,
++  addOnLocationChangedListener,
++  addOnTrackingStateChangedListener,
++  addOnSpeedViolationListener,
++  type SpeedViolationEvent,
++} from '../lib/damoov/telematicsSdk'
++
++// Android only for now -- the product decision (not a technical one) is to
++// ship the Damoov module on Android first and add iOS in a later phase.
++// This hook is a no-op everywhere else, so it's safe to mount unconditionally
++// once wired into the driver layout.
++const DAMOOV_PLATFORM_SUPPORTED = Platform.OS === 'android'
++
++// Damoov's own device-id model expects a value TrustMate's backend already
++// knows -- there's no separate "Damoov user" to create up front, so the auth
++// user id doubles as the device id. One device per driver matches how this
++// app already works (single account, single phone).
++function damoovDeviceIdFor(driverId: string) {
++  return driverId
++}
++
++async function upsertTelematicsAccount(
++  driverId: string,
++  patch: Partial<{
++    sdk_status: string
++    damoov_device_token: string
++    damoov_user_id: string
++    consent_given_at: string
++    connected_at: string
++    last_seen_at: string
++  }>,
++) {
++  await supabase
++    .from('driver_telematics_accounts')
++    .upsert({ driver_id: driverId, ...patch }, { onConflict: 'driver_id' })
++}
++
++export function useDamoovTelemetry() {
++  const userId = useAuthStore((s) => s.session?.user.id)
++  const { data: activeRental } = useActiveRental()
++
++  const carId = activeRental?.car_id
++  const applicationId = activeRental?.id
++
++  useEffect(() => {
++    if (!DAMOOV_PLATFORM_SUPPORTED) return
++    if (!userId || !carId || !applicationId) return
++
++    let cancelled = false
++
++    async function start() {
++      const driverId = userId as string
++      try {
++        await telematicsSdk.initializeSdk()
++        const initialized = await telematicsSdk.isInitializedSdk()
++        if (!initialized || cancelled) return
++
++        const deviceId = damoovDeviceIdFor(driverId)
++        await telematicsSdk.setDeviceId(deviceId)
++
++        const permissionsGranted = await telematicsSdk.showPermissionWizard()
++        if (cancelled) return
++
++        if (!permissionsGranted) {
++          await upsertTelematicsAccount(driverId, {
++            sdk_status: 'disabled',
++            damoov_device_token: deviceId,
++          })
++          return
++        }
++
++        await telematicsSdk.setEnableSdk(true)
++        // Session-bound start/stop rather than a scheduled or Bluetooth
++        // trigger -- Damoov's own docs describe this as the right mode for
++        // "time-bound scenarios like rentals". Individual trips within the
++        // session are still detected automatically by the native engine;
++        // this call starts the tracking session, not each trip.
++        await telematicsSdk.startManualTracking()
++        if (cancelled) return
++
++        const now = new Date().toISOString()
++        await upsertTelematicsAccount(driverId, {
++          sdk_status: 'enabled',
++          damoov_device_token: deviceId,
++          damoov_user_id: deviceId,
++          consent_given_at: now,
++          connected_at: now,
++          last_seen_at: now,
++        })
++      } catch {
++        // Non-fatal: initialization can fail before Damoov commercial
++        // credentials are configured natively (see AGENTS.md / blueprint
++        // §05 -- InstanceId/InstanceKey wiring is still an open item).
++        // Never let a Damoov failure break driver-facing app usage.
++      }
++    }
++
++    start()
++
++    return () => {
++      cancelled = true
++    }
++  }, [userId, carId, applicationId])
++
++  useEffect(() => {
++    if (!DAMOOV_PLATFORM_SUPPORTED) return
++    if (!userId || !carId || !applicationId) return
++
++    const locationSub = addOnLocationChangedListener(({ latitude, longitude }) => {
++      supabase
++        .from('telematics_live_status')
++        .upsert(
++          {
++            driver_id: userId,
++            car_id: carId,
++            application_id: applicationId,
++            lat: latitude,
++            lng: longitude,
++            updated_at: new Date().toISOString(),
++          },
++          { onConflict: 'driver_id' },
++        )
++        .then(() => {})
++    })
++
++    const trackingStateSub = addOnTrackingStateChangedListener(() => {
++      // Reserved: reflects whether the tracking *session* is active, which
++      // is a different thing from "a trip is currently in progress" -- not
++      // wired to is_moving here to avoid writing a misleading value.
++    })
++
++    const speedViolationSub = addOnSpeedViolationListener((event: SpeedViolationEvent) => {
++      const occurredAt = new Date(event.date).toISOString()
++      supabase
++        .from('telematics_live_status')
++        .upsert(
++          {
++            driver_id: userId,
++            car_id: carId,
++            application_id: applicationId,
++            lat: event.latitude,
++            lng: event.longitude,
++            speed_kmh: event.speed,
++            is_moving: true,
++            updated_at: occurredAt,
++          },
++          { onConflict: 'driver_id' },
++        )
++        .then(() => {})
++
++      // Best-effort client-side event log. The authoritative source will be
++      // Damoov's own webhook once commercial access is confirmed (blueprint
++      // §06) -- this keeps a lightweight record in the meantime rather than
++      // collecting nothing at all.
++      supabase
++        .from('telematics_events')
++        .insert({
++          driver_id: userId,
++          car_id: carId,
++          application_id: applicationId,
++          event_type: 'speeding',
++          severity: Math.max(0, event.speed - event.speedLimit),
++          lat: event.latitude,
++          lng: event.longitude,
++          occurred_at: occurredAt,
++        })
++        .then(() => {})
++    })
++
++    return () => {
++      locationSub.remove()
++      trackingStateSub.remove()
++      speedViolationSub.remove()
++    }
++  }, [userId, carId, applicationId])
++
++  // Mirrors useAutoTripTracking's own dual-role safety net: a separate
++  // empty-deps effect so teardown only fires on true unmount (sign-out, or
++  // switching to Owner view), not on every rental-detail change the sync
++  // effect above already handles.
++  useEffect(() => {
++    if (!DAMOOV_PLATFORM_SUPPORTED) return
++    return () => {
++      telematicsSdk
++        .isTracking()
++        .then((tracking) => (tracking ? telematicsSdk.stopManualTracking() : undefined))
++        .catch(() => {})
++    }
++  }, [])
++}
+diff --git a/mobile/src/lib/damoov/telematicsSdk.ts b/mobile/src/lib/damoov/telematicsSdk.ts
+new file mode 100644
+index 0000000..425df09
+--- /dev/null
++++ b/mobile/src/lib/damoov/telematicsSdk.ts
+@@ -0,0 +1,12 @@
++// Thin re-export of the Damoov Telematics SDK's React Native bridge, so the
++// rest of the app imports from `lib/damoov` the same way it imports Supabase
++// from `lib/supabase.ts`, instead of reaching into the third-party package
++// directly. Deliberately not more than a re-export: the SDK's own API is
++// already the right shape for how useDamoovTelemetry uses it.
++export { default as telematicsSdk } from 'react-native-telematics'
++export {
++  addOnLocationChangedListener,
++  addOnTrackingStateChangedListener,
++  addOnSpeedViolationListener,
++} from 'react-native-telematics'
++export type { LocationChangedEvent, SpeedViolationEvent } from 'react-native-telematics'
+diff --git a/mobile/src/types/database.ts b/mobile/src/types/database.ts
+index 883d539..946af42 100644
+--- a/mobile/src/types/database.ts
++++ b/mobile/src/types/database.ts
+@@ -435,6 +435,45 @@ export type Database = {
+         }
+         Relationships: []
+       }
++      brevo_sync_failures: {
++        Row: {
++          attempts: number
++          created_at: string
++          email: string
++          error: string | null
++          event_type: string
++          id: string
++          last_attempted_at: string
++          payload: Json | null
++          sync_status: string
++          user_id: string | null
++        }
++        Insert: {
++          attempts?: number
++          created_at?: string
++          email: string
++          error?: string | null
++          event_type: string
++          id?: string
++          last_attempted_at?: string
++          payload?: Json | null
++          sync_status?: string
++          user_id?: string | null
++        }
++        Update: {
++          attempts?: number
++          created_at?: string
++          email?: string
++          error?: string | null
++          event_type?: string
++          id?: string
++          last_attempted_at?: string
++          payload?: Json | null
++          sync_status?: string
++          user_id?: string | null
++        }
++        Relationships: []
++      }
+       car_reference_photos: {
+         Row: {
+           analysis_error: string | null
+@@ -1046,22 +1085,15 @@ export type Database = {
+             foreignKeyName: "driver_telematics_accounts_driver_id_fkey"
+             columns: ["driver_id"]
+             isOneToOne: true
+-            referencedRelation: "driver_profiles"
+-            referencedColumns: ["id"]
+-          },
+-          {
+-            foreignKeyName: "driver_telematics_accounts_driver_id_fkey"
+-            columns: ["driver_id"]
+-            isOneToOne: true
+-            referencedRelation: "driver_stats"
++            referencedRelation: "profiles"
+             referencedColumns: ["id"]
+           },
+           {
+             foreignKeyName: "driver_telematics_accounts_driver_id_fkey"
+             columns: ["driver_id"]
+             isOneToOne: true
+-            referencedRelation: "v_driver_listing"
+-            referencedColumns: ["id"]
++            referencedRelation: "v_user_last_login"
++            referencedColumns: ["user_id"]
+           },
+         ]
+       }
+@@ -1820,22 +1852,15 @@ export type Database = {
+             foreignKeyName: "telematics_events_driver_id_fkey"
+             columns: ["driver_id"]
+             isOneToOne: false
+-            referencedRelation: "driver_profiles"
+-            referencedColumns: ["id"]
+-          },
+-          {
+-            foreignKeyName: "telematics_events_driver_id_fkey"
+-            columns: ["driver_id"]
+-            isOneToOne: false
+-            referencedRelation: "driver_stats"
++            referencedRelation: "profiles"
+             referencedColumns: ["id"]
+           },
+           {
+             foreignKeyName: "telematics_events_driver_id_fkey"
+             columns: ["driver_id"]
+             isOneToOne: false
+-            referencedRelation: "v_driver_listing"
+-            referencedColumns: ["id"]
++            referencedRelation: "v_user_last_login"
++            referencedColumns: ["user_id"]
+           },
+           {
+             foreignKeyName: "telematics_events_trip_id_fkey"
+@@ -1909,22 +1934,15 @@ export type Database = {
+             foreignKeyName: "telematics_live_status_driver_id_fkey"
+             columns: ["driver_id"]
+             isOneToOne: true
+-            referencedRelation: "driver_profiles"
+-            referencedColumns: ["id"]
+-          },
+-          {
+-            foreignKeyName: "telematics_live_status_driver_id_fkey"
+-            columns: ["driver_id"]
+-            isOneToOne: true
+-            referencedRelation: "driver_stats"
++            referencedRelation: "profiles"
+             referencedColumns: ["id"]
+           },
+           {
+             foreignKeyName: "telematics_live_status_driver_id_fkey"
+             columns: ["driver_id"]
+             isOneToOne: true
+-            referencedRelation: "v_driver_listing"
+-            referencedColumns: ["id"]
++            referencedRelation: "v_user_last_login"
++            referencedColumns: ["user_id"]
+           },
+           {
+             foreignKeyName: "telematics_live_status_trip_id_fkey"
+@@ -2025,22 +2043,15 @@ export type Database = {
+             foreignKeyName: "telematics_trips_driver_id_fkey"
+             columns: ["driver_id"]
+             isOneToOne: false
+-            referencedRelation: "driver_profiles"
+-            referencedColumns: ["id"]
+-          },
+-          {
+-            foreignKeyName: "telematics_trips_driver_id_fkey"
+-            columns: ["driver_id"]
+-            isOneToOne: false
+-            referencedRelation: "driver_stats"
++            referencedRelation: "profiles"
+             referencedColumns: ["id"]
+           },
+           {
+             foreignKeyName: "telematics_trips_driver_id_fkey"
+             columns: ["driver_id"]
+             isOneToOne: false
+-            referencedRelation: "v_driver_listing"
+-            referencedColumns: ["id"]
++            referencedRelation: "v_user_last_login"
++            referencedColumns: ["user_id"]
+           },
+         ]
+       }
+-- 
+2.43.0
+
