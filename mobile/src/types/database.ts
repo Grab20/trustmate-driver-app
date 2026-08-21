@@ -435,6 +435,45 @@ export type Database = {
         }
         Relationships: []
       }
+      brevo_sync_failures: {
+        Row: {
+          attempts: number
+          created_at: string
+          email: string
+          error: string | null
+          event_type: string
+          id: string
+          last_attempted_at: string
+          payload: Json | null
+          sync_status: string
+          user_id: string | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          email: string
+          error?: string | null
+          event_type: string
+          id?: string
+          last_attempted_at?: string
+          payload?: Json | null
+          sync_status?: string
+          user_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          email?: string
+          error?: string | null
+          event_type?: string
+          id?: string
+          last_attempted_at?: string
+          payload?: Json | null
+          sync_status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       car_reference_photos: {
         Row: {
           analysis_error: string | null
@@ -1046,22 +1085,15 @@ export type Database = {
             foreignKeyName: "driver_telematics_accounts_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: true
-            referencedRelation: "driver_profiles"
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "driver_telematics_accounts_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: true
-            referencedRelation: "driver_stats"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "driver_telematics_accounts_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: true
-            referencedRelation: "v_driver_listing"
-            referencedColumns: ["id"]
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -1820,22 +1852,15 @@ export type Database = {
             foreignKeyName: "telematics_events_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: false
-            referencedRelation: "driver_profiles"
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "telematics_events_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: false
-            referencedRelation: "driver_stats"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_events_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: false
-            referencedRelation: "v_driver_listing"
-            referencedColumns: ["id"]
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "telematics_events_trip_id_fkey"
@@ -1909,22 +1934,15 @@ export type Database = {
             foreignKeyName: "telematics_live_status_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: true
-            referencedRelation: "driver_profiles"
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "telematics_live_status_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: true
-            referencedRelation: "driver_stats"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_live_status_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: true
-            referencedRelation: "v_driver_listing"
-            referencedColumns: ["id"]
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "telematics_live_status_trip_id_fkey"
@@ -2025,22 +2043,15 @@ export type Database = {
             foreignKeyName: "telematics_trips_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: false
-            referencedRelation: "driver_profiles"
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "telematics_trips_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: false
-            referencedRelation: "driver_stats"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_trips_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: false
-            referencedRelation: "v_driver_listing"
-            referencedColumns: ["id"]
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
           },
         ]
       }
