@@ -25,14 +25,7 @@ export type AutoTripState = {
   maxSpeedKmh: number
   lastPoint: AutoTripPoint | null
   lastSpeedMs: number | null
-  // Compass course in degrees (0-360) from the last usable fix — used to derive
-  // a lateral-acceleration estimate for harsh-cornering detection, since we
-  // have no accelerometer/gyroscope access in a background task.
-  lastHeadingDeg: number | null
   consecutiveMovingSamples: number
-  lastSpeedKmh: number | null
-  crashPendingAt: number | null
-  crashCandidateCount: number
   // Total elapsed time (seconds) across samples classified as "moving" —
   // duration_seconds minus this gives idle time spent stopped *within* the
   // trip (traffic lights, waiting), without counting the trailing
@@ -49,11 +42,7 @@ const EMPTY_STATE: AutoTripState = {
   maxSpeedKmh: 0,
   lastPoint: null,
   lastSpeedMs: null,
-  lastHeadingDeg: null,
   consecutiveMovingSamples: 0,
-  lastSpeedKmh: null,
-  crashPendingAt: null,
-  crashCandidateCount: 0,
   movingSeconds: 0,
 }
 

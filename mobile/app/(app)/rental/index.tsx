@@ -138,7 +138,7 @@ export default function RentalScreen() {
         </Card.Content>
       </Card>
 
-      {safetySummary && <DrivingSafetyCard summary={safetySummary} variant="driver" />}
+      {safetySummary && <DrivingSafetyCard summary={safetySummary} />}
 
       <Card style={[styles.card, isGoodStanding && styles.goodStandingCard]}>
         <Card.Content>

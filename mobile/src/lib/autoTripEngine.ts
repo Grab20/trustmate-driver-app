@@ -2,7 +2,6 @@ import * as Notifications from 'expo-notifications'
 import { supabase } from './supabase'
 import { haversineDistanceKm } from '../utils/geo'
 import { reverseGeocodeLabel } from './reverseGeocode'
-import { reportPossibleCrash } from './crashAlert'
 import { upsertLiveStatus } from './liveStatus'
 import {
   getAutoTripContext,
@@ -43,97 +42,6 @@ const MIN_SAMPLE_GAP_S = 1
 // constant-speed travel for the whole gap. Fall back to the straight-line distance
 // between the two points instead, same as when speed data is missing entirely.
 const MAX_SEGMENT_INTEGRATION_GAP_S = 60
-
-// Driver Safety event thresholds. There's no accelerometer/gyroscope access in a
-// background task, so these are all derived purely from consecutive GPS fixes:
-// braking/acceleration from the change in GPS speed over time, cornering from the
-// change in GPS heading over time at speed (lateral accel = v * dHeading/dt).
-// Thresholds are the same order of magnitude commercial telematics dongles use
-// (roughly 0.35-0.45g), chosen to catch genuinely abrupt driving, not ordinary
-// braking for a red light or a normal turn.
-const HARSH_BRAKING_MPS2 = -4.5
-const HARSH_ACCELERATION_MPS2 = 3.5
-const HARSH_CORNERING_LATERAL_MPS2 = 3.5
-// GPS heading is unreliable at low speed (it's derived from the direction of
-// travel, which is noisy when barely moving), so cornering is only evaluated
-// above this speed.
-const CORNERING_MIN_SPEED_KMH = 20
-// Only treat a speed/heading change as a discrete "event" if it happened within
-// this short a gap — a big jump after a longer gap is a resumed signal, not a
-// sudden real maneuver.
-const MAX_EVENT_SAMPLE_GAP_S = 8
-// There's no per-road speed-limit data source wired up, so this is a single,
-// explicit threshold rather than a guess at the posted limit for any given
-// road — it will under-detect urban speeding and only reliably catches
-// motorway-or-faster speeds, which is the honest tradeoff without that data.
-const SPEEDING_THRESHOLD_KMH = 120
-
-type DrivingEventType = 'harsh_braking' | 'harsh_acceleration' | 'harsh_cornering' | 'speeding'
-
-type DetectedDrivingEvent = {
-  eventType: DrivingEventType
-  severity: number
-  speedKmh: number
-}
-
-function shortestHeadingDeltaDeg(fromDeg: number, toDeg: number): number {
-  let diff = (toDeg - fromDeg) % 360
-  if (diff > 180) diff -= 360
-  if (diff < -180) diff += 360
-  return diff
-}
-
-function detectDrivingEvents(
-  sample: LocationSample,
-  state: AutoTripState,
-  speedKmh: number,
-  dtSeconds: number,
-): DetectedDrivingEvent[] {
-  const events: DetectedDrivingEvent[] = []
-
-  if (speedKmh > SPEEDING_THRESHOLD_KMH) {
-    events.push({ eventType: 'speeding', severity: Math.round((speedKmh - SPEEDING_THRESHOLD_KMH) * 10) / 10, speedKmh: Math.round(speedKmh) })
-  }
-
-  if (dtSeconds <= 0 || dtSeconds > MAX_EVENT_SAMPLE_GAP_S || state.lastSpeedKmh == null) {
-    return events
-  }
-
-  const accelerationMps2 = (speedKmh - state.lastSpeedKmh) / 3.6 / dtSeconds
-  if (accelerationMps2 <= HARSH_BRAKING_MPS2) {
-    events.push({ eventType: 'harsh_braking', severity: Math.round(Math.abs(accelerationMps2) * 10) / 10, speedKmh: Math.round(speedKmh) })
-  } else if (accelerationMps2 >= HARSH_ACCELERATION_MPS2) {
-    events.push({ eventType: 'harsh_acceleration', severity: Math.round(accelerationMps2 * 10) / 10, speedKmh: Math.round(speedKmh) })
-  }
-
-  const heading = sample.heading
-  const lastHeading = state.lastHeadingDeg
-  if (
-    heading != null && heading >= 0 &&
-    lastHeading != null && lastHeading >= 0 &&
-    speedKmh >= CORNERING_MIN_SPEED_KMH && state.lastSpeedKmh >= CORNERING_MIN_SPEED_KMH
-  ) {
-    const headingDeltaRad = (shortestHeadingDeltaDeg(lastHeading, heading) * Math.PI) / 180
-    const speedMs = speedKmh / 3.6
-    const lateralMps2 = Math.abs(speedMs * (headingDeltaRad / dtSeconds))
-    if (lateralMps2 >= HARSH_CORNERING_LATERAL_MPS2) {
-      events.push({ eventType: 'harsh_cornering', severity: Math.round(lateralMps2 * 10) / 10, speedKmh: Math.round(speedKmh) })
-    }
-  }
-
-  return events
-}
-
-// Crash heuristic: highway-ish speed followed by the vehicle staying near-stationary for
-// two consecutive samples (~60s). Requiring two samples (not one) filters out ordinary
-// hard braking, sharp turns, and GPS jitter, which would otherwise look identical to a
-// crash after just one reading. This is still a coarse GPS-only signal, so it will
-// occasionally flag a stop that wasn't a crash — the confirm window keeps that
-// low-friction (one tap to dismiss) rather than silently alerting anyone.
-const CRASH_SPEED_BEFORE_KMH = 60
-const CRASH_SPEED_AFTER_KMH = 8
-const CRASH_CANDIDATE_SAMPLES = 2
-export const CRASH_CONFIRM_WINDOW_MS = 30_000
 
 export type LocationSample = {
   latitude: number
@@ -200,11 +108,7 @@ async function startTrip(sample: LocationSample) {
     maxSpeedKmh: 0,
     lastPoint: { latitude: sample.latitude, longitude: sample.longitude },
     lastSpeedMs: sample.speedMs,
-    lastHeadingDeg: sample.heading,
     consecutiveMovingSamples: 0,
-    lastSpeedKmh: null,
-    crashPendingAt: null,
-    crashCandidateCount: 0,
     movingSeconds: 0,
   })
 
@@ -321,37 +225,6 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     return
   }
 
-  let crashPendingAt = state.crashPendingAt
-  let crashCandidateCount = state.crashCandidateCount
-  if (isSampleUsable) {
-    if (crashPendingAt) {
-      if (isMoving) {
-        // Driver resumed normal driving — treat the earlier stop as a false alarm.
-        crashPendingAt = null
-      } else if (sample.timestamp - crashPendingAt >= CRASH_CONFIRM_WINDOW_MS) {
-        await reportPossibleCrash(context, state.lastSpeedKmh ?? 0, sample)
-        crashPendingAt = null
-      }
-    } else if (speedKmh <= CRASH_SPEED_AFTER_KMH) {
-      // Only start (or continue) counting candidate samples if the vehicle was going fast
-      // just before this streak began, or is already mid-streak from a prior fast reading.
-      crashCandidateCount =
-        crashCandidateCount > 0 || (state.lastSpeedKmh ?? 0) >= CRASH_SPEED_BEFORE_KMH ? crashCandidateCount + 1 : 0
-
-      if (crashCandidateCount >= CRASH_CANDIDATE_SAMPLES) {
-        crashPendingAt = sample.timestamp
-        crashCandidateCount = 0
-        await notify(
-          'Possible crash detected',
-          "Tap to confirm you're OK. TrustMate admin will be alerted if you don't respond.",
-        )
-      }
-    } else {
-      // Moving at a normal pace again — clear any in-progress candidate streak.
-      crashCandidateCount = 0
-    }
-  }
-
   const { error: waypointError } = await supabase.from('trip_waypoints').insert({
     trip_id: state.activeTripId,
     lat: sample.latitude,
@@ -365,22 +238,6 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     // Logged above for later debugging, but not trusted for anything state-changing —
     // leave everything as-is and wait for the next sample that looks real.
     return
-  }
-
-  const events = detectDrivingEvents(sample, state, speedKmh, dtSeconds)
-  for (const event of events) {
-    const { error: eventError } = await supabase.from('driving_events').insert({
-      trip_id: state.activeTripId,
-      driver_id: context.driverId,
-      car_id: context.carId,
-      event_type: event.eventType,
-      severity: event.severity,
-      speed_kmh: event.speedKmh,
-      lat: sample.latitude,
-      lng: sample.longitude,
-      occurred_at: new Date(sample.timestamp).toISOString(),
-    })
-    if (eventError) console.warn('Auto-trip: failed to save driving event', eventError.message)
   }
 
   let segmentKm = 0
@@ -412,11 +269,7 @@ export async function processLocationSample(sample: LocationSample): Promise<voi
     lastPoint: { latitude: sample.latitude, longitude: sample.longitude } satisfies AutoTripPoint,
     lastSampleAt: sample.timestamp,
     lastSpeedMs: sample.speedMs ?? null,
-    lastHeadingDeg: sample.heading ?? null,
     lastMovingAt: isMoving ? sample.timestamp : state.lastMovingAt,
-    lastSpeedKmh: speedKmh,
-    crashPendingAt,
-    crashCandidateCount,
     movingSeconds: state.movingSeconds + (isMoving && dtSeconds > 0 ? dtSeconds : 0),
   }
 

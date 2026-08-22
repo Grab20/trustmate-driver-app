@@ -312,6 +312,78 @@ export type Database = {
           },
         ]
       }
+      boost_promo_clicks: {
+        Row: {
+          clicked_at: string
+          id: string
+          role: string | null
+          user_id: string | null
+        }
+        Insert: {
+          clicked_at?: string
+          id?: string
+          role?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          clicked_at?: string
+          id?: string
+          role?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boost_promo_clicks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_promo_clicks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      boost_promo_impressions: {
+        Row: {
+          id: string
+          role: string | null
+          shown_at: string
+          user_id: string | null
+        }
+        Insert: {
+          id?: string
+          role?: string | null
+          shown_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          id?: string
+          role?: string | null
+          shown_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boost_promo_impressions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_promo_impressions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "v_user_last_login"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       boost_requests: {
         Row: {
           admin_note: string | null
@@ -540,7 +612,6 @@ export type Database = {
           checkin_time: string | null
           color: string | null
           created_at: string | null
-          damoov_vehicle_token: string | null
           deposit: string | null
           description: string | null
           fuel_policy: string | null
@@ -581,7 +652,6 @@ export type Database = {
           checkin_time?: string | null
           color?: string | null
           created_at?: string | null
-          damoov_vehicle_token?: string | null
           deposit?: string | null
           description?: string | null
           fuel_policy?: string | null
@@ -622,7 +692,6 @@ export type Database = {
           checkin_time?: string | null
           color?: string | null
           created_at?: string | null
-          damoov_vehicle_token?: string | null
           deposit?: string | null
           description?: string | null
           fuel_policy?: string | null
@@ -1040,131 +1109,6 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "v_user_last_login"
             referencedColumns: ["user_id"]
-          },
-        ]
-      }
-      driver_telematics_accounts: {
-        Row: {
-          connected_at: string | null
-          consent_given_at: string | null
-          created_at: string
-          damoov_device_token: string | null
-          damoov_user_id: string | null
-          driver_id: string
-          id: string
-          last_seen_at: string | null
-          sdk_status: string
-          updated_at: string
-        }
-        Insert: {
-          connected_at?: string | null
-          consent_given_at?: string | null
-          created_at?: string
-          damoov_device_token?: string | null
-          damoov_user_id?: string | null
-          driver_id: string
-          id?: string
-          last_seen_at?: string | null
-          sdk_status?: string
-          updated_at?: string
-        }
-        Update: {
-          connected_at?: string | null
-          consent_given_at?: string | null
-          created_at?: string
-          damoov_device_token?: string | null
-          damoov_user_id?: string | null
-          driver_id?: string
-          id?: string
-          last_seen_at?: string | null
-          sdk_status?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "driver_telematics_accounts_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: true
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "driver_telematics_accounts_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: true
-            referencedRelation: "v_user_last_login"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
-      driving_events: {
-        Row: {
-          car_id: string
-          created_at: string
-          driver_id: string
-          event_type: string
-          id: string
-          lat: number | null
-          lng: number | null
-          occurred_at: string
-          severity: number
-          speed_kmh: number | null
-          trip_id: string
-        }
-        Insert: {
-          car_id: string
-          created_at?: string
-          driver_id: string
-          event_type: string
-          id?: string
-          lat?: number | null
-          lng?: number | null
-          occurred_at?: string
-          severity: number
-          speed_kmh?: number | null
-          trip_id: string
-        }
-        Update: {
-          car_id?: string
-          created_at?: string
-          driver_id?: string
-          event_type?: string
-          id?: string
-          lat?: number | null
-          lng?: number | null
-          occurred_at?: string
-          severity?: number
-          speed_kmh?: number | null
-          trip_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "driving_events_car_id_fkey"
-            columns: ["car_id"]
-            isOneToOne: false
-            referencedRelation: "cars"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "driving_events_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "driving_events_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: false
-            referencedRelation: "v_user_last_login"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "driving_events_trip_id_fkey"
-            columns: ["trip_id"]
-            isOneToOne: false
-            referencedRelation: "vehicle_trips"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -1785,275 +1729,6 @@ export type Database = {
           owner_id?: string
         }
         Relationships: []
-      }
-      telematics_events: {
-        Row: {
-          application_id: string
-          car_id: string
-          created_at: string
-          driver_id: string
-          event_type: string
-          id: string
-          lat: number | null
-          lng: number | null
-          occurred_at: string
-          severity: number | null
-          trip_id: string | null
-        }
-        Insert: {
-          application_id: string
-          car_id: string
-          created_at?: string
-          driver_id: string
-          event_type: string
-          id?: string
-          lat?: number | null
-          lng?: number | null
-          occurred_at: string
-          severity?: number | null
-          trip_id?: string | null
-        }
-        Update: {
-          application_id?: string
-          car_id?: string
-          created_at?: string
-          driver_id?: string
-          event_type?: string
-          id?: string
-          lat?: number | null
-          lng?: number | null
-          occurred_at?: string
-          severity?: number | null
-          trip_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "telematics_events_application_id_fkey"
-            columns: ["application_id"]
-            isOneToOne: false
-            referencedRelation: "active_matches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_events_application_id_fkey"
-            columns: ["application_id"]
-            isOneToOne: false
-            referencedRelation: "applications"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_events_car_id_fkey"
-            columns: ["car_id"]
-            isOneToOne: false
-            referencedRelation: "cars"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_events_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_events_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: false
-            referencedRelation: "v_user_last_login"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "telematics_events_trip_id_fkey"
-            columns: ["trip_id"]
-            isOneToOne: false
-            referencedRelation: "telematics_trips"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      telematics_live_status: {
-        Row: {
-          application_id: string
-          car_id: string
-          driver_id: string
-          heading: number | null
-          is_moving: boolean
-          lat: number | null
-          lng: number | null
-          speed_kmh: number | null
-          trip_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          application_id: string
-          car_id: string
-          driver_id: string
-          heading?: number | null
-          is_moving?: boolean
-          lat?: number | null
-          lng?: number | null
-          speed_kmh?: number | null
-          trip_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          application_id?: string
-          car_id?: string
-          driver_id?: string
-          heading?: number | null
-          is_moving?: boolean
-          lat?: number | null
-          lng?: number | null
-          speed_kmh?: number | null
-          trip_id?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "telematics_live_status_application_id_fkey"
-            columns: ["application_id"]
-            isOneToOne: false
-            referencedRelation: "active_matches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_live_status_application_id_fkey"
-            columns: ["application_id"]
-            isOneToOne: false
-            referencedRelation: "applications"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_live_status_car_id_fkey"
-            columns: ["car_id"]
-            isOneToOne: false
-            referencedRelation: "cars"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_live_status_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: true
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_live_status_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: true
-            referencedRelation: "v_user_last_login"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "telematics_live_status_trip_id_fkey"
-            columns: ["trip_id"]
-            isOneToOne: false
-            referencedRelation: "telematics_trips"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      telematics_trips: {
-        Row: {
-          application_id: string
-          avg_speed_kmh: number | null
-          car_id: string
-          created_at: string
-          damoov_trip_id: string | null
-          distance_km: number | null
-          driver_id: string
-          duration_seconds: number | null
-          eco_score: number | null
-          end_lat: number | null
-          end_lng: number | null
-          ended_at: string | null
-          id: string
-          max_speed_kmh: number | null
-          safety_score: number | null
-          start_lat: number | null
-          start_lng: number | null
-          started_at: string
-          status: string
-        }
-        Insert: {
-          application_id: string
-          avg_speed_kmh?: number | null
-          car_id: string
-          created_at?: string
-          damoov_trip_id?: string | null
-          distance_km?: number | null
-          driver_id: string
-          duration_seconds?: number | null
-          eco_score?: number | null
-          end_lat?: number | null
-          end_lng?: number | null
-          ended_at?: string | null
-          id?: string
-          max_speed_kmh?: number | null
-          safety_score?: number | null
-          start_lat?: number | null
-          start_lng?: number | null
-          started_at: string
-          status?: string
-        }
-        Update: {
-          application_id?: string
-          avg_speed_kmh?: number | null
-          car_id?: string
-          created_at?: string
-          damoov_trip_id?: string | null
-          distance_km?: number | null
-          driver_id?: string
-          duration_seconds?: number | null
-          eco_score?: number | null
-          end_lat?: number | null
-          end_lng?: number | null
-          ended_at?: string | null
-          id?: string
-          max_speed_kmh?: number | null
-          safety_score?: number | null
-          start_lat?: number | null
-          start_lng?: number | null
-          started_at?: string
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "telematics_trips_application_id_fkey"
-            columns: ["application_id"]
-            isOneToOne: false
-            referencedRelation: "active_matches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_trips_application_id_fkey"
-            columns: ["application_id"]
-            isOneToOne: false
-            referencedRelation: "applications"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_trips_car_id_fkey"
-            columns: ["car_id"]
-            isOneToOne: false
-            referencedRelation: "cars"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_trips_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "telematics_trips_driver_id_fkey"
-            columns: ["driver_id"]
-            isOneToOne: false
-            referencedRelation: "v_user_last_login"
-            referencedColumns: ["user_id"]
-          },
-        ]
       }
       traffic_offences: {
         Row: {
@@ -2771,7 +2446,6 @@ export type Database = {
         }
         Returns: undefined
       }
-      award_weekly_safety_trust_points: { Args: never; Returns: undefined }
       calculate_trust_score: { Args: { dp_id: string }; Returns: number }
       cleanup_expired_otps: { Args: never; Returns: undefined }
       complete_driver_registration: {

@@ -171,7 +171,7 @@ export default function OwnerDriverDetailScreen() {
         />
       </View>
 
-      {safetySummary && <DrivingSafetyCard summary={safetySummary} variant="owner" />}
+      {safetySummary && <DrivingSafetyCard summary={safetySummary} />}
 
       <Card style={[styles.card, paymentsUpToDate && inspectionCompleted && !hasIncidents && styles.goodStandingCard]}>
         <Card.Content>
