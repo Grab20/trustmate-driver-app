@@ -52,13 +52,13 @@ export function useAutoTripTracking(): AutoTripPermissionStatus {
       if (!isRegistered) {
         await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
           // Balanced accuracy (~100m) can fall back to network/cell-tower positioning
-          // instead of the GPS chip, which frequently omits real speed/heading data —
-          // exactly the fields distance, top speed, and (later) harsh-driving detection
-          // depend on. BestForNavigation forces GPS-grade fixes with that data included.
+          // instead of the GPS chip, which frequently omits real speed data — exactly
+          // what distance and top speed depend on. BestForNavigation forces GPS-grade
+          // fixes with that data included.
           accuracy: Location.Accuracy.BestForNavigation,
-          // A sample every 30s / 30m is too sparse to follow a curved road or catch a
-          // brief harsh-braking event — 5s / 15m is still light on battery but frequent
-          // enough for both distance accuracy and driving-behaviour detection.
+          // A sample every 30s / 30m is too sparse to follow a curved road accurately —
+          // 5s / 15m is still light on battery but frequent enough for the start/stop
+          // state machine (autoTripEngine.ts) to resolve distance and duration precisely.
           timeInterval: 5000,
           distanceInterval: 15,
           pausesUpdatesAutomatically: false,

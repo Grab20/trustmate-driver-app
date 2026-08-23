@@ -3,45 +3,16 @@ import { supabase } from './supabase'
 import { haversineDistanceKm } from '../utils/geo'
 import { reverseGeocodeLabel } from './reverseGeocode'
 import { upsertLiveStatus } from './liveStatus'
+import { TRIP_DETECTION_CONFIG as cfg } from '../config/tripDetectionConfig'
 import {
   getAutoTripContext,
   getAutoTripState,
   setAutoTripState,
   clearAutoTripState,
+  type AutoTripContext,
   type AutoTripPoint,
   type AutoTripState,
 } from './autoTripStorage'
-
-// A trip starts as soon as a single sample crosses this speed (device-reported GPS
-// speed is trusted immediately; a stray false start just ends itself via idle timeout).
-const MOVEMENT_THRESHOLD_KMH = 8
-const MOVING_SAMPLES_TO_START = 1
-// A trip ends once the vehicle has been below the movement threshold for this long.
-const IDLE_THRESHOLD_MS = 7 * 60 * 1000
-// A GPS fix worse than this is too imprecise to trust for distance/speed accumulation
-// (still fine for a coarse moving/stationary check, just not for the running totals).
-const MAX_USABLE_ACCURACY_M = 50
-// Anything faster than this on a public road is virtually certain to be a GPS glitch
-// (a jump to a distant point, or a corrupted Doppler speed reading), not a real speed.
-const MAX_PLAUSIBLE_SPEED_KMH = 220
-// Real fixes can't legitimately arrive faster than this given the ~5s sample interval
-// requested from the OS. A gap smaller than this is the signature of a post-Doze/
-// background-backlog flush: the OS hands back a batch of buffered fixes all at once,
-// each carrying its own valid-looking historical speed/accuracy, but compressed into
-// a few milliseconds of processing time instead of the real minutes or hours between
-// them. Trusting that timing corrupts everything downstream — it lets "moving" time
-// balloon for hours (each fix looks like a plausible speed reading) while the actual
-// distance/duration math, which divides by that near-zero elapsed time, collapses
-// toward zero. Below this floor a sample is still logged as a waypoint, but it's not
-// trusted to move the live map, extend moving time, or shift the reference point used
-// to measure the next sample.
-const MIN_SAMPLE_GAP_S = 1
-// Above this gap between two otherwise-trusted samples, don't integrate "average of
-// the two endpoint speeds x elapsed time" — a real multi-hour tracking gap (phone
-// backgrounded, Doze, etc.) would extrapolate to an absurd distance if treated as
-// constant-speed travel for the whole gap. Fall back to the straight-line distance
-// between the two points instead, same as when speed data is missing entirely.
-const MAX_SEGMENT_INTEGRATION_GAP_S = 60
 
 export type LocationSample = {
   latitude: number
@@ -64,6 +35,39 @@ function speedKmhFromSample(sample: LocationSample, lastPoint: AutoTripPoint | n
   return 0
 }
 
+function metersBetween(a: AutoTripPoint, b: AutoTripPoint): number {
+  return haversineDistanceKm(a.latitude, a.longitude, b.latitude, b.longitude) * 1000
+}
+
+// Integrating the GPS chip's own Doppler-derived speed over elapsed time follows
+// the actual road distance far better than summing straight-line hops between
+// sparse fixes, which visibly cuts every corner on anything but a dead-straight
+// road. Falls back to straight-line distance when speed data is missing or the
+// gap between fixes is too large to treat as constant-speed travel. Shared by
+// both the start-candidate distance accumulation and the active-trip odometer,
+// so "how far has the vehicle gone" is computed the same way everywhere.
+function computeSegmentDistanceKm(
+  lastPoint: AutoTripPoint | null,
+  lastSpeedMs: number | null,
+  currentSpeedMs: number | null,
+  currentPoint: AutoTripPoint,
+  dtSeconds: number,
+): number {
+  if (!lastPoint) return 0
+  const dtHours = dtSeconds / 3600
+  const gapShortEnoughToIntegrate = dtSeconds > 0 && dtSeconds <= cfg.maxSegmentIntegrationGapSeconds
+  if (
+    gapShortEnoughToIntegrate &&
+    currentSpeedMs != null && currentSpeedMs >= 0 &&
+    lastSpeedMs != null && lastSpeedMs >= 0 &&
+    dtHours > 0
+  ) {
+    const avgSpeedKmh = ((currentSpeedMs + lastSpeedMs) / 2) * 3.6
+    return avgSpeedKmh * dtHours
+  }
+  return haversineDistanceKm(lastPoint.latitude, lastPoint.longitude, currentPoint.latitude, currentPoint.longitude)
+}
+
 async function notify(title: string, body: string) {
   await Notifications.scheduleNotificationAsync({
     content: { title, body },
@@ -71,53 +75,9 @@ async function notify(title: string, body: string) {
   })
 }
 
-async function startTrip(sample: LocationSample) {
-  const context = await getAutoTripContext()
-  if (!context) return
-
-  const startLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
-
-  const { data: trip, error } = await supabase
-    .from('vehicle_trips')
-    .insert({
-      driver_id: context.driverId,
-      car_id: context.carId,
-      application_id: context.applicationId,
-      status: 'active',
-      start_location: startLabel,
-    })
-    .select()
-    .single()
-
-  if (error || !trip) {
-    console.warn('Auto-trip: failed to start trip', error?.message)
-    return
-  }
-
-  await setAutoTripState({
-    activeTripId: trip.id,
-    // Anchor timing to the GPS fix's own timestamp, not the moment this code
-    // happens to run — Android can queue several locations under Doze/battery
-    // restrictions and deliver them as one batch, in which case Date.now()
-    // would be identical for all of them and corrupt every duration/idle
-    // calculation that follows.
-    startedAt: sample.timestamp,
-    lastMovingAt: sample.timestamp,
-    lastSampleAt: sample.timestamp,
-    distanceKm: 0,
-    maxSpeedKmh: 0,
-    lastPoint: { latitude: sample.latitude, longitude: sample.longitude },
-    lastSpeedMs: sample.speedMs,
-    consecutiveMovingSamples: 0,
-    movingSeconds: 0,
-  })
-
-  await notify('Trip started', 'TrustMate Driver is tracking your route.')
-}
-
 // Duration is the span the vehicle was actually moving (startedAt to the last
 // sample that counted as moving) — not startedAt to now, which would also bill
-// the trailing IDLE_THRESHOLD_MS wait used only to detect that the trip had
+// the trailing stop-confirmation window used only to detect that the trip had
 // ended (or, for a still-active trip, however long it's simply been since the
 // last sample), inflating recorded driving time.
 function computeTripSnapshot(state: {
@@ -135,8 +95,8 @@ function computeTripSnapshot(state: {
 // The owner's app can't see the driver's local AsyncStorage trip state, so without
 // this a trip in progress is invisible to them — their distance/duration totals only
 // count trips that have already ended, while the driver's own screen shows live
-// progress. Writing the running snapshot to the still-'active' trip row on every
-// usable sample keeps both sides reading the same numbers from the same place.
+// progress. Throttled by progressUpdateMinIntervalSeconds (see persistInTripUpdate)
+// so a live trip still visibly updates without writing on every single GPS fix.
 async function updateActiveTripProgress(tripId: string, state: AutoTripState): Promise<void> {
   const { durationSeconds, avgSpeedKmh, idleSeconds } = computeTripSnapshot(state)
 
@@ -154,7 +114,7 @@ async function updateActiveTripProgress(tripId: string, state: AutoTripState): P
   if (error) console.warn('Auto-trip: failed to update live trip progress', error.message)
 }
 
-async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoTripState>>, sample: LocationSample) {
+async function endTrip(tripId: string, state: AutoTripState, sample: LocationSample) {
   const { durationSeconds, avgSpeedKmh, idleSeconds } = computeTripSnapshot(state)
   const endLabel = await reverseGeocodeLabel(sample.latitude, sample.longitude)
 
@@ -184,100 +144,315 @@ async function endTrip(tripId: string, state: Awaited<ReturnType<typeof getAutoT
   await notify('Trip completed', `Distance: ${state.distanceKm.toFixed(1)} km`)
 }
 
-export async function processLocationSample(sample: LocationSample): Promise<void> {
-  const context = await getAutoTripContext()
-  if (!context) return
+// A trip_waypoints row is only written once enough time or distance has passed
+// since the last one (see tripDetectionConfig) — not on every raw GPS fix, which
+// would otherwise mean a database write roughly every 5 seconds for an entire trip.
+async function maybeWriteWaypoint(
+  state: AutoTripState,
+  sample: LocationSample,
+  speedKmh: number,
+): Promise<Pick<AutoTripState, 'lastWaypointAt' | 'lastWaypointPoint'> | null> {
+  const currentPoint: AutoTripPoint = { latitude: sample.latitude, longitude: sample.longitude }
+  const secondsSinceLast = state.lastWaypointAt != null ? (sample.timestamp - state.lastWaypointAt) / 1000 : Infinity
+  const distanceSinceLast = state.lastWaypointPoint != null ? metersBetween(state.lastWaypointPoint, currentPoint) : Infinity
+  const due = secondsSinceLast >= cfg.waypointMinIntervalSeconds || distanceSinceLast >= cfg.waypointMinDistanceMeters
+  if (!due) return null
 
-  const state = await getAutoTripState()
-  // The last sample's own GPS-fix time, not the last time it was moving — using
-  // lastMovingAt here understated elapsed time (and so overstated speed) across
-  // any stationary gap, since it wouldn't advance while the vehicle was stopped.
-  const lastTimestamp = state.lastSampleAt ?? state.startedAt
-  const speedKmh = speedKmhFromSample(sample, state.lastPoint, lastTimestamp)
-  const isMoving = speedKmh >= MOVEMENT_THRESHOLD_KMH
-  const dtSeconds = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 1000 : 0
-
-  // A fix this imprecise, a speed this implausible, or a gap this small since the last
-  // sample isn't trustworthy enough to move the live map, extend moving time, or shift
-  // the reference point used to measure the next sample — see MIN_SAMPLE_GAP_S above.
-  const accuracyOk = sample.accuracyM == null || sample.accuracyM <= MAX_USABLE_ACCURACY_M
-  const speedPlausible = speedKmh <= MAX_PLAUSIBLE_SPEED_KMH
-  const gapLooksReal = lastTimestamp == null || dtSeconds >= MIN_SAMPLE_GAP_S
-  const isSampleUsable = accuracyOk && speedPlausible && gapLooksReal
-
-  // Live status is independent of trip state — owners need to see this even while parked.
-  if (isSampleUsable) {
-    await upsertLiveStatus(context, isMoving, speedKmh, sample)
-  }
-
-  if (!state.activeTripId) {
-    if (!isSampleUsable) return
-    if (isMoving) {
-      const consecutive = state.consecutiveMovingSamples + 1
-      if (consecutive >= MOVING_SAMPLES_TO_START) {
-        await startTrip(sample)
-      } else {
-        await setAutoTripState({ ...state, consecutiveMovingSamples: consecutive })
-      }
-    } else if (state.consecutiveMovingSamples !== 0) {
-      await setAutoTripState({ ...state, consecutiveMovingSamples: 0 })
-    }
-    return
-  }
-
-  const { error: waypointError } = await supabase.from('trip_waypoints').insert({
-    trip_id: state.activeTripId,
+  const { error } = await supabase.from('trip_waypoints').insert({
+    trip_id: state.activeTripId as string,
     lat: sample.latitude,
     lng: sample.longitude,
     speed_kmh: speedKmh,
     accuracy_m: sample.accuracyM,
   })
-  if (waypointError) console.warn('Auto-trip: failed to save waypoint', waypointError.message)
+  if (error) console.warn('Auto-trip: failed to save waypoint', error.message)
 
-  if (!isSampleUsable) {
-    // Logged above for later debugging, but not trusted for anything state-changing —
-    // leave everything as-is and wait for the next sample that looks real.
+  return { lastWaypointAt: sample.timestamp, lastWaypointPoint: currentPoint }
+}
+
+// Persists an in-trip state update once, and pushes it to the server only when
+// progressUpdateMinIntervalSeconds has elapsed since the last push — keeps the
+// AsyncStorage write on every fix (cheap, local) separate from the Supabase
+// write (not cheap, metered), which is the main battery/data lever here.
+async function persistInTripUpdate(
+  tripId: string,
+  state: AutoTripState,
+  patch: Partial<AutoTripState>,
+  sample: LocationSample,
+): Promise<void> {
+  const shouldPushProgress =
+    state.lastProgressUpdateAt == null || (sample.timestamp - state.lastProgressUpdateAt) / 1000 >= cfg.progressUpdateMinIntervalSeconds
+
+  const updated: AutoTripState = {
+    ...state,
+    ...patch,
+    lastProgressUpdateAt: shouldPushProgress ? sample.timestamp : state.lastProgressUpdateAt,
+  }
+  await setAutoTripState(updated)
+  if (shouldPushProgress) {
+    await updateActiveTripProgress(tripId, updated)
+  }
+}
+
+// A trip is only confirmed once the vehicle has held at/above the start speed
+// continuously for both long enough AND far enough (see tripDetectionConfig) —
+// a brief burst of speed alone (walking fast, being shuffled around a parking
+// area, GPS drift) never reaches both bars together. The confirmed trip's
+// start time/location are backdated to when movement actually began, and the
+// distance/time already covered during the candidate window carries over
+// rather than being discarded. Waypoints for that window aren't backfilled —
+// the distance total already accounts for it, and it's not worth an extra
+// batch of writes for a ~60-second/300m stretch of breadcrumb trail.
+async function confirmTripStart(
+  context: AutoTripContext,
+  state: AutoTripState,
+  sample: LocationSample,
+  speedKmh: number,
+): Promise<void> {
+  const startTimestamp = state.startCandidateSince ?? sample.timestamp
+  const startPoint = state.startCandidateAnchor ?? { latitude: sample.latitude, longitude: sample.longitude }
+  const startLabel = await reverseGeocodeLabel(startPoint.latitude, startPoint.longitude)
+
+  const { data: trip, error } = await supabase
+    .from('vehicle_trips')
+    .insert({
+      driver_id: context.driverId,
+      car_id: context.carId,
+      application_id: context.applicationId,
+      status: 'active',
+      start_location: startLabel,
+      started_at: new Date(startTimestamp).toISOString(),
+    })
+    .select()
+    .single()
+
+  if (error || !trip) {
+    console.warn('Auto-trip: failed to start trip', error?.message)
+    await setAutoTripState({
+      ...state,
+      phase: 'idle',
+      startCandidateSince: null,
+      startCandidateAnchor: null,
+      startCandidateDistanceM: 0,
+    })
     return
   }
 
-  let segmentKm = 0
-  if (state.lastPoint) {
-    const currentSpeedMs = sample.speedMs
-    const previousSpeedMs = state.lastSpeedMs
-    const dtHours = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 3_600_000 : 0
-    const gapShortEnoughToIntegrate = dtSeconds > 0 && dtSeconds <= MAX_SEGMENT_INTEGRATION_GAP_S
-    if (
-      gapShortEnoughToIntegrate &&
-      currentSpeedMs != null && currentSpeedMs >= 0 &&
-      previousSpeedMs != null && previousSpeedMs >= 0 &&
-      dtHours > 0
-    ) {
-      // Integrating the GPS chip's own Doppler-derived speed over elapsed time follows
-      // the actual road distance far better than summing straight-line hops between
-      // sparse fixes, which visibly cuts every corner on anything but a dead-straight road.
-      const avgSpeedKmh = ((currentSpeedMs + previousSpeedMs) / 2) * 3.6
-      segmentKm = avgSpeedKmh * dtHours
-    } else {
-      segmentKm = haversineDistanceKm(state.lastPoint.latitude, state.lastPoint.longitude, sample.latitude, sample.longitude)
-    }
-  }
-
-  const updatedState = {
+  await setAutoTripState({
     ...state,
-    distanceKm: state.distanceKm + segmentKm,
-    maxSpeedKmh: Math.max(state.maxSpeedKmh, speedKmh),
-    lastPoint: { latitude: sample.latitude, longitude: sample.longitude } satisfies AutoTripPoint,
+    phase: 'active',
+    activeTripId: trip.id,
+    startedAt: startTimestamp,
+    lastMovingAt: sample.timestamp,
     lastSampleAt: sample.timestamp,
-    lastSpeedMs: sample.speedMs ?? null,
-    lastMovingAt: isMoving ? sample.timestamp : state.lastMovingAt,
-    movingSeconds: state.movingSeconds + (isMoving && dtSeconds > 0 ? dtSeconds : 0),
+    distanceKm: state.startCandidateDistanceM / 1000,
+    maxSpeedKmh: speedKmh,
+    lastPoint: { latitude: sample.latitude, longitude: sample.longitude },
+    lastSpeedMs: sample.speedMs,
+    movingSeconds: (sample.timestamp - startTimestamp) / 1000,
+    startCandidateSince: null,
+    startCandidateAnchor: null,
+    startCandidateDistanceM: 0,
+  })
+
+  await notify('Trip started', 'TrustMate Driver is tracking your route.')
+}
+
+// No vehicle_trips row exists yet — handles idle -> start_candidate -> active,
+// or falling back to idle if the movement that triggered start_candidate
+// doesn't sustain long enough / far enough to confirm a real trip.
+async function processPreTripSample(
+  context: AutoTripContext,
+  state: AutoTripState,
+  sample: LocationSample,
+  speedKmh: number,
+  dtSeconds: number,
+): Promise<void> {
+  const currentPoint: AutoTripPoint = { latitude: sample.latitude, longitude: sample.longitude }
+
+  if (state.phase !== 'start_candidate') {
+    if (speedKmh >= cfg.startSpeedKmh) {
+      await setAutoTripState({
+        ...state,
+        phase: 'start_candidate',
+        startCandidateSince: sample.timestamp,
+        startCandidateAnchor: currentPoint,
+        startCandidateDistanceM: 0,
+        lastPoint: currentPoint,
+        lastSampleAt: sample.timestamp,
+        lastSpeedMs: sample.speedMs,
+      })
+      return
+    }
+    await setAutoTripState({ ...state, lastPoint: currentPoint, lastSampleAt: sample.timestamp, lastSpeedMs: sample.speedMs })
+    return
   }
 
-  const idleSince = sample.timestamp - (updatedState.lastMovingAt ?? sample.timestamp)
-  if (idleSince > IDLE_THRESHOLD_MS) {
-    await endTrip(state.activeTripId, updatedState, sample)
+  // phase === 'start_candidate'
+  if (speedKmh < cfg.startSpeedKmh) {
+    // Movement didn't sustain — a brief burst, not a real trip starting.
+    await setAutoTripState({
+      ...state,
+      phase: 'idle',
+      startCandidateSince: null,
+      startCandidateAnchor: null,
+      startCandidateDistanceM: 0,
+      lastPoint: currentPoint,
+      lastSampleAt: sample.timestamp,
+      lastSpeedMs: sample.speedMs,
+    })
+    return
+  }
+
+  const segmentKm = computeSegmentDistanceKm(state.lastPoint, state.lastSpeedMs, sample.speedMs, currentPoint, dtSeconds)
+  const distanceM = state.startCandidateDistanceM + segmentKm * 1000
+  const elapsedSeconds = state.startCandidateSince != null ? (sample.timestamp - state.startCandidateSince) / 1000 : 0
+
+  if (elapsedSeconds >= cfg.startDurationSeconds && distanceM >= cfg.startDistanceMeters) {
+    await confirmTripStart(context, { ...state, startCandidateDistanceM: distanceM }, sample, speedKmh)
+    return
+  }
+
+  await setAutoTripState({
+    ...state,
+    startCandidateDistanceM: distanceM,
+    lastPoint: currentPoint,
+    lastSampleAt: sample.timestamp,
+    lastSpeedMs: sample.speedMs,
+  })
+}
+
+// A vehicle_trips row already exists — handles active <-> stop_candidate, and
+// ending the trip once a stop is confirmed. Distance/moving-time stop
+// accumulating the moment the vehicle looks stopped (entering stop_candidate)
+// so GPS jitter while parked can't inflate the trip's totals.
+async function processInTripSample(
+  state: AutoTripState,
+  sample: LocationSample,
+  speedKmh: number,
+  dtSeconds: number,
+): Promise<void> {
+  const tripId = state.activeTripId as string
+  const currentPoint: AutoTripPoint = { latitude: sample.latitude, longitude: sample.longitude }
+  const segmentKm = computeSegmentDistanceKm(state.lastPoint, state.lastSpeedMs, sample.speedMs, currentPoint, dtSeconds)
+  const isMoving = speedKmh >= cfg.stopSpeedKmh
+
+  if (state.phase === 'active') {
+    if (!isMoving) {
+      await persistInTripUpdate(
+        tripId,
+        state,
+        {
+          phase: 'stop_candidate',
+          stopCandidateSince: sample.timestamp,
+          stopCandidateAnchor: currentPoint,
+          distanceKm: state.distanceKm + segmentKm,
+          maxSpeedKmh: Math.max(state.maxSpeedKmh, speedKmh),
+          lastPoint: currentPoint,
+          lastSampleAt: sample.timestamp,
+          lastSpeedMs: sample.speedMs,
+        },
+        sample,
+      )
+      return
+    }
+
+    await persistInTripUpdate(
+      tripId,
+      state,
+      {
+        distanceKm: state.distanceKm + segmentKm,
+        maxSpeedKmh: Math.max(state.maxSpeedKmh, speedKmh),
+        lastPoint: currentPoint,
+        lastSampleAt: sample.timestamp,
+        lastSpeedMs: sample.speedMs,
+        lastMovingAt: sample.timestamp,
+        movingSeconds: state.movingSeconds + (dtSeconds > 0 ? dtSeconds : 0),
+      },
+      sample,
+    )
+    return
+  }
+
+  // phase === 'stop_candidate'
+  const distanceFromStopAnchor = state.stopCandidateAnchor ? metersBetween(state.stopCandidateAnchor, currentPoint) : 0
+  const realMovementResumed = isMoving || distanceFromStopAnchor >= cfg.stopMovementRadiusMeters
+
+  if (realMovementResumed) {
+    await persistInTripUpdate(
+      tripId,
+      state,
+      {
+        phase: 'active',
+        stopCandidateSince: null,
+        stopCandidateAnchor: null,
+        distanceKm: state.distanceKm + segmentKm,
+        maxSpeedKmh: Math.max(state.maxSpeedKmh, speedKmh),
+        lastPoint: currentPoint,
+        lastSampleAt: sample.timestamp,
+        lastSpeedMs: sample.speedMs,
+        lastMovingAt: sample.timestamp,
+        movingSeconds: state.movingSeconds + (dtSeconds > 0 ? dtSeconds : 0),
+      },
+      sample,
+    )
+    return
+  }
+
+  const stationarySeconds = state.stopCandidateSince != null ? (sample.timestamp - state.stopCandidateSince) / 1000 : 0
+  if (stationarySeconds >= cfg.stopDurationSeconds) {
+    await endTrip(tripId, state, sample)
+    return
+  }
+
+  // Still within the stop-confirmation window — no real movement yet, don't
+  // touch distance/moving time, just track the fix for the next comparison.
+  await setAutoTripState({ ...state, lastPoint: currentPoint, lastSampleAt: sample.timestamp, lastSpeedMs: sample.speedMs })
+}
+
+export async function processLocationSample(sample: LocationSample): Promise<void> {
+  const context = await getAutoTripContext()
+  if (!context) return
+
+  let state = await getAutoTripState()
+  // The last sample's own GPS-fix time, not the last time it was moving — using
+  // lastMovingAt here understated elapsed time (and so overstated speed) across
+  // any stationary gap, since it wouldn't advance while the vehicle was stopped.
+  const lastTimestamp = state.lastSampleAt ?? state.startedAt
+  const speedKmh = speedKmhFromSample(sample, state.lastPoint, lastTimestamp)
+  const dtSeconds = lastTimestamp != null ? (sample.timestamp - lastTimestamp) / 1000 : 0
+
+  // A fix this imprecise, a speed this implausible, or a gap this small since the last
+  // sample isn't trustworthy enough to move the live map, extend moving time, or shift
+  // the reference point used to measure the next sample.
+  const accuracyOk = sample.accuracyM == null || sample.accuracyM <= cfg.maxUsableAccuracyMeters
+  const speedPlausible = speedKmh <= cfg.maxPlausibleSpeedKmh
+  const gapLooksReal = lastTimestamp == null || dtSeconds >= cfg.minSampleGapSeconds
+  const isSampleUsable = accuracyOk && speedPlausible && gapLooksReal
+
+  // Live status is independent of trip state — owners need to see this even while
+  // parked. Reuses the stop-speed threshold as the general "is it moving right now"
+  // read, rather than introducing a third, separately-tuned speed constant.
+  if (isSampleUsable) {
+    await upsertLiveStatus(context, speedKmh >= cfg.stopSpeedKmh, speedKmh, sample)
+  }
+
+  if (state.activeTripId) {
+    const waypointPatch = await maybeWriteWaypoint(state, sample, speedKmh)
+    if (waypointPatch) state = { ...state, ...waypointPatch }
+  }
+
+  if (!isSampleUsable) {
+    // Logged above for later debugging (if a waypoint was due), but not trusted
+    // for anything state-changing — leave everything else as-is and wait for
+    // the next sample that looks real.
+    await setAutoTripState(state)
+    return
+  }
+
+  if (!state.activeTripId) {
+    await processPreTripSample(context, state, sample, speedKmh, dtSeconds)
   } else {
-    await setAutoTripState(updatedState)
-    await updateActiveTripProgress(state.activeTripId, updatedState)
+    await processInTripSample(state, sample, speedKmh, dtSeconds)
   }
 }
